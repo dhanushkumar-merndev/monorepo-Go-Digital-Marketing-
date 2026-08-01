@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+
+services:
+  - type: web
+    name: go-digital-automobile-crm-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerCommand: node dist/main.js
+    healthCheckPath: /v1/health/ready
+    maxShutdownDelaySeconds: 120
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: WORKER_MODE
+        value: standalone
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: '10'
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_CONNECT_TIMEOUT_MS
+        value: '2000'
+      - key: TIGRIS_ENDPOINT
+        value: https://t3.storage.dev
+      - key: TIGRIS_BUCKET
+        sync: false
+      - key: TIGRIS_ACCESS_KEY_ID
+        sync: false
+      - key: TIGRIS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: worker
+    name: go-digital-automobile-crm-worker
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerCommand: node dist/worker.js
+    maxShutdownDelaySeconds: 120
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: WORKER_MODE
+        value: standalone
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: '10'
+      - key: REDIS_URL
+        sync: false
+      - key: REDIS_CONNECT_TIMEOUT_MS
+        value: '2000'
+      - key: TIGRIS_ENDPOINT
+        value: https://t3.storage.dev
+      - key: TIGRIS_BUCKET
+        sync: false
+      - key: TIGRIS_ACCESS_KEY_ID
+        sync: false
+      - key: TIGRIS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false

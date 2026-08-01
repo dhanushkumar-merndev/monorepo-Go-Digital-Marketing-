@@ -1,0 +1,33 @@
+{
+  "name": "@gdm/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./css": "./src/tokens.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@gdm/eslint-config": "workspace:*",
+    "@gdm/typescript-config": "workspace:*",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

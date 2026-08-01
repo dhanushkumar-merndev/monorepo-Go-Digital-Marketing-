@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Go Digital Automobile CRM",
+    "slug": "go-digital-automobile-crm",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "gdmcrm",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "android": {
+      "package": "in.godigitalmarketing.automobilecrm",
+      "versionCode": 1,
+      "allowBackup": false,
+      "permissions": ["android.permission.POST_NOTIFICATIONS"],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BIND_ACCESSIBILITY_SERVICE",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.SEND_SMS",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_CALL_LOG",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 24,
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#175cd3",
+          "defaultChannel": "work-updates"
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": false,
+          "useSQLCipher": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "go-digital-automobile-crm",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Go Digital Automobile CRM monorepo",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=24.0.0 <27",
+    "pnpm": ">=11.18.0 <12"
+  },
+  "scripts": {
+    "build": "node scripts/run-workspace-command.mjs --node-env=production exec turbo run build",
+    "build:web:cloudflare": "node scripts/run-workspace-command.mjs --node-env=production --filter @gdm/web build:cloudflare",
+    "cf-typegen:web": "node scripts/run-workspace-command.mjs --filter @gdm/web cf-typegen",
+    "deploy:web": "node scripts/run-workspace-command.mjs --node-env=production --filter @gdm/web deploy",
+    "dev": "node scripts/run-workspace-command.mjs exec turbo run dev --parallel",
+    "dev:api": "node scripts/run-workspace-command.mjs --filter @gdm/api dev",
+    "dev:mobile": "node scripts/run-workspace-command.mjs --filter @gdm/mobile dev",
+    "dev:web": "node scripts/run-workspace-command.mjs --filter @gdm/web dev",
+    "dev:worker": "node scripts/run-workspace-command.mjs --worker-mode=standalone --filter @gdm/api dev:worker",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "install:workspace": "pnpm install --frozen-lockfile",
+    "lint": "turbo run lint",
+    "postinstall": "turbo run build --filter=@gdm/contracts --filter=@gdm/config --filter=@gdm/database --filter=@gdm/design-tokens --filter=@gdm/ui",
+    "preview:web": "node scripts/run-workspace-command.mjs --node-env=production --filter @gdm/web preview",
+    "start:api": "node scripts/run-workspace-command.mjs --node-env=production --filter @gdm/api start:prod",
+    "start:worker": "node scripts/run-workspace-command.mjs --node-env=production --worker-mode=standalone --filter @gdm/api start:worker",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "test:integration": "turbo run test:integration",
+    "type-check": "turbo run type-check",
+    "db:check": "node scripts/run-workspace-command.mjs --filter @gdm/database db:check",
+    "db:generate": "node scripts/run-workspace-command.mjs --filter @gdm/database db:generate",
+    "db:migrate": "node scripts/run-workspace-command.mjs --filter @gdm/database db:migrate",
+    "db:studio": "node scripts/run-workspace-command.mjs --filter @gdm/database db:studio",
+    "services:down": "docker compose -f infrastructure/local/compose.yaml down",
+    "services:up": "docker compose -f infrastructure/local/compose.yaml up -d --wait"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.10",
+    "dotenv": "17.3.1",
+    "prettier": "3.9.6",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "turbo": "2.10.8",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

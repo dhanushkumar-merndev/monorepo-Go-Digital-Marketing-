@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality and production builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: true
+      API_HOST: 127.0.0.1
+      API_PORT: 4000
+      LOG_LEVEL: silent
+      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:54322/go_digital_crm
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:54322/go_digital_crm
+      DATABASE_POOL_MAX: 2
+      REDIS_URL: redis://localhost:6379
+      REDIS_CONNECT_TIMEOUT_MS: 250
+      WORKER_MODE: disabled
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: auto
+      S3_BUCKET: go-digital-crm-test
+      S3_ACCESS_KEY_ID: test-access-key
+      S3_SECRET_ACCESS_KEY: test-secret-key
+      S3_FORCE_PATH_STYLE: true
+      NEXT_PUBLIC_API_URL: http://localhost:4000/v1
+      EXPO_PUBLIC_API_URL: http://localhost:4000/v1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+          run_install: false
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Check generated migration metadata
+        run: pnpm db:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm type-check
+
+      - name: Run workspace tests
+        run: pnpm test
+        env:
+          NODE_ENV: test
+
+      - name: Run integration tests
+        run: pnpm test:integration
+        env:
+          NODE_ENV: test
+
+      - name: Build affected applications and packages
+        run: pnpm build
+
+      - name: Build Cloudflare Worker artifact
+        run: pnpm build:web:cloudflare
+
+      - name: Build NestJS production image
+        run: docker build --file apps/api/Dockerfile --tag gdm-api:ci .

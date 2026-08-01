@@ -1,0 +1,22 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  '@nestjs/core': true
+  '@scarf/scarf': false
+  esbuild: true
+  msgpackr-extract: false
+  rclone.js: true
+  sharp: true
+  unrs-resolver: false
+  workerd: true
+
+autoInstallPeers: false
+engineStrict: true
+packageImportMethod: copy
+preferWorkspacePackages: true
+saveExact: true
+sharedWorkspaceLockfile: true
+strictPeerDependencies: true
+verifyDepsBeforeRun: false

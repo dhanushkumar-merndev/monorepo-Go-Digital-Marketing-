@@ -1,0 +1,29 @@
+{
+  "extends": "@gdm/typescript-config/react-native.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "customConditions": ["react-native"],
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["DOM", "ES2024"],
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "strict": true,
+    "types": ["jest", "nativewind/types", "node"]
+  },
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "*.ts",
+    "*.d.ts",
+    ".expo/types/**/*.ts",
+    "nativewind-env.d.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

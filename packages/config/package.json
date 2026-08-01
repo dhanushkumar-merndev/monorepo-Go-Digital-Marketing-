@@ -1,0 +1,45 @@
+{
+  "name": "@gdm/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./mobile": {
+      "types": "./dist/mobile.d.ts",
+      "default": "./dist/mobile.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@gdm/eslint-config": "workspace:*",
+    "@gdm/typescript-config": "workspace:*",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

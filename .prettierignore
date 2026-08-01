@@ -1,0 +1,16 @@
+node_modules
+.next
+.open-next
+.wrangler
+.expo
+.turbo
+coverage
+dist
+web-build
+apps/mobile/android
+apps/mobile/expo-env.d.ts
+apps/mobile/ios
+apps/web/next-env.d.ts
+packages/database/migrations/meta
+pnpm-lock.yaml
+*.docx

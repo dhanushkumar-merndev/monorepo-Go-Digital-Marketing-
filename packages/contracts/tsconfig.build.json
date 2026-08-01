@@ -1,0 +1,5 @@
+{
+  "extends": "@gdm/typescript-config/library.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

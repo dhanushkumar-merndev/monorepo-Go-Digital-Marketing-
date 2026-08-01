@@ -1,0 +1,33 @@
+import { Module, RequestMethod } from '@nestjs/common';
+import type { ApiEnvironment } from '@gdm/config';
+import { LoggerModule } from 'nestjs-pino';
+import { ApiExceptionFilter } from './common/errors/api-exception.filter.js';
+import { ZodValidationPipe } from './common/validation/zod-validation.pipe.js';
+import { API_ENVIRONMENT, ApiConfigModule } from './config/api-config.module.js';
+import { HealthModule } from './health/health.module.js';
+import { DatabaseInfrastructureModule } from './infrastructure/database/database.module.js';
+import { RedisInfrastructureModule } from './infrastructure/redis/redis.module.js';
+import { StorageInfrastructureModule } from './infrastructure/storage/storage.module.js';
+import { ObservabilityModule } from './observability/observability.module.js';
+import { createPinoHttpOptions } from './observability/pino-options.js';
+
+@Module({
+  imports: [
+    ApiConfigModule,
+    LoggerModule.forRootAsync({
+      imports: [ApiConfigModule],
+      inject: [API_ENVIRONMENT],
+      useFactory: (environment: ApiEnvironment) => ({
+        pinoHttp: createPinoHttpOptions(environment),
+        forRoutes: [{ path: '{*path}', method: RequestMethod.ALL }],
+      }),
+    }),
+    DatabaseInfrastructureModule,
+    RedisInfrastructureModule,
+    StorageInfrastructureModule,
+    ObservabilityModule,
+    HealthModule,
+  ],
+  providers: [ApiExceptionFilter, ZodValidationPipe],
+})
+export class AppModule {}

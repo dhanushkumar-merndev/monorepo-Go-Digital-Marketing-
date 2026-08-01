@@ -1,0 +1,7 @@
+.next/
+.open-next/
+.wrangler/
+node_modules/
+coverage/
+cloudflare-env.d.ts
+next-env.d.ts
