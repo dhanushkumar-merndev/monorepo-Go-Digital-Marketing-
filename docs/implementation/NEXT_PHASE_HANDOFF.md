@@ -2,9 +2,10 @@
 
 ## Completed phase
 
-Phase 0 — Monorepo and Architecture Foundation, including the Phase 0 deployment amendment, is
-complete as of 2026-08-01. The amendment changed deployment/runtime configuration only and added
-the required BullMQ process controls. It did not start Phase 1 or add dealership workflows.
+Phase 0 — Monorepo and Architecture Foundation, including the Phase 0 deployment amendment, passed
+strict completion audit on 2026-08-02. The amendment changed deployment/runtime configuration only
+and added the required BullMQ process controls. It did not start Phase 1 or add dealership
+workflows.
 
 The configured topology is Cloudflare OpenNext for apps/web, a Render NestJS web service for
 apps/api, and an optional Render worker from the same API image. The API uses Supabase PostgreSQL,
@@ -125,28 +126,25 @@ deploy:web uses pnpm run deploy explicitly to avoid collision with pnpm's built-
 
 ## Verified commands and results
 
-The completion run used the repository root and one pnpm-lock.yaml:
+The 2026-08-02 strict audit used the repository root and one pnpm-lock.yaml:
 
-- pnpm install and pnpm install --frozen-lockfile — pass
-- pnpm format and pnpm format:check — pass
-- pnpm db:check — pass
+- pnpm install --frozen-lockfile — pass
+- pnpm format:check — pass
+- pnpm db:check — pass with explicit `DATABASE_URL` and `DIRECT_DATABASE_URL`
 - pnpm lint — pass, 8 applicable tasks
 - pnpm type-check — pass, 13 tasks
-- pnpm test — pass, 63 tests
-- pnpm test:integration — pass, 9 tests
-- pnpm build — pass across NestJS, Next.js, Expo Android and shared packages
-- pnpm dev — pass; web/API returned 200 and Expo Metro reported running
-- pnpm build:web:cloudflare — pass; OpenNext generated .open-next/worker.js
-- pnpm preview:web — pass; Wrangler returned 200 for the rendered shell
-- Direct OpenNext-to-Wrangler deploy dry-run — pass without upload
-- Root deploy wrapper preflight — missing/HTTP API URLs fail before build or upload
+- pnpm test — pass, 63 tests after rerunning outside a sandbox IPC restriction
+- pnpm test:integration — pass, 9 tests after rerunning outside a sandbox IPC restriction
+- pnpm build — pass across NestJS, Next.js, Expo Android export path and shared packages
+- pnpm build:web:cloudflare — pass after rerunning outside a sandbox localhost-bind restriction;
+  OpenNext generated .open-next/worker.js
+- pnpm preview:web — pass; Wrangler returned HTTP 200 and 44,069 bytes for the rendered shell
 - Real PostgreSQL 17/Redis 8 disabled, embedded and standalone runtime checks — pass
-- Existing NestJS Dockerfile built with Podman — pass
+- Existing NestJS Dockerfile built with Podman as `localhost/gdm-api:audit-phase0` — pass
 - Built image API readiness and standalone worker start — pass
-- render.yaml YAML parse and official-field audit — pass
 
-The Docker CLI was unavailable. Podman exercised the same Dockerfile and image process commands;
-CI now includes the exact Docker CLI build.
+The Docker CLI was unavailable. Podman exercised the same Dockerfile and image process commands.
+CI includes the exact Docker CLI build. No real hosted provider account was mutated during audit.
 
 ## Seed accounts and data
 
@@ -157,6 +155,10 @@ ephemeral validation data that was removed with the temporary Redis container.
 
 - No real hosted deployment was performed. Run the staging sequence in DEPLOYMENT.md before
   production traffic.
+- Real provider secrets were not added. Put backend secrets only in Render or a private
+  uncommitted `.env`; Cloudflare should receive only `NEXT_PUBLIC_API_URL`.
+- Standalone worker graceful shutdown passed with a 30-second SIGTERM window. Keep Render's
+  configured 120-second shutdown window; short 10-second forced local removals may kill it first.
 - The standalone worker has structured Pino logging but no worker-specific Sentry reporter yet.
 - The pre-existing API exception filter must sanitize explicit 5xx HttpException messages before
   Phase 1 exposes protected routes.

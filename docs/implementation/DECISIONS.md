@@ -157,3 +157,19 @@
 - **Status:** Accepted
 - **Affected modules:** `packages/config`, `packages/database`, API Redis/storage adapters,
   `.env.example`, `render.yaml`, deployment documentation
+
+## ADR-0012 — Hosted secrets stay outside the repository
+
+- **Date:** 2026-08-02
+- **Decision:** Keep real Supabase, Upstash, Tigris/R2 and Sentry values out of committed files
+  and out of chat transcripts. Hosted backend secrets belong in Render service environment
+  variables. Cloudflare receives only the public `NEXT_PUBLIC_API_URL`. Developers may create a
+  private uncommitted `.env` from `.env.example` for local hosted-service testing.
+- **Reason:** The Phase 0 deployment amendment intentionally separates public client configuration
+  from backend-only credentials. Preserving that boundary prevents accidental service-role,
+  database, Redis or object-storage secret exposure in client bundles, logs or repository history.
+- **Alternatives considered:** Committing real keys to `.env.example`, placing backend secrets in
+  Cloudflare Worker variables, or sending provider keys through chat were rejected as insecure.
+- **Status:** Accepted
+- **Affected modules:** `.env.example`, `render.yaml`, `apps/web/.dev.vars.example`, deployment
+  documentation and operator setup
