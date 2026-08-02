@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "4.1.10",
-    "dotenv": "17.3.1",
+    "dotenv": "17.4.2",
     "prettier": "3.9.6",
     "prettier-plugin-tailwindcss": "0.8.1",
     "turbo": "2.10.8",
