@@ -17,7 +17,8 @@ storage.
 ## Create a migration
 
 1. Change `packages/database/src/schema` only for an approved phase requirement.
-2. Ensure `.env` contains a syntactically valid `DATABASE_URL`.
+2. Ensure `.env` contains a syntactically valid `DIRECT_DATABASE_URL` for migration/DDL access.
+   Database commands fall back to `DATABASE_URL` when a separate direct URL is not supplied.
 3. Generate SQL and metadata from the root:
 
    ```bash
@@ -46,10 +47,9 @@ reviewed migration files.
 pnpm db:migrate
 ```
 
-The runner uses the standard PostgreSQL URL supplied by Supabase or local Compose and records
-applied hashes in `drizzle.__drizzle_migrations`. Production deployment must run one migration job
-before rolling out API instances; application replicas must not race to mutate the schema on
-startup.
+The runner prefers `DIRECT_DATABASE_URL`, falls back to `DATABASE_URL`, and records applied hashes
+in `drizzle.__drizzle_migrations`. Production deployment must run one migration job before rolling
+out API instances; application replicas must not race to mutate the schema on startup.
 
 ## Supabase connection guidance
 

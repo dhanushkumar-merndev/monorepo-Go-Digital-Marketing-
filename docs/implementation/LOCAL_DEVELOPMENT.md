@@ -31,7 +31,8 @@ pnpm db:migrate
 | MinIO console | `localhost:9001`  | Local-only bucket inspection                |
 
 The compose credentials are development-only defaults. Hosted environments must inject managed
-secrets and use TLS URLs (`postgresql://`, `rediss://`, and HTTPS S3 endpoints).
+secrets, require TLS in the provider-supplied PostgreSQL connection settings, and use `rediss://`
+and HTTPS object-storage endpoints.
 
 The workspace keeps one root lockfile and one pnpm virtual store. Install only from the repository
 root. Lifecycle scripts are explicitly approved or denied through `allowBuilds` in
@@ -44,6 +45,15 @@ pnpm dev:web       # http://localhost:3000
 pnpm dev:api       # http://localhost:4000
 pnpm dev:mobile    # Expo development server
 ```
+
+`WORKER_MODE` defaults to `disabled`. To run a dedicated processor in another terminal:
+
+```bash
+pnpm dev:worker
+```
+
+The worker command forces `WORKER_MODE=standalone`. For a single-process local pilot, set
+`WORKER_MODE=embedded` and run only `pnpm dev:api`.
 
 The web shell reads `NEXT_PUBLIC_API_URL`; the mobile shell reads `EXPO_PUBLIC_API_URL`. Neither
 variable may contain a credential. An Android emulator reaches the host through `10.0.2.2`, so a
@@ -86,9 +96,14 @@ The root `.env.example` is the canonical list. `@gdm/config` validates all API v
 server listens. Important rules:
 
 - `DATABASE_URL` must use `postgres://` or `postgresql://`.
+- `DIRECT_DATABASE_URL` is preferred for Drizzle migration/DDL commands and falls back to
+  `DATABASE_URL` when omitted.
 - `REDIS_URL` must use `redis://` or `rediss://`.
+- `WORKER_MODE` must be `disabled`, `embedded` or `standalone`.
 - S3 access-key ID and secret must either both be supplied or both be omitted for the SDK default
   credential chain.
+- A complete `TIGRIS_*` set maps to the S3 adapter. It cannot be mixed with generic `S3_*`
+  endpoint, bucket or credentials.
 - CORS origins are an explicit comma-separated allowlist.
 - Empty `SENTRY_DSN` selects the no-op error reporter.
 

@@ -14,6 +14,37 @@ const workerModeArgument = commandArguments.find((argument) =>
 const forwardedArguments = commandArguments.filter(
   (argument) => argument !== nodeEnvironmentArgument && argument !== workerModeArgument,
 );
+const targetsClientWorkspace = forwardedArguments.some(
+  (argument) => argument === '@gdm/web' || argument === '@gdm/mobile',
+);
+
+const BACKEND_ENVIRONMENT_VARIABLES = [
+  'API_HOST',
+  'API_PORT',
+  'CORS_ORIGINS',
+  'DATABASE_POOL_MAX',
+  'DATABASE_URL',
+  'DIRECT_DATABASE_URL',
+  'LOG_LEVEL',
+  'PORT',
+  'REDIS_CONNECT_TIMEOUT_MS',
+  'REDIS_URL',
+  'S3_ACCESS_KEY_ID',
+  'S3_BUCKET',
+  'S3_ENDPOINT',
+  'S3_FORCE_PATH_STYLE',
+  'S3_REGION',
+  'S3_SECRET_ACCESS_KEY',
+  'SENTRY_DSN',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_URL',
+  'TIGRIS_ACCESS_KEY_ID',
+  'TIGRIS_BUCKET',
+  'TIGRIS_ENDPOINT',
+  'TIGRIS_SECRET_ACCESS_KEY',
+  'WORKER_MODE',
+];
 
 if (forwardedArguments.length === 0) {
   throw new Error('A pnpm workspace command is required.');
@@ -47,6 +78,12 @@ if (workerModeArgument) {
   }
 
   process.env.WORKER_MODE = workerMode;
+}
+
+if (targetsClientWorkspace) {
+  for (const name of BACKEND_ENVIRONMENT_VARIABLES) {
+    delete process.env[name];
+  }
 }
 
 const pnpmCli = process.env.npm_execpath;

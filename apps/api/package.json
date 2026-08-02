@@ -8,16 +8,18 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
+    "dev:worker": "nest start --watch --entryFile worker",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint src test --max-warnings=0",
     "start": "node dist/main.js",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:coverage": "tsx --test --experimental-test-coverage test/*.spec.ts test/*.e2e-spec.ts",
     "test:integration": "tsx --test test/app.e2e-spec.ts",
-    "test:unit": "tsx --test test/zod-validation.pipe.spec.ts",
+    "test:unit": "tsx --test test/*.spec.ts",
     "type-check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

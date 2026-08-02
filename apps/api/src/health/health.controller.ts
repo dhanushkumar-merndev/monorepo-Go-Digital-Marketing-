@@ -28,6 +28,16 @@ const DEPENDENCY_CHECK_SCHEMA = {
   },
 } satisfies SwaggerSchema;
 
+const BACKGROUND_PROCESSING_SCHEMA = {
+  type: 'object',
+  required: ['mode', 'location', 'local_workers'],
+  properties: {
+    mode: { type: 'string', enum: ['disabled', 'embedded', 'standalone'] },
+    location: { type: 'string', enum: ['disabled', 'local', 'external'] },
+    local_workers: { type: 'integer', minimum: 0 },
+  },
+} satisfies SwaggerSchema;
+
 const LIVENESS_SCHEMA = {
   type: 'object',
   required: [
@@ -38,6 +48,7 @@ const LIVENESS_SCHEMA = {
     'timestamp',
     'uptime_seconds',
     'correlation_id',
+    'processing',
   ],
   properties: {
     status: { type: 'string', enum: ['ok'] },
@@ -50,6 +61,7 @@ const LIVENESS_SCHEMA = {
     timestamp: { type: 'string', format: 'date-time' },
     uptime_seconds: { type: 'number', minimum: 0 },
     correlation_id: { type: 'string' },
+    processing: BACKGROUND_PROCESSING_SCHEMA,
   },
 } satisfies SwaggerSchema;
 

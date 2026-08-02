@@ -10,11 +10,12 @@ own phase-specific state, authorization, tenant-isolation and acceptance tests.
 ## Runtime boundaries
 
 ```text
-Office browser ──> apps/web ──┐
-                             ├──> apps/api (/v1) ──> Supabase PostgreSQL
-Android app ────> apps/mobile ┘          │         ├──> Upstash Redis / BullMQ
-                                        │         └──> Tigris S3 API
-                                        └──> structured logs / error reporter
+Office browser ──> Cloudflare Worker (OpenNext / apps/web) ──┐
+                                                            ├──> Render apps/api (/v1)
+Android app ────────────────────────────────────────────────┘          │
+                                                                       ├──> Supabase PostgreSQL
+Render BullMQ worker ──────────────────────────────────────────────────┼──> Upstash Redis
+                                                                       └──> Tigris/R2 S3 API
 ```
 
 - `apps/api` is the future authority for authorization and business transitions. Phase 0 exposes
@@ -25,6 +26,8 @@ Android app ────> apps/mobile ┘          │         ├──> Upstas
   semantic values from `@gdm/design-tokens` and never imports web components.
 - PostgreSQL remains the source of truth. Redis is an availability/performance dependency for
   queues, not a future business-data source.
+- Cloudflare owns only the Next.js presentation runtime. Authentication, authorization, webhook
+  acceptance, workflow rules and all later business logic remain in the NestJS modular monolith.
 
 ## Shared packages
 
@@ -73,12 +76,17 @@ reporter interface uses a no-op adapter without a DSN and is ready for Sentry co
 Redis failure therefore makes a worker/API instance unready, but future accepted business state
 must still be committed through PostgreSQL and the outbox before asynchronous publication.
 
+Every health response also reports background processing configuration. `disabled` starts no
+worker, `embedded` runs processing inside the HTTP process, and `standalone` reports processing as
+external while a separate `dist/worker.js` process owns BullMQ consumers.
+
 ## Infrastructure adapters
 
 - PostgreSQL uses `postgres` and Drizzle with prepared statements disabled for compatibility with
   Supabase transaction poolers.
-- Redis and BullMQ construction stays behind API-owned factories/probes. Connections fail fast for
-  readiness and do not use an offline command queue that could imply a successful operation.
+- Redis and BullMQ construction stays behind API-owned factories/probes. Health probes and API
+  producer connections fail fast with the offline queue disabled; worker connections deliberately
+  use infinite retries and the offline queue so consumers recover from transient Redis outages.
 - Object storage uses the AWS SDK S3 interface, private buckets and provider-neutral operations.
   Local development points the same adapter at MinIO; production points it at Tigris.
 - Provider credentials exist only in validated server configuration and are never exposed through
@@ -90,6 +98,12 @@ The API Docker build uses the workspace root as its build context so internal pa
 single lockfile remain intact. Runtime dependencies are injected through environment variables.
 No domain contract depends on Vercel, Render, Supabase, Upstash or Tigris-only behavior, preserving
 the PRD migration path to AWS equivalents.
+
+The concrete Phase 0 deployment target is OpenNext Cloudflare Workers for `apps/web`, and one
+Render web service plus an optional separate Render background worker from the same NestJS image.
+Supabase is accessed through PostgreSQL, Upstash through its native TLS Redis protocol, and Tigris
+or R2 through the existing S3 adapter. See `docs/implementation/DEPLOYMENT.md` for commands,
+environment boundaries and deployment order.
 
 ## Phase 1 guardrails
 

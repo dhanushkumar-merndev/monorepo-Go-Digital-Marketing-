@@ -431,9 +431,6 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
-      dotenv:
-        specifier: 17.3.1
-        version: 17.3.1
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10

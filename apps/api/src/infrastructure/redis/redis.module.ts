@@ -33,11 +33,6 @@ import {
       useExisting: DefaultBullMqWorkerFactory,
     },
   ],
-  exports: [
-    REDIS_CONNECTION,
-    REDIS_HEALTH_PROBE,
-    BULLMQ_QUEUE_FACTORY,
-    BULLMQ_WORKER_FACTORY,
-  ],
+  exports: [REDIS_CONNECTION, REDIS_HEALTH_PROBE, BULLMQ_QUEUE_FACTORY, BULLMQ_WORKER_FACTORY],
 })
 export class RedisInfrastructureModule {}

@@ -43,6 +43,48 @@ describe('environment validation', () => {
     ).toThrow();
   });
 
+  it('uses Render PORT when API_PORT is absent and rejects conflicting port values', () => {
+    expect(parseApiEnvironment({ ...validServerEnvironment, PORT: '10000' }).port).toBe(10_000);
+    expect(() =>
+      parseApiEnvironment({ ...validServerEnvironment, API_PORT: '4000', PORT: '10000' }),
+    ).toThrow();
+  });
+
+  it('maps a complete Tigris environment onto the provider-neutral S3 adapter', () => {
+    const { S3_BUCKET: _, ...withoutGenericStorage } = validServerEnvironment;
+    const environment = parseApiEnvironment({
+      ...withoutGenericStorage,
+      TIGRIS_BUCKET: 'crm-private',
+      TIGRIS_ACCESS_KEY_ID: 'access-key',
+      TIGRIS_SECRET_ACCESS_KEY: 'secret-key',
+    });
+
+    expect(environment).toMatchObject({
+      s3Endpoint: 'https://t3.storage.dev',
+      s3Region: 'auto',
+      s3Bucket: 'crm-private',
+      s3AccessKeyId: 'access-key',
+      s3SecretAccessKey: 'secret-key',
+      s3ForcePathStyle: false,
+    });
+  });
+
+  it('rejects incomplete or mixed Tigris and generic S3 settings', () => {
+    const { S3_BUCKET: _, ...withoutGenericStorage } = validServerEnvironment;
+
+    expect(() =>
+      parseApiEnvironment({ ...withoutGenericStorage, TIGRIS_BUCKET: 'crm-private' }),
+    ).toThrow();
+    expect(() =>
+      parseApiEnvironment({
+        ...validServerEnvironment,
+        TIGRIS_BUCKET: 'crm-private',
+        TIGRIS_ACCESS_KEY_ID: 'access-key',
+        TIGRIS_SECRET_ACCESS_KEY: 'secret-key',
+      }),
+    ).toThrow();
+  });
+
   it('rejects a non-PostgreSQL database URL', () => {
     expect(() =>
       parseApiEnvironment({ ...validServerEnvironment, DATABASE_URL: 'mysql://localhost/crm' }),
@@ -70,8 +112,30 @@ describe('environment validation', () => {
   });
 
   it('normalizes the optional trailing slash on public API URLs', () => {
+    expect(parseWebEnvironment({ NEXT_PUBLIC_API_URL: 'https://api.example.com/v1/' })).toEqual({
+      NEXT_PUBLIC_API_URL: 'https://api.example.com/v1',
+    });
+  });
+
+  it('requires an explicit API URL for production web builds', () => {
+    expect(() => parseWebEnvironment({ NODE_ENV: 'production' })).toThrow();
+    expect(() =>
+      parseWebEnvironment({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: 'http://api.example.com/v1',
+      }),
+    ).toThrow();
     expect(
-      parseWebEnvironment({ NEXT_PUBLIC_API_URL: 'https://api.example.com/v1/' }),
+      parseWebEnvironment({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: 'https://api.example.com/v1',
+      }),
     ).toEqual({ NEXT_PUBLIC_API_URL: 'https://api.example.com/v1' });
+    expect(
+      parseWebEnvironment({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1',
+      }),
+    ).toEqual({ NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1' });
   });
 });

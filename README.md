@@ -29,6 +29,9 @@ pnpm dev:api
 pnpm dev:mobile
 ```
 
+Run all workspace development processes with `pnpm dev`. To exercise a dedicated BullMQ worker,
+run `pnpm dev:worker` in a separate terminal with PostgreSQL and Redis available.
+
 - Web: `http://localhost:3000`
 - API: `http://localhost:4000/v1/health`
 - OpenAPI: `http://localhost:4000/docs`
@@ -49,6 +52,18 @@ pnpm test:integration
 pnpm build
 ```
 
+Deployment entry points are also run from the root:
+
+```bash
+pnpm preview:web
+pnpm deploy:web
+pnpm start:api
+pnpm start:worker
+```
+
+The Cloudflare deployment command changes external state and requires an authenticated,
+authorized Wrangler session. The production start commands require a prior `pnpm build`.
+
 Database commands are run from the repository root:
 
 ```bash
@@ -60,8 +75,9 @@ pnpm db:studio
 
 See [local development](docs/implementation/LOCAL_DEVELOPMENT.md),
 [architecture](docs/ARCHITECTURE.md), and the
-[migration workflow](docs/implementation/DATABASE_MIGRATIONS.md) for the complete setup and
-operational boundaries.
+[migration workflow](docs/implementation/DATABASE_MIGRATIONS.md) for the complete setup. The
+[deployment guide](docs/implementation/DEPLOYMENT.md) covers Cloudflare/OpenNext, Render,
+Supabase, Upstash, Tigris/R2 and all BullMQ worker modes.
 
 ## Repository layout
 

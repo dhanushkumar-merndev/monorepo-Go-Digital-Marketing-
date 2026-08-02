@@ -1,169 +1,213 @@
 # Next Phase Handoff
 
-## Status
+## Completed phase
 
-Phase 0 — Monorepo and Architecture Foundation is complete as of 2026-08-01. The repository is
-ready for Phase 1 — Authentication, Tenancy and Authorization. Phase 1 must extend this foundation
-without recreating the workspace or introducing dealership workflows.
+Phase 0 — Monorepo and Architecture Foundation, including the Phase 0 deployment amendment, is
+complete as of 2026-08-01. The amendment changed deployment/runtime configuration only and added
+the required BullMQ process controls. It did not start Phase 1 or add dealership workflows.
 
-## Modules created
+The configured topology is Cloudflare OpenNext for apps/web, a Render NestJS web service for
+apps/api, and an optional Render worker from the same API image. The API uses Supabase PostgreSQL,
+Upstash Redis/BullMQ and private Tigris or R2 storage. The Phase 0 standalone worker currently
+instantiates only Redis/BullMQ; future processors may add database/storage modules when approved.
 
-| Module                       | Phase 0 contents                                                                                                                                                      |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`                   | Next.js App Router office shell, TanStack Query provider, responsive health state, loading/error boundaries and security headers                                      |
-| `apps/api`                   | NestJS modular-monolith shell, versioned health API, OpenAPI, validated environment, correlation IDs, structured logging, standard errors and infrastructure adapters |
-| `apps/mobile`                | Expo Router Android shell, NativeWind primitives, Query/Zustand/SQLite foundations, notification bootstrap and native error boundary                                  |
-| `packages/contracts`         | Zod health, dependency-state, correlation-ID and API-error contracts                                                                                                  |
-| `packages/database`          | Drizzle PostgreSQL connection, schema, migration runner and platform migration tests                                                                                  |
-| `packages/config`            | Secret-safe server, web and mobile Zod environment validation                                                                                                         |
-| `packages/design-tokens`     | Shared colour, typography, radius, spacing, shadow and semantic-status values plus web CSS variables                                                                  |
-| `packages/ui`                | Project-owned web-only shadcn/Base UI button, card, alert, badge, skeleton and status-badge primitives                                                                |
-| `packages/eslint-config`     | Strict shared flat ESLint policies for base, NestJS, Next.js and React Native                                                                                         |
-| `packages/typescript-config` | Strict TypeScript baselines for libraries, NestJS, Next.js and React Native                                                                                           |
+## Modules created or updated
 
-## Database migration
+| Module             | Actual Phase 0 state                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| apps/web           | Existing Next.js/shadcn shell plus OpenNext Cloudflare config, Wrangler config, runtime examples, Worker headers, deploy preflight and deployment tests                       |
+| apps/api           | Existing NestJS foundation plus worker-mode lifecycle, provider-neutral processor registry, BullMQ worker factory, dist/worker.js, processing health state and shutdown tests |
+| apps/mobile        | Existing Expo/NativeWind shell; deployment amendment made no mobile application changes                                                                                       |
+| packages/contracts | Existing API error/health contracts plus discriminated background-processing health contract                                                                                  |
+| packages/config    | Worker mode, Render PORT fallback, public API URL hardening and Tigris/generic S3 selection                                                                                   |
+| packages/database  | Existing Drizzle foundation; migration tooling now prefers DIRECT_DATABASE_URL                                                                                                |
+| Root and CI        | Environment-aware command wrapper, all required deployment scripts, OpenNext CI build and API Docker-image CI build                                                           |
+| Deployment docs    | render.yaml, DEPLOYMENT.md, and updated architecture/setup/migration/tracking documents                                                                                       |
 
-- Migration: `packages/database/migrations/0000_neat_shadowcat.sql`
-- Metadata: `packages/database/migrations/meta/_journal.json` and `0000_snapshot.json`
-- Tables: `outbox_events`, `webhook_events`, `audit_events`
-- Controls: platform/client scope checks, client/provider/external webhook uniqueness, processing
-  indexes, non-negative attempt checks and an audit trigger that rejects updates/deletes with
-  SQLSTATE `55000`
-- Application settings were not created because Phase 0 has no durable runtime setting.
-- Migration execution and compensating/restore guidance is in
-  `docs/implementation/DATABASE_MIGRATIONS.md`.
+The shared UI, design-token, ESLint and TypeScript packages remain unchanged in responsibility.
 
-Phase 1 must add client-organization foreign keys to every client-owned structure once the client
-organization table exists. Review delete behavior and existing data before adding validated
-constraints; do not edit the applied Phase 0 migration.
+## Database migrations
 
-## Routes and contracts
+- Existing migration: packages/database/migrations/0000_neat_shadowcat.sql
+- Existing metadata: packages/database/migrations/meta/_journal.json and 0000_snapshot.json
+- Existing tables only: outbox_events, webhook_events, audit_events
+- Deployment amendment migrations: none
+- pnpm db:migrate prefers DIRECT_DATABASE_URL, falls back to DATABASE_URL, and must run as one
+  controlled pre-deployment job. API/worker replicas do not migrate on startup.
 
-| Surface                | Contract                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `GET /v1/health`       | Canonical PostgreSQL/Redis readiness report; `200` only when both are up, otherwise `503` |
-| `GET /v1/health/live`  | Process-only liveness; no dependency calls                                                |
-| `GET /v1/health/ready` | Explicit alias for dependency-aware readiness                                             |
-| `GET /docs`            | Swagger UI                                                                                |
-| `GET /docs-json`       | OpenAPI JSON                                                                              |
-| API errors             | `{ error: { code, message, correlation_id, details, retryable } }` from `@gdm/contracts`  |
+Do not edit the applied Phase 0 migration. Phase 1 must add a new reviewed migration and add
+tenant foreign keys only after client_organizations exists.
 
-All protected Phase 1 routes must remain under `/v1`, use shared Zod contracts, update OpenAPI,
-propagate the request correlation ID and use the same error envelope.
+## Routes and API contracts
+
+| Surface                      | Current contract                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| GET /v1/health               | Canonical PostgreSQL/Redis readiness; 200 only when both are up, otherwise 503      |
+| GET /v1/health/live          | Process-only liveness                                                               |
+| GET /v1/health/ready         | Dependency-aware readiness used by Render                                           |
+| Health processing            | Object with mode, location and local_workers for disabled/local/external processing |
+| GET /docs and GET /docs-json | Swagger UI and OpenAPI JSON                                                         |
+| API errors                   | Standard error object with code, message, correlation_id, details and retryable     |
+
+Every later protected route remains under NestJS /v1. Cloudflare has no business endpoint.
+
+## Worker modes
+
+| Mode       | API process                            | Dedicated worker        | Health from API            |
+| ---------- | -------------------------------------- | ----------------------- | -------------------------- |
+| disabled   | Queue producer only; no consumer       | Must not run            | disabled / 0 local workers |
+| embedded   | Queue producer plus one local consumer | Must not run            | local / 1 local worker     |
+| standalone | Queue producer only                    | dist/worker.js consumes | external / 0 local workers |
+
+The production render.yaml selects standalone on both process types. The processor registry is
+intentionally empty in production; Phase 1 must not invent dealership jobs unless its approved
+scope genuinely needs one. Future processors must be idempotent and pair durable business changes
+with the transactional outbox.
 
 ## Important files
 
-- Workspace/tooling: `package.json`, `pnpm-workspace.yaml`, `turbo.json`,
-  `.github/workflows/ci.yml`
-- Architecture/setup: `README.md`, `docs/ARCHITECTURE.md`,
-  `docs/implementation/LOCAL_DEVELOPMENT.md`
-- API bootstrap/boundaries: `apps/api/src/application.ts`, `apps/api/src/app.module.ts`,
-  `apps/api/src/common`, `apps/api/src/infrastructure`, `apps/api/src/observability`
-- Data foundation: `packages/database/src/schema/platform.ts`,
-  `packages/database/src/migration.integration.test.ts`
-- Client shells: `apps/web/src/components/app-shell.tsx`,
-  `apps/mobile/src/screens/foundation-screen.tsx`
-- Design system: `packages/design-tokens/src/index.ts`,
-  `packages/design-tokens/src/tokens.css`, `packages/ui/src/components`
+- Cloudflare: apps/web/open-next.config.ts, apps/web/wrangler.jsonc,
+  apps/web/next.config.ts, apps/web/.dev.vars.example,
+  scripts/validate-web-deployment.mjs
+- Render/container: render.yaml, apps/api/Dockerfile
+- Worker runtime: apps/api/src/worker.ts, apps/api/src/worker.module.ts,
+  apps/api/src/background, apps/api/src/infrastructure/redis
+- Health/contracts: apps/api/src/health, packages/contracts/src/platform/health.ts
+- Environment: .env.example, packages/config/src/api.ts,
+  packages/config/src/shared.ts, packages/config/src/web.ts
+- Root commands: package.json, scripts/run-workspace-command.mjs, turbo.json,
+  apps/api/turbo.json
+- CI: .github/workflows/ci.yml
+- Operations: docs/implementation/DEPLOYMENT.md,
+  docs/implementation/DATABASE_MIGRATIONS.md
 
 ## Environment variables
 
-The canonical example is `.env.example`; `apps/web/.env.example` contains the web-only public
-value.
+The canonical local example is .env.example. Cloudflare preview also has
+apps/web/.dev.vars.example.
 
-| Category          | Existing variables                                                                                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| API runtime       | `NODE_ENV`, `API_HOST`, `API_PORT`, `LOG_LEVEL`, `CORS_ORIGINS`                                            |
-| PostgreSQL        | `DATABASE_URL`, `DATABASE_POOL_MAX`                                                                        |
-| Redis             | `REDIS_URL`, `REDIS_CONNECT_TIMEOUT_MS`                                                                    |
-| Private S3/Tigris | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` |
-| Observability     | `SENTRY_DSN`                                                                                               |
-| Public clients    | `NEXT_PUBLIC_API_URL`, `EXPO_PUBLIC_API_URL`                                                               |
+| Category                         | Variables and boundary                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Public web                       | NEXT_PUBLIC_API_URL — exact public NestJS /v1 base; deployment requires HTTPS                  |
+| API process                      | NODE_ENV, API_HOST, API_PORT or Render PORT, LOG_LEVEL, CORS_ORIGINS                           |
+| PostgreSQL                       | DATABASE_URL, DIRECT_DATABASE_URL, DATABASE_POOL_MAX                                           |
+| Supabase reserved backend inputs | SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY                                     |
+| Redis/BullMQ                     | REDIS_URL, REDIS_CONNECT_TIMEOUT_MS, WORKER_MODE                                               |
+| Tigris                           | TIGRIS_ENDPOINT, TIGRIS_BUCKET, TIGRIS_ACCESS_KEY_ID, TIGRIS_SECRET_ACCESS_KEY                 |
+| R2/generic S3                    | S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_FORCE_PATH_STYLE |
+| API observability                | SENTRY_DSN                                                                                     |
+| Mobile public URL                | EXPO_PUBLIC_API_URL                                                                            |
 
-Phase 1 must define and document validated server-only authentication/signing/session secrets.
-Never place a credential in a `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` variable.
+Phase 0 accesses Supabase through PostgreSQL and does not consume the Supabase Data API. The
+service-role key is backend-only, reserved and unused. Never put it in Cloudflare, a
+NEXT_PUBLIC_/EXPO_PUBLIC_ variable, a bundle, fixture or log.
+
+Choose one object-storage family. render.yaml is Tigris-oriented; an R2 deployment must remove all
+TIGRIS_ entries and supply the complete generic S3_ set.
+
+## Required root commands
+
+- pnpm dev
+- pnpm dev:web
+- pnpm dev:api
+- pnpm dev:mobile
+- pnpm dev:worker
+- pnpm preview:web
+- pnpm deploy:web
+- pnpm start:api
+- pnpm start:worker
+- pnpm build
+
+The root wrapper loads the root .env, strips backend variables before direct web/mobile commands,
+forces production for build/start/deploy commands, and forces standalone mode for dedicated
+worker commands. Turborepo exposes backend runtime variables only to the API development task.
+deploy:web uses pnpm run deploy explicitly to avoid collision with pnpm's built-in deploy command.
 
 ## Verified commands and results
 
-The completion run used the repository root and the single `pnpm-lock.yaml`:
+The completion run used the repository root and one pnpm-lock.yaml:
 
-- `pnpm install --frozen-lockfile --force` and a subsequent exact frozen install — pass
-- `pnpm format:check` — pass
-- `pnpm db:check` — pass
-- `pnpm lint` — pass, 8 tasks
-- `pnpm type-check` — pass, 13 tasks
-- `pnpm test` — pass, 36 tests
-- `pnpm test:integration` — pass, 9 tests
-- `pnpm build` — pass for NestJS, Next.js, Expo Android and shared packages
-- Independent `pnpm dev:web`, `pnpm dev:api` and `pnpm dev:mobile` starts — pass
-- Real PostgreSQL/Redis readiness transition and PostgreSQL migration smoke — pass
-- Expo dependency check, Android prebuild/export and Gradle release-manifest task — pass
+- pnpm install and pnpm install --frozen-lockfile — pass
+- pnpm format and pnpm format:check — pass
+- pnpm db:check — pass
+- pnpm lint — pass, 8 applicable tasks
+- pnpm type-check — pass, 13 tasks
+- pnpm test — pass, 63 tests
+- pnpm test:integration — pass, 9 tests
+- pnpm build — pass across NestJS, Next.js, Expo Android and shared packages
+- pnpm dev — pass; web/API returned 200 and Expo Metro reported running
+- pnpm build:web:cloudflare — pass; OpenNext generated .open-next/worker.js
+- pnpm preview:web — pass; Wrangler returned 200 for the rendered shell
+- Direct OpenNext-to-Wrangler deploy dry-run — pass without upload
+- Root deploy wrapper preflight — missing/HTTP API URLs fail before build or upload
+- Real PostgreSQL 17/Redis 8 disabled, embedded and standalone runtime checks — pass
+- Existing NestJS Dockerfile built with Podman — pass
+- Built image API readiness and standalone worker start — pass
+- render.yaml YAML parse and official-field audit — pass
+
+The Docker CLI was unavailable. Podman exercised the same Dockerfile and image process commands;
+CI now includes the exact Docker CLI build.
 
 ## Seed accounts and data
 
-None. Phase 0 intentionally has no user, organization, membership or dealership tables. Phase 1
-must provide development/test identities, organizations, memberships, branch/team scopes and all
-role families required to prove the authorization matrix; credentials must remain development-only.
+None. Phase 0 has no user, organization, membership or dealership tables. Queue verification used
+ephemeral validation data that was removed with the temporary Redis container.
 
 ## Known limitations and deferred work
 
-- Docker/Compose was not installed on the completion host; equivalent PostgreSQL and Redis
-  behavior was exercised with rootless Podman. Run the documented Compose workflow on a Docker
-  host before relying on it for a team environment.
-- Hosted Supabase, Upstash and Tigris credentials, remote Sentry reporting and production storage
-  smoke tests remain deployment work.
-- FCM/EAS credentials, signed Android release artifacts and device UI validation remain deferred.
-- BullMQ and S3 construction are provider-neutral Phase 0 seams. No worker or document workflow is
-  implemented yet.
-- The existing nullable tenant identifiers have scope checks but intentionally lack foreign keys
-  until Phase 1 creates `client_organizations`.
+- No real hosted deployment was performed. Run the staging sequence in DEPLOYMENT.md before
+  production traffic.
+- The standalone worker has structured Pino logging but no worker-specific Sentry reporter yet.
+- The pre-existing API exception filter must sanitize explicit 5xx HttpException messages before
+  Phase 1 exposes protected routes.
+- FCM/EAS credentials, signed Android artifacts and device checks remain deferred.
+- Phase 1 must create tenant/identity structures and prove authorization; the Phase 0 nullable
+  tenant markers intentionally have no client-organization foreign keys yet.
 
-See `docs/implementation/KNOWN_ISSUES.md` for evidence and workarounds.
+See KNOWN_ISSUES.md for severity, evidence, workarounds and ownership.
 
-## Exact Phase 1 prerequisites
+## Exact prerequisites for Phase 1
 
-Phase 1 is governed by `PROMPTS/01_AUTH_TENANCY.md`, the PRD and `AGENTS.md`. Before coding, inspect
-this handoff and the existing contracts/migration rather than regenerating the project.
+Phase 1 is governed by PROMPTS/01_AUTH_TENANCY.md, the PRD and AGENTS.md. Read those files and this
+handoff before changing code. Extend the existing workspace; do not regenerate it.
+
+### Deployment and security prerequisites
+
+1. Resolve or explicitly gate the open 5xx-message sanitization issue before exposing protected
+   endpoints.
+2. Keep the Cloudflare Worker presentation-only. Add all authentication/session/authorization
+   logic to NestJS and shared contracts.
+3. Select a hosted staging environment and confirm Supabase/Upstash/Tigris or R2 readiness before
+   relying on asynchronous auth side effects.
+4. Keep WORKER_MODE=disabled if Phase 1 adds no background work. If it adds approved email or
+   security jobs, register explicit idempotent processors and test embedded/standalone behavior.
 
 ### Backend and database
 
 - Implement users, authentication identities, refresh sessions, agencies, client organizations,
-  memberships, branch scopes, team scopes where required, permission definitions,
-  role-permission mappings, support-elevation sessions and authentication audit events.
-- Add email/password login, rotating refresh tokens with reuse detection, current-session and
-  all-session logout, password-reset architecture, suspended-account blocking, session/device
-  listing and a provider-neutral future OAuth boundary.
-- Preserve immutable authentication/support audit evidence and publish meaningful state changes
-  through the transactional outbox when asynchronous work is introduced.
-- Add reviewed Drizzle migrations, constraints, indexes, realistic development seeds and explicit
-  rollback/compatibility notes. Do not modify migration `0000_neat_shadowcat.sql` after handoff.
+  memberships, branch/team scopes, permission definitions, role-permission mappings,
+  support-elevation sessions and authentication audit events.
+- Add email/password login, rotating refresh tokens with reuse detection, current/all-session
+  logout, password-reset architecture, suspended-account blocking and session/device listing.
+- Default deny every protected request. Derive tenant context from the authenticated
+  membership/session; never trust a client-supplied tenant ID as authorization proof.
+- Add a new Drizzle migration, constraints, indexes, realistic development seeds and explicit
+  rollback/compatibility notes. Do not edit 0000_neat_shadowcat.sql.
 
-### Authorization boundary
+### Web and mobile
 
-- Default deny. Every protected request must verify authenticated user, active membership, active
-  client, tenant scope, permission, branch/team scope and object ownership/assignment when
-  applicable.
-- Derive tenant context from the authenticated membership/session. Never treat a browser/mobile
-  tenant ID as authorization proof.
-- Agency support elevation must require a reason, have a short lifetime, show a visible active
-  support state and create immutable audit evidence.
-- Deactivating or suspending a user must prevent new/refresh sessions while preserving historical
-  attribution.
-
-### Client work
-
-- Web: login, forgot/reset password, session-expired, unauthorized, permitted tenant/client
-  selector, profile, active sessions, and a role-aware shell/navigation.
+- Web: login, forgot/reset password, session-expired, unauthorized, permitted tenant selector,
+  profile, active sessions and role-aware navigation.
 - Mobile: login, secure token persistence, refresh recovery, logout, disabled-account handling and
-  a role-aware shell. Do not store refresh tokens in the Phase 0 generic SQLite outbox.
+  a role-aware shell. Do not store refresh tokens in the generic SQLite outbox.
 
-### Required evidence before Phase 1 completion
+### Evidence required before Phase 1 completion
 
-- Cross-tenant denial, suspended-login/refresh denial, refresh-token rotation/reuse rejection,
-  branch isolation, field-role denial from admin APIs and expiring/audited support elevation.
-- Expired-access-token recovery on both clients and authorization tests for every role family
-  named in the Phase 1 prompt.
-- Updated OpenAPI, `.env.example`, seed documentation, migration guidance, UI loading/empty/error/
-  disabled/success states, and all four implementation tracking documents.
-- Fresh root install, formatting, migration check, lint, type-check, unit/integration tests and
-  affected production builds must all remain green.
+- Cross-tenant denial; branch/role isolation; suspended login/refresh denial; refresh rotation and
+  reuse rejection; expiring/audited support elevation.
+- Expired-access-token recovery on both clients and backend authorization tests for each assigned
+  role family.
+- Updated OpenAPI, environment examples, seed/migration documentation, complete UI states and all
+  four tracking documents.
+- Fresh install, format, migration check, lint, strict type-check, unit/integration tests and all
+  affected production/Cloudflare/API image builds must remain green.

@@ -55,6 +55,7 @@ describe('API foundation (HTTP integration)', () => {
       CORS_ORIGINS: 'http://localhost:3000',
       DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/gdm_test',
       REDIS_URL: 'redis://127.0.0.1:6379',
+      WORKER_MODE: 'disabled',
       S3_BUCKET: 'gdm-test-private',
       S3_REGION: 'auto',
       S3_ENDPOINT: '',
@@ -90,6 +91,11 @@ describe('API foundation (HTTP integration)', () => {
     assert.equal(response.headers['x-correlation-id'], 'test-correlation-123');
     assert.equal(response.body.correlation_id, 'test-correlation-123');
     assert.equal(response.body.service, 'go-digital-automobile-crm-api');
+    assert.deepEqual(response.body.processing, {
+      mode: 'disabled',
+      location: 'disabled',
+      local_workers: 0,
+    });
     livenessResponseSchema.parse(response.body);
   });
 

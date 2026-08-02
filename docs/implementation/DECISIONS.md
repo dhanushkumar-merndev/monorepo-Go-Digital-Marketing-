@@ -105,3 +105,55 @@
   complete reliably on this volume were rejected.
 - **Status:** Accepted; review any `allowBuilds` change as a security-sensitive dependency change
 - **Affected modules:** `pnpm-workspace.yaml`, `pnpm-lock.yaml`, CI and local installation
+
+## ADR-0009 — Cloudflare presentation and Render application boundary
+
+- **Date:** 2026-08-01
+- **Decision:** Deploy `apps/web` as an OpenNext Cloudflare Worker and deploy the NestJS modular
+  monolith to Render from `apps/api/Dockerfile`. Cloudflare renders the presentation client only;
+  every API, authentication, authorization, webhook and workflow rule remains in NestJS.
+- **Reason:** This is the requested Phase 0 topology and preserves one authoritative backend while
+  allowing the Next.js application to run on Cloudflare Workers. `NEXT_PUBLIC_API_URL` is the only
+  public cross-runtime connection and an actual deploy requires an explicit HTTPS `/v1` URL.
+- **Alternatives considered:** Vercel-specific runtime APIs were rejected by the amendment. Moving
+  server rules into Cloudflare or splitting the NestJS modular monolith was rejected because it
+  would duplicate authority and prematurely create another backend.
+- **Status:** Accepted
+- **Affected modules:** `apps/web`, `apps/api/Dockerfile`, `render.yaml`, root scripts, CI
+
+## ADR-0010 — Explicit BullMQ process modes
+
+- **Date:** 2026-08-01
+- **Decision:** Validate `WORKER_MODE` as `disabled`, `embedded` or `standalone`, default to
+  `disabled`, expose the configured mode/location/local-worker count in health contracts, and
+  require the dedicated `dist/worker.js` entry point to run only in standalone mode.
+- **Reason:** Development and pilot environments can choose no processing or an in-process worker,
+  while production can scale an independently supervised Render worker without changing queue or
+  processor contracts. Explicit health state prevents an operator from mistaking an intentionally
+  disabled consumer for active processing.
+- **Alternatives considered:** Always embedding workers would couple HTTP scaling and job
+  concurrency. Always requiring a second process would increase pilot cost. Automatically
+  selecting a mode was rejected as operationally ambiguous.
+- **Status:** Accepted
+- **Affected modules:** `packages/config`, `packages/contracts`, `apps/api/src/background`,
+  `apps/api/src/worker.ts`, API health and root worker scripts
+
+## ADR-0011 — Managed-service URLs and connection behavior
+
+- **Date:** 2026-08-01
+- **Decision:** Use `DATABASE_URL` for the Supabase runtime, prefer `DIRECT_DATABASE_URL` for
+  reviewed Drizzle DDL, use the Upstash native `rediss://` endpoint, map a complete `TIGRIS_*` set
+  onto the provider-neutral S3 adapter, and retain `S3_*` as the Cloudflare R2/generic path. Reject
+  mixed storage providers. API queue producers use finite Redis retries with the offline queue
+  disabled; BullMQ workers use infinite retries/offline queue and close gracefully. Root client
+  commands strip backend environment values, and Turborepo exposes server values only to the API
+  development task.
+- **Reason:** Runtime pooling, migration access and worker recovery have different operational
+  requirements. Provider aliases make the requested hosted topology explicit without coupling
+  storage code to Tigris or R2 SDKs.
+- **Alternatives considered:** Using the Supabase service-role key in clients, the Upstash REST API
+  for BullMQ, one Redis retry policy for every role, public object buckets and mixed Tigris/S3
+  settings were rejected for security, correctness or incompatibility.
+- **Status:** Accepted
+- **Affected modules:** `packages/config`, `packages/database`, API Redis/storage adapters,
+  `.env.example`, `render.yaml`, deployment documentation

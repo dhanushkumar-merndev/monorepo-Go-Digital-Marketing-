@@ -1,6 +1,7 @@
 import { parseWebEnvironment } from '@gdm/config/web';
 
 const parsedEnvironment = parseWebEnvironment({
+  NODE_ENV: process.env.NODE_ENV,
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
 });
 

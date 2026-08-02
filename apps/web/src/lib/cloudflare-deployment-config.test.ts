@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
@@ -43,8 +44,70 @@ describe('Cloudflare deployment configuration', () => {
       'opennextjs-cloudflare build && opennextjs-cloudflare preview',
     );
     expect(packageJson.scripts?.deploy).toBe(
-      'opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars',
+      'node ../../scripts/validate-web-deployment.mjs && opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars',
     );
+
+    const rootPackageJson = JSON.parse(readWebFile('../../package.json')) as {
+      scripts?: Record<string, string>;
+    };
+    expect(rootPackageJson.scripts?.['deploy:web']).toContain('--filter @gdm/web run deploy');
+  });
+
+  it('fails deployment preflight unless the versioned API URL uses HTTPS', () => {
+    const preflight = resolve(process.cwd(), '../../scripts/validate-web-deployment.mjs');
+    const runPreflight = (apiUrl?: string) =>
+      spawnSync(process.execPath, [preflight], {
+        env: {
+          ...process.env,
+          NEXT_PUBLIC_API_URL: apiUrl,
+        },
+        encoding: 'utf8',
+      });
+
+    expect(runPreflight().status).not.toBe(0);
+    expect(runPreflight('http://localhost:4000/v1').status).not.toBe(0);
+    expect(runPreflight('https://api.example.com/v1').status).toBe(0);
+  });
+
+  it('does not pass backend credentials into client workspace commands', () => {
+    const rootTurboConfig = JSON.parse(readWebFile('../../turbo.json')) as {
+      globalEnv?: string[];
+    };
+    expect(rootTurboConfig.globalEnv).not.toEqual(
+      expect.arrayContaining([
+        'DATABASE_URL',
+        'REDIS_URL',
+        'S3_SECRET_ACCESS_KEY',
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'TIGRIS_SECRET_ACCESS_KEY',
+      ]),
+    );
+
+    const workspaceWrapper = resolve(process.cwd(), '../../scripts/run-workspace-command.mjs');
+    const result = spawnSync(
+      process.execPath,
+      [
+        workspaceWrapper,
+        '--filter',
+        '@gdm/web',
+        'exec',
+        'node',
+        '--input-type=module',
+        '-e',
+        'if (process.env.DATABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY) process.exit(1)',
+      ],
+      {
+        cwd: resolve(process.cwd(), '../..'),
+        env: {
+          ...process.env,
+          DATABASE_URL: 'postgresql://backend-only',
+          SUPABASE_SERVICE_ROLE_KEY: 'backend-only',
+        },
+        encoding: 'utf8',
+      },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it('keeps standalone output scoped to the adapter build', () => {

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ApiEnvironment } from '@gdm/config';
 import { performance } from 'node:perf_hooks';
+import { processingHealthForMode } from '../background/background-processing-mode.js';
 import {
   DATABASE_HEALTH_PROBE,
   type DatabaseHealthProbe,
@@ -36,6 +37,7 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       uptime_seconds: Math.floor(process.uptime()),
       correlation_id: correlationId,
+      processing: processingHealthForMode(this.environment.workerMode),
     };
   }
 
@@ -53,6 +55,7 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       uptime_seconds: Math.floor(process.uptime()),
       correlation_id: correlationId,
+      processing: processingHealthForMode(this.environment.workerMode),
       checks: { database, redis },
     };
   }

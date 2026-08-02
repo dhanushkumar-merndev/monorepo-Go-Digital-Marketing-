@@ -31,7 +31,7 @@ export class DefaultBullMqWorkerFactory implements BullMqWorkerFactory {
       name,
       async (job) =>
         processor({
-          id: job.id,
+          ...(job.id === undefined ? {} : { id: job.id }),
           name: job.name,
           data: job.data,
           attemptsMade: job.attemptsMade,
