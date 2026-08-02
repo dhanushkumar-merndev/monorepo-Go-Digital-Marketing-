@@ -32,6 +32,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

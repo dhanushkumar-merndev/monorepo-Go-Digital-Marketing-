@@ -1,0 +1,67 @@
+import { type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
+
+import { Badge, Button, Screen, AppText } from './ui';
+import { mobileRolePresentation } from '../auth/mobile-access';
+import { useAuthStore } from '../store/auth-store';
+import { nativeTheme } from '../theme/native-theme';
+
+export interface MobileShellProps {
+  children: ReactNode;
+  title: string;
+}
+
+export function MobileShell({ children, title }: MobileShellProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const principal = useAuthStore((state) => state.principal);
+  const presentation = principal ? mobileRolePresentation(principal.roleCode) : null;
+
+  return (
+    <Screen>
+      <View className="gap-2">
+        <View className="flex-row flex-wrap items-center justify-between gap-2">
+          <AppText accessibilityRole="header" variant="title">
+            {title}
+          </AppText>
+          {presentation ? <Badge label={presentation.roleLabel} tone="info" /> : null}
+        </View>
+        {principal ? (
+          <AppText tone="muted" variant="caption">
+            {principal.clientOrganizationName}
+          </AppText>
+        ) : null}
+      </View>
+
+      <View accessibilityRole="tablist" className="flex-row gap-2" style={styles.navigation}>
+        <Button
+          accessibilityRole="tab"
+          accessibilityState={{ selected: pathname === '/home' }}
+          className="flex-1"
+          label="Home"
+          onPress={() => router.replace('/(app)/home')}
+          variant={pathname === '/home' ? 'primary' : 'secondary'}
+        />
+        <Button
+          accessibilityRole="tab"
+          accessibilityState={{ selected: pathname === '/profile' }}
+          className="flex-1"
+          label="Profile"
+          onPress={() => router.replace('/(app)/profile')}
+          variant={pathname === '/profile' ? 'primary' : 'secondary'}
+        />
+      </View>
+
+      {children}
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  navigation: {
+    borderBottomColor: nativeTheme.colors.border,
+    borderBottomWidth: 1,
+    paddingBottom: nativeTheme.spacing[4],
+  },
+});

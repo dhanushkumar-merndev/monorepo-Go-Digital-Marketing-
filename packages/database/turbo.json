@@ -10,6 +10,14 @@
     },
     "db:migrate": {
       "env": ["DATABASE_URL", "DIRECT_DATABASE_URL"]
+    },
+    "db:seed": {
+      "env": [
+        "AUTH_PASSWORD_PEPPER",
+        "DATABASE_URL",
+        "DIRECT_DATABASE_URL",
+        "SEED_DEVELOPMENT_PASSWORD"
+      ]
     }
   }
 }

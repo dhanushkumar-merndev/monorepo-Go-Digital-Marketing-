@@ -4,7 +4,6 @@ import { colors } from '@gdm/design-tokens';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 
-import { AppShell } from '@/components/app-shell';
 import { Providers } from '@/components/providers';
 
 export const metadata: Metadata = {
@@ -28,9 +27,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
       <body>
-        <Providers>
-          <AppShell>{children}</AppShell>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

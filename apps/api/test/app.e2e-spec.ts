@@ -53,6 +53,10 @@ describe('API foundation (HTTP integration)', () => {
       API_PORT: '4001',
       LOG_LEVEL: 'silent',
       CORS_ORIGINS: 'http://localhost:3000',
+      AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-thirty-two-characters',
+      AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-thirty-two-characters',
+      AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-pepper-at-least-thirty-two-characters',
+      API_TRUSTED_PROXIES: '',
       DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/gdm_test',
       REDIS_URL: 'redis://127.0.0.1:6379',
       WORKER_MODE: 'disabled',
@@ -141,6 +145,62 @@ describe('API foundation (HTTP integration)', () => {
 
     assert.equal(documentResponse.body.info.title, 'Go Digital Automobile CRM API');
     assert.ok(documentResponse.body.paths['/v1/health/ready']);
+    assert.equal(
+      documentResponse.body.paths['/v1/auth/login'].post.requestBody.content['application/json']
+        .schema.$ref,
+      '#/components/schemas/LoginDto',
+    );
+    assert.equal(
+      documentResponse.body.paths['/v1/auth/login'].post.responses['200'].content[
+        'application/json'
+      ].schema.$ref,
+      '#/components/schemas/LoginResponseDto',
+    );
+    assert.equal(
+      documentResponse.body.components.schemas.LoginDto.properties.email.format,
+      'email',
+    );
+    assert.equal(
+      documentResponse.body.components.schemas.LoginDto.properties.password.writeOnly,
+      true,
+    );
+    const refreshOperation = documentResponse.body.paths['/v1/auth/refresh'].post;
+    const refreshProperties =
+      documentResponse.body.components.schemas.RefreshResponseDto.properties;
+    assert.deepEqual(refreshOperation.security, [{ refreshCookie: [] }]);
+    assert.equal(documentResponse.body.components.securitySchemes.refreshCookie.in, 'cookie');
+    assert.equal(
+      documentResponse.body.components.securitySchemes.refreshCookie.name,
+      'gdm_refresh',
+    );
+    assert.equal(refreshProperties.access_token.readOnly, true);
+    assert.equal(refreshProperties.access_token.writeOnly, undefined);
+    assert.equal(refreshProperties.refresh_token.readOnly, true);
+    assert.equal(
+      documentResponse.body.components.schemas.MeResponseDto.properties.memberships.type,
+      'array',
+    );
+    assert.equal(
+      documentResponse.body.components.schemas.MeResponseDto.properties.memberships.items.$ref,
+      '#/components/schemas/MembershipSummaryResponseDto',
+    );
+    assert.equal(
+      documentResponse.body.paths['/v1/auth/login'].post.responses['400'].content[
+        'application/json'
+      ].schema.$ref,
+      '#/components/schemas/ApiErrorEnvelopeDto',
+    );
+    assert.equal(
+      documentResponse.body.components.schemas.ApiErrorPayloadDto.properties.details.type,
+      'array',
+    );
+    assert.ok(documentResponse.body.paths['/v1/auth/sessions/{sessionId}']);
+    assert.ok(documentResponse.body.paths['/v1/support-elevation'].post.responses['200']);
+    assert.equal(
+      documentResponse.body.paths['/v1/support-elevation'].post.responses['201'],
+      undefined,
+    );
+    assert.ok(documentResponse.body.paths['/v1/branches/{branchId}']);
     assert.match(uiResponse.text, /id="swagger-ui"/u);
   });
 });

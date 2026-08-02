@@ -51,6 +51,17 @@ export class RedisConnectionService implements RedisHealthProbe, OnApplicationSh
     );
   }
 
+  createRateLimitClient(): Redis {
+    return this.registerDedicatedClient(
+      this.client.duplicate({
+        enableOfflineQueue: false,
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
+      }),
+    );
+  }
+
   async closeDedicatedClient(client: Redis): Promise<void> {
     const existingClose = this.closingClients.get(client);
 

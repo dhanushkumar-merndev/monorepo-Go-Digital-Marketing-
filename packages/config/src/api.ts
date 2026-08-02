@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isIP } from 'node:net';
 
 import { booleanFromEnvironment, emptyStringToUndefined } from './shared.js';
 
@@ -23,12 +24,47 @@ const optionalCredentialSchema = z.preprocess(
 const optionalUrlSchema = z.preprocess(emptyStringToUndefined, z.url().optional());
 const DEFAULT_TIGRIS_ENDPOINT = 'https://t3.storage.dev';
 
+const trustedProxySchema = z
+  .string()
+  .trim()
+  .refine((value) => {
+    const [address, prefix, ...remainder] = value.split('/');
+    const version = address ? isIP(address) : 0;
+
+    if (version === 0 || remainder.length > 0) {
+      return false;
+    }
+
+    if (prefix === undefined) {
+      return true;
+    }
+
+    if (!/^\d+$/u.test(prefix)) {
+      return false;
+    }
+
+    const prefixLength = Number(prefix);
+    return prefixLength <= (version === 4 ? 32 : 128);
+  }, 'Trusted proxies must be explicit IP addresses or CIDR ranges');
+
+const trustedProxyListSchema = z
+  .string()
+  .default('')
+  .transform((value) =>
+    value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(trustedProxySchema).max(64));
+
 const rawApiEnvironmentSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     API_HOST: z.string().trim().min(1).default('0.0.0.0'),
     API_PORT: portSchema.optional(),
     PORT: portSchema.optional(),
+    API_TRUSTED_PROXIES: trustedProxyListSchema,
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -136,6 +172,7 @@ export const apiEnvironmentSchema = rawApiEnvironmentSchema.transform((environme
     nodeEnv: environment.NODE_ENV,
     host: environment.API_HOST,
     port: environment.API_PORT ?? environment.PORT ?? 4000,
+    trustedProxies: environment.API_TRUSTED_PROXIES,
     logLevel: environment.LOG_LEVEL,
     corsOrigins: environment.CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())

@@ -18,7 +18,7 @@
     "start:worker": "node dist/worker.js",
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:coverage": "tsx --test --experimental-test-coverage test/*.spec.ts test/*.e2e-spec.ts",
-    "test:integration": "tsx --test test/app.e2e-spec.ts",
+    "test:integration": "tsx --test test/*.e2e-spec.ts",
     "test:unit": "tsx --test test/*.spec.ts",
     "type-check": "tsc --noEmit -p tsconfig.json"
   },
@@ -34,7 +34,9 @@
     "@nestjs/swagger": "11.4.6",
     "@sentry/node": "10.69.0",
     "bullmq": "6.0.2",
+    "drizzle-orm": "0.45.2",
     "ioredis": "6.0.0",
+    "jose": "6.2.7",
     "nestjs-pino": "4.6.1",
     "pino": "10.3.1",
     "pino-http": "11.0.0",

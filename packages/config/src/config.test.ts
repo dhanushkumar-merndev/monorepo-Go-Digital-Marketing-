@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseApiEnvironment } from './api.js';
+import { parseAuthEnvironment } from './auth.js';
 import { parseMobileEnvironment } from './mobile.js';
 import { parseWebEnvironment } from './web.js';
 
@@ -12,6 +13,81 @@ const validServerEnvironment = {
 };
 
 describe('environment validation', () => {
+  it('parses API-only authentication settings without changing worker infrastructure config', () => {
+    const environment = parseAuthEnvironment({
+      NODE_ENV: 'test',
+      AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+      AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+      AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+    });
+
+    expect(environment).toMatchObject({
+      accessTokenTtlSeconds: 900,
+      refreshTokenTtlSeconds: 2_592_000,
+      passwordResetTokenTtlSeconds: 1_800,
+      supportElevationTtlSeconds: 900,
+      refreshCookieName: 'gdm_refresh',
+      refreshCookieSameSite: 'lax',
+      refreshCookieSecure: false,
+    });
+    expect(() => parseApiEnvironment(validServerEnvironment)).not.toThrow();
+  });
+
+  it('requires strong API auth secrets and bounds security lifetimes', () => {
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: 'test',
+        AUTH_ACCESS_TOKEN_SECRET: 'short',
+        AUTH_PASSWORD_PEPPER: 'also-short',
+        AUTH_REFRESH_TOKEN_PEPPER: 'short-too',
+      }),
+    ).toThrow();
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: 'test',
+        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        AUTH_ACCESS_TOKEN_TTL_SECONDS: '7200',
+      }),
+    ).toThrow();
+  });
+
+  it('requires Secure when the refresh cookie uses SameSite=None', () => {
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: 'production',
+        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        AUTH_REFRESH_COOKIE_SAME_SITE: 'none',
+        AUTH_REFRESH_COOKIE_SECURE: 'false',
+      }),
+    ).toThrow();
+
+    expect(
+      parseAuthEnvironment({
+        NODE_ENV: 'production',
+        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        AUTH_REFRESH_COOKIE_SAME_SITE: 'none',
+      }).refreshCookieSecure,
+    ).toBe(true);
+  });
+
+  it('fails closed when a hosted environment explicitly disables secure refresh cookies', () => {
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: 'production',
+        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        AUTH_REFRESH_COOKIE_SECURE: 'false',
+      }),
+    ).toThrow();
+  });
+
   it('parses server configuration and normalizes CORS origins', () => {
     const environment = parseApiEnvironment({
       ...validServerEnvironment,
@@ -23,6 +99,21 @@ describe('environment validation', () => {
       'https://admin.example.com',
     ]);
     expect(environment.workerMode).toBe('disabled');
+  });
+
+  it('accepts only explicit IP or CIDR trusted proxies', () => {
+    expect(
+      parseApiEnvironment({
+        ...validServerEnvironment,
+        API_TRUSTED_PROXIES: '127.0.0.1/32, ::1',
+      }).trustedProxies,
+    ).toEqual(['127.0.0.1/32', '::1']);
+
+    for (const value of ['true', '*', 'proxy.example.com', '10.0.0.0/33']) {
+      expect(() =>
+        parseApiEnvironment({ ...validServerEnvironment, API_TRUSTED_PROXIES: value }),
+      ).toThrow();
+    }
   });
 
   it.each(['disabled', 'embedded', 'standalone'] as const)(

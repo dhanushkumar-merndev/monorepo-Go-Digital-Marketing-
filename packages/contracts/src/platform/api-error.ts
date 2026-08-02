@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { AUTH_ERROR_CODES } from '../auth/errors.js';
+
 export const apiErrorCodeSchema = z.enum([
   'VALIDATION_ERROR',
   'UNAUTHENTICATED',
@@ -11,6 +13,7 @@ export const apiErrorCodeSchema = z.enum([
   'RATE_LIMITED',
   'PROVIDER_UNAVAILABLE',
   'INTERNAL_ERROR',
+  ...AUTH_ERROR_CODES,
 ]);
 
 export const correlationIdSchema = z

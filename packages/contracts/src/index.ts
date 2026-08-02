@@ -1,3 +1,4 @@
+export * from './auth/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

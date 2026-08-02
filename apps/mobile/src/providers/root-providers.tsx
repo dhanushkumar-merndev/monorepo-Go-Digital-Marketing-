@@ -8,6 +8,7 @@ import { AppErrorBoundary } from '../observability/app-error-boundary';
 import { useConnectivity } from '../platform/connectivity';
 import { useNotificationBootstrap } from '../platform/use-notification-bootstrap';
 import { createMobileQueryClient } from './query-client';
+import { AuthProvider } from '../auth/auth-provider';
 
 interface RootProvidersProps {
   children: ReactNode;
@@ -26,10 +27,12 @@ export function RootProviders({ children }: RootProvidersProps) {
     <AppErrorBoundary>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <SQLiteProvider databaseName={MOBILE_DATABASE_NAME} onInit={migrateLocalDatabase}>
-            <PlatformBootstrap />
-            {children}
-          </SQLiteProvider>
+          <AuthProvider>
+            <SQLiteProvider databaseName={MOBILE_DATABASE_NAME} onInit={migrateLocalDatabase}>
+              <PlatformBootstrap />
+              {children}
+            </SQLiteProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </AppErrorBoundary>

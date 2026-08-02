@@ -40,4 +40,19 @@ describe('Android application configuration', () => {
       },
     ]);
   });
+
+  it('keeps authentication storage out of Android backups', () => {
+    const android = appConfig.expo.android;
+    const secureStore = appConfig.expo.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-secure-store',
+    );
+
+    expect(android.allowBackup).toBe(false);
+    expect(secureStore).toEqual([
+      'expo-secure-store',
+      {
+        configureAndroidBackup: true,
+      },
+    ]);
+  });
 });

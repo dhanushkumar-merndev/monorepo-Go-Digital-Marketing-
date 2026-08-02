@@ -21,6 +21,14 @@ export function configureApplication(
   options: ConfigureApplicationOptions = {},
 ): void {
   const environment = application.get<ApiEnvironment>(API_ENVIRONMENT);
+  const express = application.getHttpAdapter().getInstance() as {
+    disable?: (setting: string) => void;
+    set?: (setting: string, value: unknown) => void;
+  };
+
+  if (environment.trustedProxies.length > 0) {
+    express.set?.('trust proxy', environment.trustedProxies);
+  }
 
   application.use((request: CorrelatedRequest, response: Response, next: NextFunction): void => {
     attachCorrelationId(request, response);
@@ -36,9 +44,6 @@ export function configureApplication(
   application.useGlobalPipes(application.get(ZodValidationPipe));
   application.useGlobalFilters(application.get(ApiExceptionFilter));
 
-  const express = application.getHttpAdapter().getInstance() as {
-    disable?: (setting: string) => void;
-  };
   express.disable?.('x-powered-by');
 
   if (options.enableShutdownHooks ?? true) {
@@ -51,6 +56,16 @@ export function configureApplication(
       .setDescription('Versioned REST API for the Go Digital Automobile CRM modular monolith.')
       .setVersion('0.1.0')
       .addBearerAuth()
+      .addCookieAuth(
+        'gdm_refresh',
+        {
+          description:
+            'HttpOnly refresh cookie used by the web client. Mobile clients send refresh_token in the JSON body instead.',
+          in: 'cookie',
+          type: 'apiKey',
+        },
+        'refreshCookie',
+      )
       .build();
     const document = SwaggerModule.createDocument(application, configuration);
 

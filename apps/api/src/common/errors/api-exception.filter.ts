@@ -78,6 +78,15 @@ function detailsFrom(value: unknown): ApiErrorDetail[] {
 }
 
 function payloadFor(exception: unknown, statusCode: number): ApiErrorPayload {
+  if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: defaultMessage(statusCode),
+      details: [],
+      retryable: true,
+    };
+  }
+
   if (!(exception instanceof HttpException)) {
     return {
       code: 'INTERNAL_ERROR',

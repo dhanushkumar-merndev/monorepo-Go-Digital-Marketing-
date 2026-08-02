@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  foreignKey,
   index,
   inet,
   integer,
@@ -13,6 +14,8 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import { clientOrganizations } from './organizations.js';
 
 export const eventScopeEnum = pgEnum('event_scope', ['PLATFORM', 'CLIENT']);
 export const outboxStatusEnum = pgEnum('outbox_status', [
@@ -60,6 +63,11 @@ export const outboxEvents = pgTable(
     lastErrorMessage: text('last_error_message'),
   },
   (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId],
+      foreignColumns: [clientOrganizations.id],
+      name: 'outbox_events_client_organization_fk',
+    }).onDelete('restrict'),
     check(
       'outbox_events_scope_client_check',
       sql`(${table.scope} = 'PLATFORM' AND ${table.clientOrganizationId} IS NULL) OR (${table.scope} = 'CLIENT' AND ${table.clientOrganizationId} IS NOT NULL)`,
@@ -108,6 +116,11 @@ export const webhookEvents = pgTable(
     lastErrorMessage: text('last_error_message'),
   },
   (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId],
+      foreignColumns: [clientOrganizations.id],
+      name: 'webhook_events_client_organization_fk',
+    }).onDelete('restrict'),
     uniqueIndex('webhook_events_client_provider_external_uidx').on(
       table.clientOrganizationId,
       table.provider,
@@ -143,6 +156,11 @@ export const auditEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },
   (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId],
+      foreignColumns: [clientOrganizations.id],
+      name: 'audit_events_client_organization_fk',
+    }).onDelete('restrict'),
     check(
       'audit_events_scope_client_check',
       sql`(${table.scope} = 'PLATFORM' AND ${table.clientOrganizationId} IS NULL) OR (${table.scope} = 'CLIENT' AND ${table.clientOrganizationId} IS NOT NULL)`,

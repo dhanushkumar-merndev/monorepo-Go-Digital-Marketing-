@@ -14,6 +14,8 @@ allowBuilds:
 
 autoInstallPeers: false
 engineStrict: true
+minimumReleaseAgeExclude:
+  - jose@6.2.7
 packageImportMethod: copy
 preferWorkspacePackages: true
 saveExact: true

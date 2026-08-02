@@ -34,6 +34,7 @@
     "db:check": "node scripts/run-workspace-command.mjs --filter @gdm/database db:check",
     "db:generate": "node scripts/run-workspace-command.mjs --filter @gdm/database db:generate",
     "db:migrate": "node scripts/run-workspace-command.mjs --filter @gdm/database db:migrate",
+    "db:seed": "node scripts/run-workspace-command.mjs --filter @gdm/database db:seed",
     "db:studio": "node scripts/run-workspace-command.mjs --filter @gdm/database db:studio",
     "services:down": "docker compose -f infrastructure/local/compose.yaml down",
     "services:up": "docker compose -f infrastructure/local/compose.yaml up -d --wait"

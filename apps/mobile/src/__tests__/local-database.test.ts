@@ -19,6 +19,7 @@ describe('migrateLocalDatabase', () => {
     expect(sql).toContain('client_organization_id TEXT NOT NULL');
     expect(sql).toContain('UNIQUE (client_organization_id, idempotency_key)');
     expect(sql).not.toMatch(/lead|booking|delivery|customer/i);
+    expect(sql).not.toMatch(/access_token|refresh_token|password|credential/i);
     expect(database.withTransactionAsync).toHaveBeenCalledTimes(1);
   });
 });

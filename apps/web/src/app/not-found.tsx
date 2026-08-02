@@ -15,7 +15,7 @@ export default function NotFound() {
       </p>
       <Link className={buttonVariants({ className: 'mt-6' })} href="/">
         <ArrowLeft aria-hidden="true" data-icon="inline-start" />
-        Return to foundation
+        Return to overview
       </Link>
     </div>
   );

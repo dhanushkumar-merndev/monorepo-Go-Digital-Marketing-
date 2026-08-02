@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { auditEvents, outboxEvents, webhookEvents } from './platform.js';
 
 describe('platform schema', () => {
-  it('contains only the Phase 0 platform tables', () => {
+  it('retains the three Phase 0 platform tables', () => {
     expect([
       getTableName(outboxEvents),
       getTableName(webhookEvents),

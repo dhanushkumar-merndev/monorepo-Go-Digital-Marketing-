@@ -7,6 +7,7 @@ import {
   type OpenAPIObject,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { Public } from '../authorization/authorization.decorators.js';
 import {
   resolveCorrelationId,
   type CorrelatedRequest,
@@ -83,6 +84,7 @@ const READINESS_SCHEMA = {
 } satisfies SwaggerSchema;
 
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(HealthService) private readonly health: HealthService) {}

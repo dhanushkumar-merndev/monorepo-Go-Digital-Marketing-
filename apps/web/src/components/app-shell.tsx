@@ -1,11 +1,44 @@
+'use client';
+
+import { Badge } from '@gdm/ui/components/badge';
+import { Button } from '@gdm/ui/components/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@gdm/ui/components/dialog';
+import { Separator } from '@gdm/ui/components/separator';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
-import { CarFront, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { CarFront, Home, Laptop2, LoaderCircle, LogOut, Menu, UserRound } from 'lucide-react';
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { useState, type ReactNode } from 'react';
+
+import { useAuth } from '@/features/auth/auth-provider';
+import { hasPermission } from '@/features/auth/auth-types';
+import {
+  SupportElevationBanner,
+  SupportElevationControl,
+} from '@/features/tenancy/support-elevation';
+import { TenantSelector } from '@/features/tenancy/tenant-selector';
 
 interface AppShellProps {
   children: ReactNode;
 }
+
+const navigation = [
+  { href: '/', icon: Home, label: 'Overview' },
+  { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
+  {
+    href: '/sessions',
+    icon: Laptop2,
+    label: 'Active sessions',
+    permission: 'account.sessions.read',
+  },
+] as const;
 
 function Brand() {
   return (
@@ -25,54 +58,189 @@ function Brand() {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const auth = useAuth();
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const session = auth.session;
+
+  if (session === null || session.currentMembership === null) return null;
+
+  async function logout() {
+    setLoggingOut(true);
+    try {
+      await auth.logout();
+    } catch {
+      // AuthProvider still clears local credentials and returns to sign-in.
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
+  const membership = session.currentMembership;
+
   return (
-    <div className="bg-muted/35 min-h-screen md:grid md:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="bg-muted/35 min-h-screen md:grid md:grid-cols-[17rem_minmax(0,1fr)]">
       <a
-        className="bg-background sr-only z-50 rounded-md px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:start-4 focus:top-4"
+        className="bg-background sr-only z-[80] rounded-md px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:start-4 focus:top-4"
         href="#main-content"
       >
         Skip to main content
       </a>
 
-      <aside className="border-border bg-card hidden min-h-screen border-e md:flex md:flex-col">
+      <aside className="border-border bg-card hidden min-h-screen border-e md:sticky md:top-0 md:flex md:h-screen md:flex-col">
         <div className="border-border border-b px-5 py-5">
           <Brand />
         </div>
-
-        <nav aria-label="Primary navigation" className="flex-1 px-3 py-5">
-          <Link
-            aria-current="page"
-            className="bg-primary/10 text-primary hover:bg-primary/15 focus-visible:ring-ring flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2"
-            href="/"
-          >
-            <LayoutDashboard aria-hidden="true" className="size-4" />
-            Foundation
-          </Link>
+        <div className="border-border border-b p-4">
+          <TenantSelector />
+        </div>
+        <nav aria-label="Primary navigation" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          <NavigationLinks onNavigate={() => undefined} pathname={pathname} />
+          <SupportElevationControl />
         </nav>
-
         <div className="border-border border-t p-4">
-          <div className="bg-muted text-muted-foreground flex items-start gap-3 rounded-lg px-3 py-3 text-xs">
-            <ShieldCheck aria-hidden="true" className="text-primary mt-0.5 size-4 shrink-0" />
-            <p>Server authorization remains authoritative as protected modules are added.</p>
-          </div>
+          <UserSummary />
+          <Button
+            className="mt-3 w-full justify-start"
+            disabled={loggingOut}
+            onClick={() => void logout()}
+            variant="ghost"
+          >
+            {loggingOut ? (
+              <LoaderCircle aria-hidden="true" className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <LogOut aria-hidden="true" data-icon="inline-start" />
+            )}
+            {loggingOut ? 'Signing out' : 'Sign out'}
+          </Button>
         </div>
       </aside>
 
       <div className="min-w-0">
-        <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 border-b backdrop-blur">
+        <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 border-b backdrop-blur">
           <div className="flex min-h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="md:hidden">
               <Brand />
             </div>
-            <p className="hidden text-sm font-medium md:block">Architecture foundation</p>
-            <StatusBadge tone="info">Phase 0</StatusBadge>
+            <div className="hidden min-w-0 md:block">
+              <p className="truncate text-sm font-semibold">{membership.clientOrganization.name}</p>
+              <p className="text-muted-foreground truncate text-xs">{membership.roleName}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {session.supportElevation === null ? (
+                <StatusBadge tone="success">Standard access</StatusBadge>
+              ) : (
+                <StatusBadge tone="warning">Support elevated</StatusBadge>
+              )}
+              <Dialog onOpenChange={setMobileOpen} open={mobileOpen}>
+                <DialogTrigger
+                  aria-label="Open navigation"
+                  className="border-border hover:bg-muted grid size-10 place-items-center rounded-md border md:hidden"
+                >
+                  <Menu aria-hidden="true" className="size-5" />
+                </DialogTrigger>
+                <DialogContent side="right">
+                  <DialogHeader>
+                    <DialogTitle>Navigation</DialogTitle>
+                    <DialogDescription>Signed in as {session.user.displayName}.</DialogDescription>
+                  </DialogHeader>
+                  <div className="mt-6">
+                    <TenantSelector presentation="full" />
+                  </div>
+                  <Separator className="my-5" />
+                  <nav aria-label="Mobile navigation" className="space-y-1">
+                    <NavigationLinks onNavigate={() => setMobileOpen(false)} pathname={pathname} />
+                    <SupportElevationControl />
+                  </nav>
+                  <div className="mt-auto pt-6">
+                    <Separator className="mb-5" />
+                    <UserSummary />
+                    <Button
+                      className="mt-3 w-full justify-start"
+                      disabled={loggingOut}
+                      onClick={() => void logout()}
+                      variant="outline"
+                    >
+                      {loggingOut ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="animate-spin"
+                          data-icon="inline-start"
+                        />
+                      ) : (
+                        <LogOut aria-hidden="true" data-icon="inline-start" />
+                      )}
+                      {loggingOut ? 'Signing out' : 'Sign out'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </header>
+
+        <SupportElevationBanner />
 
         <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8" id="main-content">
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+function NavigationLinks({ onNavigate, pathname }: { onNavigate(): void; pathname: string }) {
+  const session = useAuth().session;
+  return navigation.map((item) => {
+    if ('permission' in item && (session === null || !hasPermission(session, item.permission))) {
+      return null;
+    }
+    const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        aria-current={active ? 'page' : undefined}
+        className={
+          active
+            ? 'bg-primary/10 text-primary focus-visible:ring-ring flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2'
+        }
+        href={item.href}
+        key={item.href}
+        onClick={onNavigate}
+      >
+        <Icon aria-hidden="true" className="size-4" />
+        {item.label}
+      </Link>
+    );
+  });
+}
+
+function UserSummary() {
+  const session = useAuth().session;
+  if (session === null || session.currentMembership === null) return null;
+  const initials = session.user.displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        aria-hidden="true"
+        className="bg-secondary text-secondary-foreground grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold"
+      >
+        {initials || 'U'}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{session.user.displayName}</p>
+        <p className="text-muted-foreground truncate text-xs">{session.user.email}</p>
+      </div>
+      <Badge className="max-w-24 truncate" variant="outline">
+        {session.currentMembership.roleName}
+      </Badge>
     </div>
   );
 }

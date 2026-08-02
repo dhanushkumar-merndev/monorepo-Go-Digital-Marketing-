@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@gdm/config": "workspace:*",
+    "@gdm/contracts": "workspace:*",
     "@gdm/design-tokens": "workspace:*",
     "@gdm/ui": "workspace:*",
     "@hookform/resolvers": "5.5.7",
