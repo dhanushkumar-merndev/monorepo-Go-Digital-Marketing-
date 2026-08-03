@@ -2,8 +2,8 @@ import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nest
 import type {
   CreateSupportElevationRequest,
   ForgotPasswordResponse,
+  LoginAuthenticatedResponse,
   LoginRequest,
-  LoginResponse,
   LogoutAllResponse,
   LogoutResponse,
   MeResponse,
@@ -20,12 +20,12 @@ import { AccessTokenService } from './access-token.service.js';
 import { authenticationFailure, invalidCredentials } from './auth-exceptions.js';
 import {
   AUTH_STORE,
+  type AuthenticationIdentityRecord,
   type AuthenticationAuditInput,
   type AuthStore,
   type DeviceMetadata,
   type MembershipAccessRecord,
   type SessionAccessRecord,
-  type SessionSummaryRecord,
 } from './auth-store.js';
 import {
   presentMembership,
@@ -48,7 +48,7 @@ export interface AuthRequestMetadata {
 }
 
 export interface LoginResult {
-  payload: LoginResponse;
+  payload: LoginAuthenticatedResponse;
   refreshToken: string;
 }
 
@@ -61,26 +61,6 @@ function organizationIsActive(membership: MembershipAccessRecord): boolean {
   return membership.contextType === 'AGENCY'
     ? membership.agencyStatus === 'ACTIVE'
     : membership.clientStatus === 'ACTIVE';
-}
-
-function sessionSummaryFor(input: {
-  clientType: LoginRequest['client_type'];
-  createdAt: Date;
-  device: DeviceMetadata;
-  expiresAt: Date;
-  id: string;
-}): SessionSummaryRecord {
-  return {
-    clientType: input.clientType,
-    createdAt: input.createdAt,
-    current: true,
-    deviceId: input.device.deviceId,
-    deviceName: input.device.deviceName,
-    expiresAt: input.expiresAt,
-    id: input.id,
-    lastSeenAt: input.createdAt,
-    platform: input.device.platform,
-  };
 }
 
 @Injectable()
@@ -135,22 +115,33 @@ export class AuthenticationService {
       throw invalidCredentials();
     }
 
-    if (identity.status !== 'ACTIVE' || identity.userStatus === 'DEACTIVATED') {
+    return this.createIdentitySession(identity, input, metadata, 'PASSWORD');
+  }
+
+  async createIdentitySession(
+    identity: AuthenticationIdentityRecord,
+    input: Pick<LoginRequest, 'client_type' | 'device'>,
+    metadata: AuthRequestMetadata,
+    provider: 'GOOGLE' | 'PASSWORD',
+  ): Promise<LoginResult> {
+    const now = new Date();
+
+    if (identity.status === 'DISABLED' || identity.userStatus === 'DEACTIVATED') {
       await this.store.recordAuthenticationAudit({
         ...metadata,
         eventType: 'ACCOUNT_STATUS_BLOCKED',
-        metadata: { reason: 'ACCOUNT_DISABLED' },
+        metadata: { provider, reason: 'ACCOUNT_DISABLED' },
         outcome: 'DENIED',
         userId: identity.userId,
       });
       throw authenticationFailure('ACCOUNT_DISABLED', 'This account is disabled.');
     }
 
-    if (identity.userStatus !== 'ACTIVE') {
+    if (identity.status !== 'ACTIVE' || identity.userStatus !== 'ACTIVE') {
       await this.store.recordAuthenticationAudit({
         ...metadata,
         eventType: 'ACCOUNT_STATUS_BLOCKED',
-        metadata: { reason: 'ACCOUNT_SUSPENDED' },
+        metadata: { provider, reason: 'ACCOUNT_SUSPENDED' },
         outcome: 'DENIED',
         userId: identity.userId,
       });
@@ -174,6 +165,7 @@ export class AuthenticationService {
         ...metadata,
         eventType: 'LOGIN_FAILED',
         metadata: {
+          provider,
           reason: inactiveOrganization ? 'CLIENT_INACTIVE' : 'MEMBERSHIP_INACTIVE',
         },
         outcome: 'DENIED',
@@ -216,6 +208,7 @@ export class AuthenticationService {
         : {}),
       deviceId: device.deviceId,
       eventType: 'LOGIN_SUCCEEDED',
+      metadata: { provider },
       membershipId: membership.id,
       outcome: 'SUCCESS',
       sessionId,
@@ -265,6 +258,7 @@ export class AuthenticationService {
       payload: {
         ...payload,
         requires_membership_selection: activeMemberships.length > 1,
+        status: 'AUTHENTICATED',
       },
       refreshToken: refresh.token,
     };
@@ -753,7 +747,7 @@ export class AuthenticationService {
     accessTokenExpiresAt: Date,
     refreshTokenExpiresAt: Date,
     refreshToken: string | undefined,
-  ): Promise<Omit<LoginResponse, 'requires_membership_selection'>> {
+  ): Promise<RefreshResponse> {
     return {
       ...this.presentContext(session, memberships),
       access_token: accessToken,

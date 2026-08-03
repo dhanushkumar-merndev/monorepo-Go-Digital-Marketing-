@@ -15,7 +15,11 @@ import {
 import { ApiClientError, authApiClient } from './auth-api-client';
 import type { AuthApiClient } from './auth-api-client';
 import type {
+  AuthenticationMethod,
   AuthSession,
+  GoogleAuthChallenge,
+  GoogleCredentialInput,
+  GoogleIdentityUnlinkResult,
   LoginInput,
   PasswordResetInput,
   SessionDevice,
@@ -27,10 +31,15 @@ export type AuthStatus = 'anonymous' | 'authenticated' | 'error' | 'expired' | '
 
 export interface AuthContextValue {
   api: AuthApiClient;
+  createGoogleLinkChallenge(): Promise<GoogleAuthChallenge>;
+  createGoogleLoginChallenge(): Promise<GoogleAuthChallenge>;
   endSupportElevation(): Promise<void>;
   error: ApiClientError | null;
+  linkGoogleIdentity(input: GoogleCredentialInput): Promise<void>;
+  listAuthenticationMethods(): Promise<AuthenticationMethod[]>;
   listSessions(): Promise<SessionDevice[]>;
   login(input: LoginInput, returnTo?: string): Promise<void>;
+  loginWithGoogle(input: GoogleCredentialInput, returnTo?: string): Promise<void>;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
   refreshProfile(): Promise<void>;
@@ -42,6 +51,7 @@ export interface AuthContextValue {
   startSupportElevation(input: StartSupportElevationInput): Promise<void>;
   status: AuthStatus;
   switchMembership(membershipId: string): Promise<void>;
+  unlinkGoogleIdentity(): Promise<GoogleIdentityUnlinkResult>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -129,9 +139,8 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     return () => window.clearTimeout(timeout);
   }, [initialize]);
 
-  const login = useCallback(
-    async (input: LoginInput, returnTo?: string) => {
-      const authenticatedSession = await client.login(input);
+  const finishLogin = useCallback(
+    (authenticatedSession: AuthSession, returnTo?: string) => {
       if (authenticatedSession.user.status === 'suspended') {
         client.clearAccessToken();
         throw new ApiClientError('This account is suspended.', 403, 'ACCOUNT_SUSPENDED');
@@ -144,6 +153,32 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     },
     [client, queryClient, router],
   );
+
+  const login = useCallback(
+    async (input: LoginInput, returnTo?: string) => {
+      finishLogin(await client.login(input), returnTo);
+    },
+    [client, finishLogin],
+  );
+
+  const loginWithGoogle = useCallback(
+    async (input: GoogleCredentialInput, returnTo?: string) => {
+      finishLogin(await client.loginWithGoogle(input), returnTo);
+    },
+    [client, finishLogin],
+  );
+
+  const unlinkGoogleIdentity = useCallback(async () => {
+    const result = await client.unlinkGoogleIdentity();
+    if (result.currentSessionRevoked) {
+      setSession(null);
+      setError(null);
+      setStatus('expired');
+      queryClient.clear();
+      router.replace('/session-expired');
+    }
+    return result;
+  }, [client, queryClient, router]);
 
   const logout = useCallback(async () => {
     try {
@@ -202,10 +237,15 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   const value = useMemo<AuthContextValue>(
     () => ({
       api: client,
+      createGoogleLinkChallenge: () => client.createGoogleLinkChallenge(),
+      createGoogleLoginChallenge: () => client.createGoogleLoginChallenge(),
       endSupportElevation,
       error,
+      linkGoogleIdentity: (input) => client.linkGoogleIdentity(input),
+      listAuthenticationMethods: () => client.listAuthenticationMethods(),
       listSessions: () => client.listSessions(),
       login,
+      loginWithGoogle,
       logout,
       logoutAll,
       refreshProfile,
@@ -217,6 +257,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       startSupportElevation,
       status,
       switchMembership,
+      unlinkGoogleIdentity,
     }),
     [
       client,
@@ -224,6 +265,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       error,
       initialize,
       login,
+      loginWithGoogle,
       logout,
       logoutAll,
       refreshProfile,
@@ -231,6 +273,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       startSupportElevation,
       status,
       switchMembership,
+      unlinkGoogleIdentity,
     ],
   );
 

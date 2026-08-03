@@ -10,11 +10,18 @@ import type {
 import { opaqueTokenHashMatches } from './opaque-token.js';
 import type {
   AuthenticationAuditInput,
+  AuthenticationMethodRecord,
   AuthStore,
   BranchRecord,
   ClientOrganizationRecord,
+  ConsumeExternalAuthChallengeInput,
+  ConsumedExternalAuthChallenge,
+  CreateExternalAuthChallengeInput,
   CreateSessionInput,
   CreateSupportElevationInput,
+  GoogleLoginIdentityResolution,
+  LinkGoogleIdentityInput,
+  LinkGoogleIdentityResult,
   LoginFailurePolicy,
   MembershipAccessRecord,
   PasswordIdentityRecord,
@@ -24,6 +31,7 @@ import type {
   PasswordResetValidationInput,
   RefreshRotationResult,
   RevokeByRefreshTokenInput,
+  ResolveGoogleLoginIdentityInput,
   RotateRefreshTokenInput,
   SessionAccessRecord,
   SessionResolution,
@@ -31,9 +39,17 @@ import type {
   SwitchMembershipInput,
   TeamRecord,
   TenantUserRecord,
+  UnlinkGoogleIdentityResult,
 } from './auth-store.js';
 
 type AuditEventType = (typeof schema.authenticationAuditEventTypeEnum.enumValues)[number];
+type AuthenticationAuditInsert = typeof schema.authenticationAuditEvents.$inferInsert;
+
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  if ('code' in error && typeof error.code === 'string') return error.code;
+  return 'cause' in error ? databaseErrorCode(error.cause) : undefined;
+}
 
 function clientTypeFromDatabase(value: 'MOBILE' | 'WEB'): AuthClientType {
   return value.toLowerCase() as AuthClientType;
@@ -51,7 +67,10 @@ function devicePlatformToDatabase(value: DevicePlatform): 'ANDROID' | 'IOS' | 'U
   return value.toUpperCase() as 'ANDROID' | 'IOS' | 'UNKNOWN' | 'WEB';
 }
 
-function auditValues(input: AuthenticationAuditInput, supportElevationId?: string) {
+function auditValues(
+  input: AuthenticationAuditInput,
+  supportElevationId?: string,
+): AuthenticationAuditInsert {
   return {
     scope: input.clientOrganizationId ? ('CLIENT' as const) : ('PLATFORM' as const),
     ...(input.clientOrganizationId ? { clientOrganizationId: input.clientOrganizationId } : {}),
@@ -65,6 +84,7 @@ function auditValues(input: AuthenticationAuditInput, supportElevationId?: strin
     ...(input.sourceIp ? { sourceIp: input.sourceIp } : {}),
     ...(input.userAgent ? { userAgent: input.userAgent } : {}),
     ...(input.deviceId ? { deviceId: input.deviceId } : {}),
+    ...(input.identifierHash ? { identifierHash: input.identifierHash } : {}),
     metadata: input.metadata ?? {},
   };
 }
@@ -126,6 +146,56 @@ export class DrizzleAuthStore implements AuthStore {
     private readonly connection: DatabaseConnection,
   ) {}
 
+  async createExternalAuthChallenge(input: CreateExternalAuthChallengeInput): Promise<void> {
+    await this.connection.db.insert(schema.externalAuthChallenges).values({
+      clientType: clientTypeToDatabase(input.clientType),
+      expiresAt: input.expiresAt,
+      id: input.id,
+      nonceHash: input.nonceHash,
+      purpose: input.purpose,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+    });
+  }
+
+  async consumeExternalAuthChallenge(
+    input: ConsumeExternalAuthChallengeInput,
+  ): Promise<ConsumedExternalAuthChallenge | undefined> {
+    const binding =
+      input.purpose === 'LOGIN'
+        ? and(
+            isNull(schema.externalAuthChallenges.userId),
+            isNull(schema.externalAuthChallenges.sessionId),
+          )
+        : and(
+            eq(schema.externalAuthChallenges.userId, input.userId ?? ''),
+            eq(schema.externalAuthChallenges.sessionId, input.sessionId ?? ''),
+          );
+    const [consumed] = await this.connection.db
+      .update(schema.externalAuthChallenges)
+      .set({ consumedAt: input.consumedAt })
+      .where(
+        and(
+          eq(schema.externalAuthChallenges.id, input.challengeId),
+          eq(schema.externalAuthChallenges.purpose, input.purpose),
+          ...(input.clientType
+            ? [eq(schema.externalAuthChallenges.clientType, clientTypeToDatabase(input.clientType))]
+            : []),
+          isNull(schema.externalAuthChallenges.consumedAt),
+          gt(schema.externalAuthChallenges.expiresAt, input.consumedAt),
+          binding,
+        ),
+      )
+      .returning({
+        clientType: schema.externalAuthChallenges.clientType,
+        nonceHash: schema.externalAuthChallenges.nonceHash,
+      });
+
+    return consumed
+      ? { clientType: clientTypeFromDatabase(consumed.clientType), nonceHash: consumed.nonceHash }
+      : undefined;
+  }
+
   async findPasswordIdentity(email: string): Promise<PasswordIdentityRecord | undefined> {
     const [row] = await this.connection.db
       .select({
@@ -166,11 +236,276 @@ export class DrizzleAuthStore implements AuthStore {
       id: row.identityId,
       ...(row.lockedUntil ? { lockedUntil: row.lockedUntil } : {}),
       passwordHash,
-      status: row.identityStatus === 'ACTIVE' ? 'ACTIVE' : 'DISABLED',
+      status: row.identityStatus,
       userDisplayName: row.userDisplayName,
       userId: row.userId,
       userStatus: row.userStatus,
     };
+  }
+
+  async resolveGoogleLoginIdentity(
+    input: ResolveGoogleLoginIdentityInput,
+  ): Promise<GoogleLoginIdentityResolution> {
+    try {
+      return await this.connection.db.transaction(async (transaction) => {
+        const [linked] = await transaction
+          .select({
+            email: schema.users.primaryEmailNormalized,
+            id: schema.authenticationIdentities.id,
+            providerEmail: schema.authenticationIdentities.providerEmailNormalized,
+            status: schema.authenticationIdentities.status,
+            userDisplayName: schema.users.displayName,
+            userId: schema.users.id,
+            userStatus: schema.users.status,
+          })
+          .from(schema.authenticationIdentities)
+          .innerJoin(schema.users, eq(schema.authenticationIdentities.userId, schema.users.id))
+          .where(
+            and(
+              eq(schema.authenticationIdentities.provider, 'OAUTH'),
+              eq(schema.authenticationIdentities.providerKey, 'GOOGLE'),
+              eq(schema.authenticationIdentities.subjectNormalized, input.providerSubject),
+            ),
+          )
+          .limit(1);
+
+        if (linked) {
+          if (linked.providerEmail !== input.email || linked.email !== input.email) {
+            return { kind: 'identity_conflict' };
+          }
+          if (linked.userStatus === 'DEACTIVATED' || linked.status === 'DISABLED') {
+            return { kind: 'account_disabled' };
+          }
+          if (linked.userStatus === 'SUSPENDED' || linked.status === 'SUSPENDED') {
+            return { kind: 'account_suspended' };
+          }
+          if (linked.userStatus !== 'ACTIVE') {
+            return { kind: 'not_invited' };
+          }
+
+          return {
+            identity: {
+              email: linked.email,
+              id: linked.id,
+              providerEmail: linked.providerEmail,
+              status: linked.status,
+              userDisplayName: linked.userDisplayName,
+              userId: linked.userId,
+              userStatus: linked.userStatus,
+            },
+            kind: 'identity',
+          };
+        }
+
+        const [candidate] = await transaction
+          .select({
+            displayName: schema.users.displayName,
+            email: schema.users.primaryEmailNormalized,
+            id: schema.users.id,
+            status: schema.users.status,
+          })
+          .from(schema.users)
+          .where(eq(schema.users.primaryEmailNormalized, input.email))
+          .limit(1);
+
+        if (!candidate) return { kind: 'not_invited' };
+        if (candidate.status === 'ACTIVE') return { kind: 'account_linking_required' };
+        if (candidate.status === 'SUSPENDED') return { kind: 'account_suspended' };
+        if (candidate.status === 'DEACTIVATED') return { kind: 'account_disabled' };
+
+        await transaction.execute(
+          sql`select ${schema.users.id} from ${schema.users} where ${schema.users.id} = ${candidate.id} for update`,
+        );
+        const [lockedCandidate] = await transaction
+          .select({
+            displayName: schema.users.displayName,
+            email: schema.users.primaryEmailNormalized,
+            id: schema.users.id,
+            status: schema.users.status,
+          })
+          .from(schema.users)
+          .where(eq(schema.users.id, candidate.id))
+          .limit(1);
+        if (!lockedCandidate || lockedCandidate.email !== input.email)
+          return { kind: 'not_invited' };
+        if (lockedCandidate.status === 'ACTIVE') return { kind: 'account_linking_required' };
+        if (lockedCandidate.status === 'SUSPENDED') return { kind: 'account_suspended' };
+        if (lockedCandidate.status === 'DEACTIVATED') return { kind: 'account_disabled' };
+        await transaction.execute(
+          sql`select ${schema.memberships.id} from ${schema.memberships} where ${schema.memberships.userId} = ${lockedCandidate.id} for update`,
+        );
+
+        const invitedMemberships = await transaction
+          .select({
+            agencyStatus: schema.agencies.status,
+            clientOrganizationId: schema.clientOrganizations.id,
+            clientStatus: schema.clientOrganizations.status,
+            contextType: schema.memberships.contextType,
+            id: schema.memberships.id,
+          })
+          .from(schema.memberships)
+          .innerJoin(schema.roles, eq(schema.memberships.roleId, schema.roles.id))
+          .leftJoin(schema.agencies, eq(schema.memberships.agencyId, schema.agencies.id))
+          .leftJoin(
+            schema.clientOrganizations,
+            eq(schema.memberships.clientOrganizationId, schema.clientOrganizations.id),
+          )
+          .where(
+            and(
+              eq(schema.memberships.userId, lockedCandidate.id),
+              eq(schema.memberships.status, 'INVITED'),
+              eq(schema.roles.application, clientTypeToDatabase(input.clientType)),
+              eq(schema.roles.active, true),
+              lte(schema.memberships.effectiveFrom, input.now),
+              or(
+                isNull(schema.memberships.effectiveUntil),
+                gt(schema.memberships.effectiveUntil, input.now),
+              ),
+            ),
+          );
+
+        if (invitedMemberships.length === 0) return { kind: 'not_invited' };
+        const eligibleMemberships = invitedMemberships.filter((membership) =>
+          membership.contextType === 'AGENCY'
+            ? membership.agencyStatus === 'ACTIVE'
+            : membership.clientStatus === 'ACTIVE',
+        );
+
+        if (eligibleMemberships.length === 0) return { kind: 'client_inactive' };
+
+        await transaction.insert(schema.authenticationIdentities).values({
+          createdAt: input.now,
+          id: input.identityId,
+          provider: 'OAUTH',
+          providerEmailNormalized: input.email,
+          providerKey: 'GOOGLE',
+          status: 'ACTIVE',
+          subjectNormalized: input.providerSubject,
+          updatedAt: input.now,
+          userId: lockedCandidate.id,
+          verifiedAt: input.now,
+        });
+        const activatedUsers = await transaction
+          .update(schema.users)
+          .set({ status: 'ACTIVE', updatedAt: input.now })
+          .where(and(eq(schema.users.id, lockedCandidate.id), eq(schema.users.status, 'INVITED')))
+          .returning({ id: schema.users.id });
+        if (activatedUsers.length !== 1) {
+          throw new Error('Invited user changed during Google account activation.');
+        }
+        const activatedMemberships = await transaction
+          .update(schema.memberships)
+          .set({ status: 'ACTIVE', updatedAt: input.now })
+          .where(
+            and(
+              eq(schema.memberships.status, 'INVITED'),
+              inArray(
+                schema.memberships.id,
+                eligibleMemberships.map(({ id }) => id),
+              ),
+            ),
+          )
+          .returning({ id: schema.memberships.id });
+        if (activatedMemberships.length !== eligibleMemberships.length) {
+          throw new Error('Invited memberships changed during Google account activation.');
+        }
+
+        await transaction.insert(schema.authenticationAuditEvents).values([
+          auditValues({
+            ...input.audit,
+            eventType: 'IDENTITY_LINKED',
+            metadata: { ...input.audit.metadata, provider: 'GOOGLE', source: 'INVITATION' },
+            outcome: 'SUCCESS',
+            userId: lockedCandidate.id,
+          }),
+          ...eligibleMemberships.map((membership) =>
+            auditValues({
+              ...input.audit,
+              ...(membership.clientOrganizationId
+                ? { clientOrganizationId: membership.clientOrganizationId }
+                : {}),
+              eventType: 'INVITATION_ACTIVATED',
+              membershipId: membership.id,
+              metadata: { ...input.audit.metadata, provider: 'GOOGLE' },
+              outcome: 'SUCCESS',
+              userId: lockedCandidate.id,
+            }),
+          ),
+        ]);
+
+        return {
+          identity: {
+            email: lockedCandidate.email,
+            id: input.identityId,
+            providerEmail: input.email,
+            status: 'ACTIVE',
+            userDisplayName: lockedCandidate.displayName,
+            userId: lockedCandidate.id,
+            userStatus: 'ACTIVE',
+          },
+          kind: 'invitation_activated',
+        };
+      });
+    } catch (error) {
+      if (databaseErrorCode(error) === '23505') return { kind: 'identity_conflict' };
+      throw error;
+    }
+  }
+
+  async listAuthenticationMethods(userId: string): Promise<AuthenticationMethodRecord[]> {
+    const rows = await this.connection.db
+      .select({
+        createdAt: schema.authenticationIdentities.createdAt,
+        id: schema.authenticationIdentities.id,
+        lastAuthenticatedAt: schema.authenticationIdentities.lastAuthenticatedAt,
+        provider: schema.authenticationIdentities.provider,
+        providerEmail: schema.authenticationIdentities.providerEmailNormalized,
+        providerKey: schema.authenticationIdentities.providerKey,
+        status: schema.authenticationIdentities.status,
+        subject: schema.authenticationIdentities.subjectNormalized,
+      })
+      .from(schema.authenticationIdentities)
+      .where(eq(schema.authenticationIdentities.userId, userId))
+      .orderBy(schema.authenticationIdentities.createdAt, schema.authenticationIdentities.id);
+
+    return rows.flatMap((row): AuthenticationMethodRecord[] => {
+      const provider =
+        row.provider === 'PASSWORD' && row.providerKey === 'LOCAL'
+          ? ('PASSWORD' as const)
+          : row.provider === 'OAUTH' && row.providerKey === 'GOOGLE'
+            ? ('GOOGLE' as const)
+            : undefined;
+      if (!provider) return [];
+      return [
+        {
+          createdAt: row.createdAt,
+          email: row.providerEmail ?? row.subject,
+          id: row.id,
+          ...(row.lastAuthenticatedAt ? { lastAuthenticatedAt: row.lastAuthenticatedAt } : {}),
+          provider,
+          status: row.status,
+        },
+      ];
+    });
+  }
+
+  async getSessionClientType(
+    userId: string,
+    sessionId: string,
+  ): Promise<AuthClientType | undefined> {
+    const [session] = await this.connection.db
+      .select({ clientType: schema.refreshSessions.clientType })
+      .from(schema.refreshSessions)
+      .where(
+        and(
+          eq(schema.refreshSessions.userId, userId),
+          eq(schema.refreshSessions.id, sessionId),
+          isNull(schema.refreshSessions.revokedAt),
+          gt(schema.refreshSessions.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+    return session ? clientTypeFromDatabase(session.clientType) : undefined;
   }
 
   async recordLoginFailure(
@@ -720,12 +1055,12 @@ export class DrizzleAuthStore implements AuthStore {
         .set({ lastSeenAt: input.now, refreshTokenVersion: sequence })
         .where(eq(schema.refreshSessions.id, row.sessionId));
       await transaction.insert(schema.authenticationAuditEvents).values(
-          auditValues({
-            ...input.audit,
-            ...(row.membershipClientOrganizationId
-              ? { clientOrganizationId: row.membershipClientOrganizationId }
-              : {}),
-            eventType: 'REFRESH_SUCCEEDED',
+        auditValues({
+          ...input.audit,
+          ...(row.membershipClientOrganizationId
+            ? { clientOrganizationId: row.membershipClientOrganizationId }
+            : {}),
+          eventType: 'REFRESH_SUCCEEDED',
           ...(row.currentMembershipId ? { membershipId: row.currentMembershipId } : {}),
           outcome: 'SUCCESS',
           sessionId: row.sessionId,
@@ -1325,6 +1660,181 @@ export class DrizzleAuthStore implements AuthStore {
     });
   }
 
+  async linkGoogleIdentity(input: LinkGoogleIdentityInput): Promise<LinkGoogleIdentityResult> {
+    try {
+      return await this.connection.db.transaction(async (transaction) => {
+        await transaction.execute(
+          sql`select ${schema.users.id} from ${schema.users} where ${schema.users.id} = ${input.userId} for update`,
+        );
+        const [account] = await transaction
+          .select({
+            displayName: schema.users.displayName,
+            email: schema.users.primaryEmailNormalized,
+            status: schema.users.status,
+          })
+          .from(schema.users)
+          .where(eq(schema.users.id, input.userId))
+          .limit(1);
+
+        if (!account || account.status !== 'ACTIVE') return { kind: 'account_inactive' };
+        if (account.email !== input.email) return { kind: 'email_mismatch' };
+
+        const googleIdentities = await transaction
+          .select({
+            id: schema.authenticationIdentities.id,
+            providerSubject: schema.authenticationIdentities.subjectNormalized,
+            status: schema.authenticationIdentities.status,
+            userId: schema.authenticationIdentities.userId,
+          })
+          .from(schema.authenticationIdentities)
+          .where(
+            and(
+              eq(schema.authenticationIdentities.provider, 'OAUTH'),
+              eq(schema.authenticationIdentities.providerKey, 'GOOGLE'),
+              or(
+                eq(schema.authenticationIdentities.userId, input.userId),
+                eq(schema.authenticationIdentities.subjectNormalized, input.providerSubject),
+              ),
+            ),
+          );
+        const subjectOwner = googleIdentities.find(
+          ({ providerSubject }) => providerSubject === input.providerSubject,
+        );
+        const userGoogleIdentity = googleIdentities.find(({ userId }) => userId === input.userId);
+
+        if (subjectOwner && subjectOwner.userId !== input.userId)
+          return { kind: 'identity_conflict' };
+        if (
+          userGoogleIdentity &&
+          userGoogleIdentity.status !== 'DISABLED' &&
+          userGoogleIdentity.providerSubject !== input.providerSubject
+        ) {
+          return { kind: 'identity_conflict' };
+        }
+
+        const identityId = userGoogleIdentity?.id ?? input.identityId;
+        if (userGoogleIdentity) {
+          await transaction
+            .update(schema.authenticationIdentities)
+            .set({
+              providerEmailNormalized: input.email,
+              status: 'ACTIVE',
+              subjectNormalized: input.providerSubject,
+              updatedAt: input.linkedAt,
+              verifiedAt: input.linkedAt,
+            })
+            .where(eq(schema.authenticationIdentities.id, identityId));
+        } else {
+          await transaction.insert(schema.authenticationIdentities).values({
+            createdAt: input.linkedAt,
+            id: identityId,
+            provider: 'OAUTH',
+            providerEmailNormalized: input.email,
+            providerKey: 'GOOGLE',
+            status: 'ACTIVE',
+            subjectNormalized: input.providerSubject,
+            updatedAt: input.linkedAt,
+            userId: input.userId,
+            verifiedAt: input.linkedAt,
+          });
+        }
+        await transaction.insert(schema.authenticationAuditEvents).values(
+          auditValues({
+            ...input.audit,
+            eventType: 'IDENTITY_LINKED',
+            metadata: { ...input.audit.metadata, provider: 'GOOGLE', source: 'ACCOUNT_SETTINGS' },
+            outcome: 'SUCCESS',
+            sessionId: input.sessionId,
+            userId: input.userId,
+          }),
+        );
+
+        return {
+          identity: {
+            email: account.email,
+            id: identityId,
+            providerEmail: input.email,
+            status: 'ACTIVE',
+            userDisplayName: account.displayName,
+            userId: input.userId,
+            userStatus: account.status,
+          },
+          kind: 'linked',
+        };
+      });
+    } catch (error) {
+      if (databaseErrorCode(error) === '23505') return { kind: 'identity_conflict' };
+      throw error;
+    }
+  }
+
+  async unlinkGoogleIdentity(
+    userId: string,
+    sessionId: string,
+    unlinkedAt: Date,
+    audit: AuthenticationAuditInput,
+  ): Promise<UnlinkGoogleIdentityResult> {
+    return this.connection.db.transaction(async (transaction) => {
+      await transaction.execute(
+        sql`select ${schema.authenticationIdentities.id} from ${schema.authenticationIdentities} where ${schema.authenticationIdentities.userId} = ${userId} for update`,
+      );
+      const identities = await transaction
+        .select({
+          id: schema.authenticationIdentities.id,
+          provider: schema.authenticationIdentities.provider,
+          providerKey: schema.authenticationIdentities.providerKey,
+          status: schema.authenticationIdentities.status,
+        })
+        .from(schema.authenticationIdentities)
+        .where(eq(schema.authenticationIdentities.userId, userId));
+      const google = identities.find(
+        ({ provider, providerKey, status }) =>
+          provider === 'OAUTH' && providerKey === 'GOOGLE' && status === 'ACTIVE',
+      );
+
+      if (!google) return { kind: 'identity_not_linked' };
+      const supportedActiveMethods = identities.filter(
+        ({ provider, providerKey, status }) =>
+          status === 'ACTIVE' &&
+          ((provider === 'PASSWORD' && providerKey === 'LOCAL') ||
+            (provider === 'OAUTH' && providerKey === 'GOOGLE')),
+      );
+      if (supportedActiveMethods.length <= 1) {
+        return { kind: 'last_login_method' };
+      }
+
+      const [currentSession] = await transaction
+        .select({ authenticationIdentityId: schema.refreshSessions.authenticationIdentityId })
+        .from(schema.refreshSessions)
+        .where(
+          and(eq(schema.refreshSessions.id, sessionId), eq(schema.refreshSessions.userId, userId)),
+        )
+        .limit(1);
+      // The Phase 1 `authentication_identities_inactive_revoke_auth` trigger
+      // runs inside this transaction and revokes every refresh session and
+      // support elevation bound to the Google identity, with audit evidence.
+      await transaction
+        .update(schema.authenticationIdentities)
+        .set({ status: 'DISABLED', updatedAt: unlinkedAt })
+        .where(eq(schema.authenticationIdentities.id, google.id));
+      await transaction.insert(schema.authenticationAuditEvents).values(
+        auditValues({
+          ...audit,
+          eventType: 'IDENTITY_UNLINKED',
+          metadata: { ...audit.metadata, provider: 'GOOGLE' },
+          outcome: 'SUCCESS',
+          sessionId,
+          userId,
+        }),
+      );
+
+      return {
+        currentSessionRevoked: currentSession?.authenticationIdentityId === google.id,
+        kind: 'unlinked',
+      };
+    });
+  }
+
   async recordAuthenticationAudit(input: AuthenticationAuditInput): Promise<void> {
     await this.connection.db.insert(schema.authenticationAuditEvents).values(auditValues(input));
   }
@@ -1458,20 +1968,18 @@ export class DrizzleAuthStore implements AuthStore {
         id: input.id,
         reason: input.reason,
       });
-      await transaction
-        .insert(schema.authenticationAuditEvents)
-        .values(
-          auditValues(
-            {
-              ...input.audit,
-              clientOrganizationId: input.targetClientOrganizationId,
-              membershipId: input.agencyMembershipId,
-              sessionId: input.sessionId,
-              userId: input.userId,
-            },
-            input.id,
-          ),
-        );
+      await transaction.insert(schema.authenticationAuditEvents).values(
+        auditValues(
+          {
+            ...input.audit,
+            clientOrganizationId: input.targetClientOrganizationId,
+            membershipId: input.agencyMembershipId,
+            sessionId: input.sessionId,
+            userId: input.userId,
+          },
+          input.id,
+        ),
+      );
       return row;
     });
 

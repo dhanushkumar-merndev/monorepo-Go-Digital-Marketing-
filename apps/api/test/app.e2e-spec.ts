@@ -55,6 +55,7 @@ describe('API foundation (HTTP integration)', () => {
       CORS_ORIGINS: 'http://localhost:3000',
       AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-thirty-two-characters',
       AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-thirty-two-characters',
+      AUTH_REFRESH_COOKIE_NAME: 'test_refresh',
       AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-pepper-at-least-thirty-two-characters',
       API_TRUSTED_PROXIES: '',
       DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/gdm_test',
@@ -171,7 +172,7 @@ describe('API foundation (HTTP integration)', () => {
     assert.equal(documentResponse.body.components.securitySchemes.refreshCookie.in, 'cookie');
     assert.equal(
       documentResponse.body.components.securitySchemes.refreshCookie.name,
-      'gdm_refresh',
+      'test_refresh',
     );
     assert.equal(refreshProperties.access_token.readOnly, true);
     assert.equal(refreshProperties.access_token.writeOnly, undefined);

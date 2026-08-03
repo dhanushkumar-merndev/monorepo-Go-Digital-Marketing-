@@ -10,10 +10,7 @@ describe('MFA secret protection', () => {
     const protectedSecret = protector.protect('BASE32SECRET', 'user-1:factor-1:TOTP');
 
     assert.notEqual(protectedSecret.ciphertext, 'BASE32SECRET');
-    assert.equal(
-      protector.unprotect(protectedSecret, 'user-1:factor-1:TOTP'),
-      'BASE32SECRET',
-    );
+    assert.equal(protector.unprotect(protectedSecret, 'user-1:factor-1:TOTP'), 'BASE32SECRET');
   });
 
   it('fails closed when ciphertext or associated data is changed', () => {

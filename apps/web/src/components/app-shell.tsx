@@ -12,7 +12,16 @@ import {
 } from '@gdm/ui/components/dialog';
 import { Separator } from '@gdm/ui/components/separator';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
-import { CarFront, Home, Laptop2, LoaderCircle, LogOut, Menu, UserRound } from 'lucide-react';
+import {
+  CarFront,
+  Home,
+  Laptop2,
+  LoaderCircle,
+  LogOut,
+  Menu,
+  Settings2,
+  UserRound,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
@@ -37,6 +46,12 @@ const navigation = [
     icon: Laptop2,
     label: 'Active sessions',
     permission: 'account.sessions.read',
+  },
+  {
+    href: '/administration',
+    icon: Settings2,
+    label: 'Administration',
+    permission: 'organization.clients.read',
   },
 ] as const;
 

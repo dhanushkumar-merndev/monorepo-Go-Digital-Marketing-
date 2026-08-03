@@ -30,6 +30,10 @@ export const authenticationIdentityStatusEnum = pgEnum('authentication_identity_
 ]);
 export const authClientTypeEnum = pgEnum('auth_client_type', ['WEB', 'MOBILE']);
 export const devicePlatformEnum = pgEnum('device_platform', ['WEB', 'ANDROID', 'IOS', 'UNKNOWN']);
+export const externalAuthChallengePurposeEnum = pgEnum('external_auth_challenge_purpose', [
+  'LOGIN',
+  'LINK',
+]);
 export const authenticationAuditEventTypeEnum = pgEnum('authentication_audit_event_type', [
   'LOGIN_SUCCEEDED',
   'LOGIN_FAILED',
@@ -48,6 +52,9 @@ export const authenticationAuditEventTypeEnum = pgEnum('authentication_audit_eve
   'SUPPORT_ELEVATION_EXPIRED',
   'ACCESS_DENIED',
   'ACCOUNT_STATUS_BLOCKED',
+  'IDENTITY_LINKED',
+  'IDENTITY_UNLINKED',
+  'INVITATION_ACTIVATED',
 ]);
 
 export const authenticationIdentities = pgTable(
@@ -58,6 +65,7 @@ export const authenticationIdentities = pgTable(
     provider: authenticationProviderEnum('provider').notNull(),
     providerKey: varchar('provider_key', { length: 64 }).notNull(),
     subjectNormalized: varchar('subject_normalized', { length: 320 }).notNull(),
+    providerEmailNormalized: varchar('provider_email_normalized', { length: 320 }),
     status: authenticationIdentityStatusEnum('status').default('ACTIVE').notNull(),
     passwordDigest: varchar('password_digest', { length: 128 }),
     passwordSalt: varchar('password_salt', { length: 128 }),
@@ -87,6 +95,11 @@ export const authenticationIdentities = pgTable(
       table.subjectNormalized,
     ),
     unique('authentication_identities_user_id_unique').on(table.userId, table.id),
+    uniqueIndex('authentication_identities_user_provider_uidx').on(
+      table.userId,
+      table.provider,
+      table.providerKey,
+    ),
     index('authentication_identities_user_status_idx').on(table.userId, table.status),
     index('authentication_identities_lockout_idx').on(table.status, table.lockedUntil),
     check(
@@ -104,8 +117,17 @@ export const authenticationIdentities = pgTable(
         AND ${table.passwordScryptR} >= 8
         AND ${table.passwordScryptP} >= 1
         AND ${table.passwordKeyLength} >= 32
+        AND ${table.providerEmailNormalized} IS NULL
       ) OR (
         ${table.provider} = 'OAUTH'
+        AND ${table.providerKey} <> 'LOCAL'
+        AND (
+          ${table.providerKey} <> 'GOOGLE'
+          OR (
+            ${table.providerEmailNormalized} IS NOT NULL
+            AND ${table.verifiedAt} IS NOT NULL
+          )
+        )
         AND ${table.passwordDigest} IS NULL
         AND ${table.passwordSalt} IS NULL
         AND ${table.passwordScryptN} IS NULL
@@ -159,6 +181,51 @@ export const refreshSessions = pgTable(
     check(
       'refresh_sessions_revocation_check',
       sql`(${table.revokedAt} IS NULL AND ${table.revokedReason} IS NULL) OR ${table.revokedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const externalAuthChallenges = pgTable(
+  'external_auth_challenges',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    purpose: externalAuthChallengePurposeEnum('purpose').notNull(),
+    clientType: authClientTypeEnum('client_type').notNull(),
+    nonceHash: varchar('nonce_hash', { length: 64 }).notNull(),
+    userId: uuid('user_id'),
+    sessionId: uuid('session_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId, table.sessionId],
+      foreignColumns: [refreshSessions.userId, refreshSessions.id],
+      name: 'external_auth_challenges_user_session_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('external_auth_challenges_nonce_hash_uidx').on(table.nonceHash),
+    index('external_auth_challenges_expiry_idx').on(table.consumedAt, table.expiresAt),
+    check(
+      'external_auth_challenges_binding_check',
+      sql`(
+        ${table.purpose} = 'LOGIN'
+        AND ${table.userId} IS NULL
+        AND ${table.sessionId} IS NULL
+      ) OR (
+        ${table.purpose} = 'LINK'
+        AND ${table.userId} IS NOT NULL
+        AND ${table.sessionId} IS NOT NULL
+      )`,
+    ),
+    check(
+      'external_auth_challenges_nonce_hash_check',
+      sql`char_length(${table.nonceHash}) = 64 AND ${table.nonceHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check('external_auth_challenges_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'external_auth_challenges_consumed_check',
+      sql`${table.consumedAt} IS NULL OR ${table.consumedAt} >= ${table.createdAt}`,
     ),
   ],
 );

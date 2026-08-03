@@ -40,6 +40,7 @@
     "services:up": "docker compose -f infrastructure/local/compose.yaml up -d --wait"
   },
   "devDependencies": {
+    "@babel/traverse": "7.29.8",
     "@vitest/coverage-v8": "4.1.10",
     "dotenv": "17.3.1",
     "prettier": "3.9.6",

@@ -21,6 +21,38 @@ services:
         value: standalone
       - key: CORS_ORIGINS
         sync: false
+      - key: AUTH_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: AUTH_PASSWORD_PEPPER
+        sync: false
+      - key: AUTH_REFRESH_TOKEN_PEPPER
+        sync: false
+      - key: AUTH_ISSUER
+        value: go-digital-automobile-crm
+      - key: AUTH_AUDIENCE
+        value: go-digital-automobile-crm-clients
+      - key: AUTH_ACCESS_TOKEN_TTL_SECONDS
+        value: '900'
+      - key: AUTH_REFRESH_TOKEN_TTL_SECONDS
+        value: '2592000'
+      - key: AUTH_PASSWORD_RESET_TOKEN_TTL_SECONDS
+        value: '1800'
+      - key: AUTH_LOGIN_MAX_ATTEMPTS
+        value: '5'
+      - key: AUTH_LOGIN_LOCKOUT_SECONDS
+        value: '900'
+      - key: AUTH_SUPPORT_ELEVATION_TTL_SECONDS
+        value: '900'
+      - key: AUTH_REFRESH_COOKIE_NAME
+        value: gdm_refresh
+      - key: AUTH_REFRESH_COOKIE_SAME_SITE
+        value: none
+      - key: AUTH_REFRESH_COOKIE_SECURE
+        value: 'true'
+      - key: GOOGLE_AUTH_WEB_CLIENT_ID
+        sync: false
+      - key: GOOGLE_AUTH_CHALLENGE_TTL_SECONDS
+        value: '300'
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_POOL_MAX

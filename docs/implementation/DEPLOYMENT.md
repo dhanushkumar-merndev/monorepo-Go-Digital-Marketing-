@@ -55,15 +55,20 @@ cp apps/web/.dev.vars.example apps/web/.dev.vars
 pnpm preview:web
 ```
 
-The root `.env` (or an exported process variable) supplies `NEXT_PUBLIC_API_URL` to the Next.js
-build. `.dev.vars` supplies Wrangler runtime values and selects the development Next environment;
-it does not replace the build-time variable.
+The root `.env` (or exported process variables) supplies `NEXT_PUBLIC_API_URL` and
+`NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the Next.js build. `.dev.vars` supplies Wrangler runtime values
+and selects the development Next environment; it does not replace build-time variables.
 
 Set `NEXT_PUBLIC_API_URL` to the public HTTPS NestJS base URL ending in `/v1`. For Cloudflare
 production, define it as both a build variable and a Worker variable. Next.js inlines public
 variables while building, while the runtime value is also available to server-rendered code. The
 deployment script forwards `--keep-vars` to Wrangler so dashboard-managed variables are not
 removed.
+
+Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the production Web OAuth client ID. It is a public identifier,
+not the Google client secret. The corresponding Render API value is `GOOGLE_AUTH_WEB_CLIENT_ID` so
+NestJS can enforce the token audience. See `GOOGLE_AUTH_SETUP.md` for origins, Android signing
+certificates, iOS bundle configuration and separate development/production clients.
 
 After an authorized operator has authenticated Wrangler and reviewed the account target:
 
@@ -153,39 +158,53 @@ complete generic S3 credential set, not a mixture.
 
 ## Environment inventory
 
-| Variable                    | Scope                    | Purpose                                                   |
-| --------------------------- | ------------------------ | --------------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`       | Cloudflare build/runtime | Public HTTPS NestJS URL ending in `/v1`                   |
-| `DATABASE_URL`              | API and worker           | Supabase PostgreSQL runtime URL                           |
-| `DIRECT_DATABASE_URL`       | Migration job only       | Direct/session URL used for reviewed DDL                  |
-| `SUPABASE_URL`              | Backend, reserved        | Supabase project API URL for a later approved integration |
-| `SUPABASE_ANON_KEY`         | Backend, reserved        | Supabase anon key; not currently consumed                 |
-| `SUPABASE_SERVICE_ROLE_KEY` | Backend secret, reserved | Supabase privileged key; never expose to a client         |
-| `REDIS_URL`                 | API and worker           | Native Upstash `rediss://` connection                     |
-| `WORKER_MODE`               | API and worker           | `disabled`, `embedded` or `standalone`                    |
-| `TIGRIS_ACCESS_KEY_ID`      | API and worker secret    | Tigris S3 credential                                      |
-| `TIGRIS_SECRET_ACCESS_KEY`  | API and worker secret    | Tigris S3 credential                                      |
-| `TIGRIS_BUCKET`             | API and worker           | Private Tigris bucket                                     |
-| `TIGRIS_ENDPOINT`           | API and worker           | Tigris S3 endpoint                                        |
+| Variable                            | Scope                    | Purpose                                                   |
+| ----------------------------------- | ------------------------ | --------------------------------------------------------- |
+| `NEXT_PUBLIC_API_URL`               | Cloudflare build/runtime | Public HTTPS NestJS URL ending in `/v1`                   |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`      | Cloudflare build/runtime | Public Google Identity Services Web client ID             |
+| `GOOGLE_AUTH_WEB_CLIENT_ID`         | API                      | Sole Google ID-token audience for browser and native      |
+| `GOOGLE_AUTH_CHALLENGE_TTL_SECONDS` | API                      | Single-use Google nonce lifetime (60-600 seconds)         |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`  | Mobile build             | Web/server audience requested by native Google sign-in    |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`  | iOS build                | iOS app registration and reversed URL scheme only         |
+| `DATABASE_URL`                      | API and worker           | Supabase PostgreSQL runtime URL                           |
+| `DIRECT_DATABASE_URL`               | Migration job only       | Direct/session URL used for reviewed DDL                  |
+| `SUPABASE_URL`                      | Backend, reserved        | Supabase project API URL for a later approved integration |
+| `SUPABASE_ANON_KEY`                 | Backend, reserved        | Supabase anon key; not currently consumed                 |
+| `SUPABASE_SERVICE_ROLE_KEY`         | Backend secret, reserved | Supabase privileged key; never expose to a client         |
+| `REDIS_URL`                         | API and worker           | Native Upstash `rediss://` connection                     |
+| `WORKER_MODE`                       | API and worker           | `disabled`, `embedded` or `standalone`                    |
+| `TIGRIS_ACCESS_KEY_ID`              | API and worker secret    | Tigris S3 credential                                      |
+| `TIGRIS_SECRET_ACCESS_KEY`          | API and worker secret    | Tigris S3 credential                                      |
+| `TIGRIS_BUCKET`                     | API and worker           | Private Tigris bucket                                     |
+| `TIGRIS_ENDPOINT`                   | API and worker           | Tigris S3 endpoint                                        |
 
-`API_HOST`, `API_PORT`/`PORT`, `CORS_ORIGINS`, `DATABASE_POOL_MAX`,
-`REDIS_CONNECT_TIMEOUT_MS`, `LOG_LEVEL`, `SENTRY_DSN` and the generic `S3_*` family are also
-validated server inputs. Store all non-public values in Render, Supabase, Upstash, Tigris or R2
-secret management rather than committing an `.env` file.
+`API_HOST`, `API_PORT`/`PORT`, `CORS_ORIGINS`, the `AUTH_*` session/password settings,
+`DATABASE_POOL_MAX`, `REDIS_CONNECT_TIMEOUT_MS`, `LOG_LEVEL`, `SENTRY_DSN` and the generic `S3_*`
+family are also validated server inputs. Store all non-public values in Render, Supabase, Upstash,
+Tigris or R2 secret management rather than committing an `.env` file.
 
 The root command wrapper strips backend variables before direct web/mobile commands. Turborepo's
 global environment allowlist contains only public/non-secret build inputs; the API workspace has a
 separate development-task allowlist for server configuration.
 
+Mobile `development`, `preview`, and `production` profiles select equally named EAS environments
+through `apps/mobile/eas.json`. Configure each profile's API/Web Google ID pair together; do not use
+`NODE_ENV` to select mobile credentials. EAS Android/iOS builds fail before native generation if a
+required client ID is missing.
+
 ## Deployment order and smoke checks
 
 1. Provision Supabase and apply reviewed Drizzle migrations once.
 2. Provision Upstash and a private Tigris or R2 bucket.
-3. Create the Render services from `render.yaml` and set every `sync: false` value.
-4. Confirm `/v1/health/live`, `/v1/health/ready`, `/v1/health` and `/docs` on the Render URL.
-5. Set the Cloudflare build/runtime `NEXT_PUBLIC_API_URL` and deploy the web Worker.
-6. Confirm the web shell calls only the Render `/v1` API and check correlation IDs in API logs.
-7. Exercise the selected worker mode and verify its processing state in the health response.
+3. Create environment-specific Google OAuth clients and register exact web origins/native signing
+   identities following `GOOGLE_AUTH_SETUP.md`.
+4. Create the Render services from `render.yaml` and set every `sync: false` value.
+5. Confirm `/v1/health/live`, `/v1/health/ready`, `/v1/health` and `/docs` on the Render URL.
+6. Set Cloudflare `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, then deploy the Worker.
+7. Exercise password login, invited Google login, controlled linking, refresh rotation, unlinking
+   and logout against staging before production rollout.
+8. Confirm the web shell calls only the Render `/v1` API and check correlation IDs in API logs.
+9. Exercise the selected worker mode and verify its processing state in the health response.
 
 The deployment should be rolled back at the application/image level if smoke checks fail. Follow
 `DATABASE_MIGRATIONS.md` for database rollback considerations; never edit production migration

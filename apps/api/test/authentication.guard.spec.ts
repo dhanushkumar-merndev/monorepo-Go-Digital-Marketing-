@@ -94,7 +94,10 @@ function activeSession(context: AuthorizationContext): SessionAccessRecord {
 }
 
 function executionContext(request: object, handler: () => void): ExecutionContext {
-  class TestController {}
+  class TestController {
+    readonly controllerName = 'TestController';
+  }
+
   return {
     getClass: () => TestController,
     getHandler: () => handler,
@@ -140,7 +143,7 @@ describe('AuthenticationGuard role and scope enforcement', () => {
         store,
         new AuthorizationPolicy(),
       );
-      const handler = () => undefined;
+      const handler = (): undefined => undefined;
       Reflect.defineMetadata(REQUIRED_PERMISSIONS_KEY, ['organization.users.read'], handler);
       const access = await tokens.issue({
         membershipId: authorization.membershipId,
@@ -184,7 +187,7 @@ describe('AuthenticationGuard role and scope enforcement', () => {
       store,
       new AuthorizationPolicy(),
     );
-    const handler = () => undefined;
+    const handler = (): undefined => undefined;
     Reflect.defineMetadata(REQUIRED_PERMISSIONS_KEY, ['organization.branches.read'], handler);
     Reflect.defineMetadata(BRANCH_PARAMETER_KEY, 'branchId', handler);
     const access = await tokens.issue({

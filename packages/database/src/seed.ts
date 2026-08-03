@@ -8,9 +8,14 @@ import {
   CANONICAL_ROLE_CODES,
   PERMISSION_CODES,
   agencies,
+  agencyDefaults,
   authenticationIdentities,
+  branchWorkingHours,
   branches,
   clientOrganizations,
+  clientAdministrationSettings,
+  clientIntegrationReadiness,
+  clientModuleFlags,
   membershipBranchScopes,
   membershipTeamScopes,
   memberships,
@@ -159,8 +164,13 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'organization.roles.read': 'Read role and permission definitions.',
   'organization.roles.manage': 'Manage client role mappings.',
   'organization.sessions.manage': 'Revoke another client user session with audit evidence.',
+  'organization.branches.manage': 'Create and update branches within the active client.',
+  'organization.teams.manage': 'Create and update teams within the active client.',
+  'organization.settings.manage': 'Configure client profile, working hours and retention settings.',
+  'organization.audit.read': 'Read account and permission administration audit events.',
   'platform.agencies.manage': 'Manage agency-level platform configuration.',
   'platform.clients.manage': 'Manage client organization lifecycle.',
+  'platform.defaults.manage': 'Configure safe agency-wide administrative defaults.',
   'platform.support_elevation.manage': 'Create and revoke reasoned support elevation.',
 };
 
@@ -186,7 +196,12 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.roles.read',
     'platform.agencies.manage',
     'platform.clients.manage',
+    'platform.defaults.manage',
     'platform.support_elevation.manage',
+    'organization.branches.manage',
+    'organization.teams.manage',
+    'organization.settings.manage',
+    'organization.audit.read',
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -197,6 +212,10 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.roles.read',
     'organization.roles.manage',
     'organization.sessions.manage',
+    'organization.branches.manage',
+    'organization.teams.manage',
+    'organization.settings.manage',
+    'organization.audit.read',
   ],
   MANAGER: [
     ...accountPermissions,
@@ -577,6 +596,131 @@ async function seed(): Promise<void> {
             target: teams.id,
             set: { name: team.name, active: true, updatedAt: SEED_DATE },
           });
+      }
+
+      await transaction
+        .insert(agencyDefaults)
+        .values({
+          agencyId: AGENCY_ID,
+          defaultTimezone: 'Asia/Kolkata',
+          defaultFeatureFlags: { LEADS: true },
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: agencyDefaults.agencyId,
+          set: {
+            defaultTimezone: 'Asia/Kolkata',
+            defaultFeatureFlags: { LEADS: true },
+            updatedAt: SEED_DATE,
+          },
+        });
+      for (const clientOrganizationId of [ALPHA_CLIENT_ID, BETA_CLIENT_ID]) {
+        await transaction
+          .insert(clientAdministrationSettings)
+          .values({
+            clientOrganizationId,
+            leadAssignmentReady: clientOrganizationId === ALPHA_CLIENT_ID,
+            retentionPolicy: { audit_log_days: 365, export_days: 30, recording_days: 180 },
+            updatedAt: SEED_DATE,
+          })
+          .onConflictDoUpdate({
+            target: clientAdministrationSettings.clientOrganizationId,
+            set: {
+              leadAssignmentReady: clientOrganizationId === ALPHA_CLIENT_ID,
+              retentionPolicy: { audit_log_days: 365, export_days: 30, recording_days: 180 },
+              updatedAt: SEED_DATE,
+            },
+          });
+        for (const module of [
+          'LEADS',
+          'TELEPHONY',
+          'INBOX',
+          'TEST_RIDES',
+          'INVENTORY',
+          'BOOKING_BILLING',
+          'DELIVERY_RC',
+          'POST_SALE',
+          'INTEGRATIONS',
+        ]) {
+          await transaction
+            .insert(clientModuleFlags)
+            .values({
+              clientOrganizationId,
+              module,
+              enabled: module === 'LEADS',
+              reason:
+                module === 'LEADS' ? 'Development seed default' : 'Not enabled in development seed',
+              updatedAt: SEED_DATE,
+            })
+            .onConflictDoUpdate({
+              target: [clientModuleFlags.clientOrganizationId, clientModuleFlags.module],
+              set: {
+                enabled: module === 'LEADS',
+                reason:
+                  module === 'LEADS'
+                    ? 'Development seed default'
+                    : 'Not enabled in development seed',
+                updatedAt: SEED_DATE,
+              },
+            });
+        }
+        for (const integration of [
+          'WHATSAPP',
+          'TELEPHONY',
+          'META_LEADS',
+          'GOOGLE_BUSINESS',
+          'GOOGLE_ADS',
+          'EMAIL',
+          'SMS',
+        ]) {
+          await transaction
+            .insert(clientIntegrationReadiness)
+            .values({
+              clientOrganizationId,
+              integration,
+              status: 'NOT_CONNECTED',
+              detail: 'Development placeholder',
+              updatedAt: SEED_DATE,
+            })
+            .onConflictDoUpdate({
+              target: [
+                clientIntegrationReadiness.clientOrganizationId,
+                clientIntegrationReadiness.integration,
+              ],
+              set: {
+                status: 'NOT_CONNECTED',
+                detail: 'Development placeholder',
+                updatedAt: SEED_DATE,
+              },
+            });
+        }
+      }
+      for (const branch of [
+        { id: ALPHA_PUNE_BRANCH_ID, clientOrganizationId: ALPHA_CLIENT_ID },
+        { id: ALPHA_MUMBAI_BRANCH_ID, clientOrganizationId: ALPHA_CLIENT_ID },
+        { id: BETA_NASHIK_BRANCH_ID, clientOrganizationId: BETA_CLIENT_ID },
+      ]) {
+        for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek += 1) {
+          await transaction
+            .insert(branchWorkingHours)
+            .values({
+              clientOrganizationId: branch.clientOrganizationId,
+              branchId: branch.id,
+              dayOfWeek,
+              isClosed: dayOfWeek === 0,
+              ...(dayOfWeek === 0 ? {} : { opensAt: '09:30:00', closesAt: '18:30:00' }),
+              updatedAt: SEED_DATE,
+            })
+            .onConflictDoUpdate({
+              target: [branchWorkingHours.branchId, branchWorkingHours.dayOfWeek],
+              set: {
+                isClosed: dayOfWeek === 0,
+                opensAt: dayOfWeek === 0 ? null : '09:30:00',
+                closesAt: dayOfWeek === 0 ? null : '18:30:00',
+                updatedAt: SEED_DATE,
+              },
+            });
+        }
       }
 
       for (const role of roleDefinitions) {

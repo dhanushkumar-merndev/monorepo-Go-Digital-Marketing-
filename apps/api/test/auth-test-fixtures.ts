@@ -11,6 +11,8 @@ export const TEST_AUTH_CONFIG: AuthRuntimeConfig = {
   cookieSecure: false,
   loginLockoutSeconds: 900,
   loginMaxAttempts: 5,
+  googleChallengeTtlSeconds: 300,
+  googleClientIds: ['123456789-test.apps.googleusercontent.com'],
   passwordPepper: 'test-password-pepper-with-at-least-thirty-two-characters',
   passwordResetTokenTtlSeconds: 1_800,
   refreshTokenPepper: 'test-refresh-token-pepper-with-at-least-thirty-two-characters',
@@ -20,15 +22,19 @@ export const TEST_AUTH_CONFIG: AuthRuntimeConfig = {
 
 export function authStoreStub(overrides: Partial<AuthStore> = {}): AuthStore {
   const defaults: AuthStore = {
+    consumeExternalAuthChallenge: () => Promise.resolve(undefined),
     consumePasswordReset: () => Promise.resolve({ kind: 'invalid' }),
     createPasswordReset: () => Promise.resolve(),
+    createExternalAuthChallenge: () => Promise.resolve(),
     createSession: () => Promise.resolve(),
     createSupportElevation: () => Promise.resolve(undefined),
     findPasswordIdentity: () => Promise.resolve(undefined),
     getBranch: () => Promise.resolve(undefined),
     getMembership: () => Promise.resolve(undefined),
+    getSessionClientType: () => Promise.resolve(undefined),
     getTeam: () => Promise.resolve(undefined),
     listAgencyClients: () => Promise.resolve([]),
+    listAuthenticationMethods: () => Promise.resolve([]),
     listAvailableMemberships: () => Promise.resolve([]),
     listBranches: () => Promise.resolve([]),
     listSessions: () => Promise.resolve([]),
@@ -37,6 +43,7 @@ export function authStoreStub(overrides: Partial<AuthStore> = {}): AuthStore {
     recordAuthenticationAudit: () => Promise.resolve(),
     recordLoginFailure: () => Promise.resolve(),
     recordLoginSuccess: () => Promise.resolve(),
+    resolveGoogleLoginIdentity: () => Promise.resolve({ kind: 'not_invited' }),
     resolveSession: () => Promise.resolve({ kind: 'session_revoked' }),
     revokeAllSessions: () => Promise.resolve(0),
     revokeByRefreshToken: () => Promise.resolve(false),
@@ -45,6 +52,8 @@ export function authStoreStub(overrides: Partial<AuthStore> = {}): AuthStore {
     rotateRefreshToken: () => Promise.resolve({ kind: 'invalid' }),
     switchMembership: () => Promise.resolve(undefined),
     touchSession: () => Promise.resolve(),
+    linkGoogleIdentity: () => Promise.resolve({ kind: 'identity_conflict' }),
+    unlinkGoogleIdentity: () => Promise.resolve({ kind: 'identity_not_linked' }),
     validatePasswordReset: () => Promise.resolve(false),
   };
 

@@ -1,7 +1,20 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [".env", ".env.local", ".env.*.local"],
-  "globalEnv": ["CI", "EXPO_PUBLIC_API_URL", "NEXT_PUBLIC_API_URL", "NEXTJS_ENV", "NODE_ENV", "TZ"],
+  "globalEnv": [
+    "CI",
+    "EAS_BUILD_PLATFORM",
+    "EXPO_PUBLIC_API_URL",
+    "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
+    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
+    "GOOGLE_AUTH_CHALLENGE_TTL_SECONDS",
+    "GOOGLE_AUTH_WEB_CLIENT_ID",
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_GOOGLE_CLIENT_ID",
+    "NEXTJS_ENV",
+    "NODE_ENV",
+    "TZ"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

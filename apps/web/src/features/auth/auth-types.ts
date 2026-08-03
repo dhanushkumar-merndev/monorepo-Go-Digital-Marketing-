@@ -54,6 +54,34 @@ export interface SessionDevice {
   userAgent?: string;
 }
 
+export type AuthenticationProvider = 'GOOGLE' | 'PASSWORD';
+
+export interface AuthenticationMethod {
+  canUnlink: boolean;
+  connected: boolean;
+  email?: string;
+  lastUsedAt?: string;
+  linkedAt?: string;
+  provider: AuthenticationProvider;
+  unlinkBlockReason?: string;
+}
+
+export interface GoogleAuthChallenge {
+  challengeId: string;
+  expiresAt: string;
+  nonce: string;
+}
+
+export interface GoogleCredentialInput {
+  challengeId: string;
+  idToken: string;
+}
+
+export interface GoogleIdentityUnlinkResult {
+  currentSessionRevoked: boolean;
+  unlinked: true;
+}
+
 export interface LoginInput {
   deviceName?: string;
   email: string;

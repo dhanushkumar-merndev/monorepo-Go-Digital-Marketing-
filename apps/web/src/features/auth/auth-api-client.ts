@@ -1,8 +1,16 @@
 import { publicEnvironment } from '@/lib/env';
 import {
+  authenticationMethodsResponseSchema,
   createSupportElevationRequestSchema,
   clientOrganizationListResponseSchema,
   forgotPasswordResponseSchema,
+  googleAuthChallengeRequestSchema,
+  googleAuthChallengeResponseSchema,
+  googleLinkRequestSchema,
+  googleLinkResponseSchema,
+  googleLoginRequestSchema,
+  googleLoginResponseSchema,
+  googleUnlinkResponseSchema,
   loginResponseSchema,
   logoutAllResponseSchema,
   logoutResponseSchema,
@@ -16,8 +24,12 @@ import {
 } from '@gdm/contracts';
 
 import type {
+  AuthenticationMethod,
   AuthSession,
   AuthUser,
+  GoogleAuthChallenge,
+  GoogleCredentialInput,
+  GoogleIdentityUnlinkResult,
   LoginInput,
   MembershipSummary,
   OrganizationOption,
@@ -126,6 +138,90 @@ export class AuthApiClient {
 
     this.consumeAccessToken(response);
     return this.me();
+  }
+
+  async createGoogleLoginChallenge(): Promise<GoogleAuthChallenge> {
+    const request = googleAuthChallengeRequestSchema.parse({ client_type: 'web' });
+    return normalizeGoogleChallenge(
+      googleAuthChallengeResponseSchema.parse(
+        await this.request<unknown>(
+          '/auth/google/challenge',
+          { body: JSON.stringify(request), method: 'POST' },
+          { allowRefresh: false, authenticated: false },
+        ),
+      ),
+    );
+  }
+
+  async loginWithGoogle(input: GoogleCredentialInput): Promise<AuthSession> {
+    const request = googleLoginRequestSchema.parse({
+      challenge_id: input.challengeId,
+      client_type: 'web',
+      device: {
+        device_name: browserDeviceName(),
+        platform: 'web',
+      },
+      id_token: input.idToken,
+    });
+    const response = googleLoginResponseSchema.parse(
+      await this.request<unknown>(
+        '/auth/google/login',
+        {
+          body: JSON.stringify(request),
+          method: 'POST',
+        },
+        { allowRefresh: false, authenticated: false },
+      ),
+    );
+
+    this.consumeAccessToken(response);
+    return this.me();
+  }
+
+  async createGoogleLinkChallenge(): Promise<GoogleAuthChallenge> {
+    return normalizeGoogleChallenge(
+      googleAuthChallengeResponseSchema.parse(
+        await this.request<unknown>('/auth/google/link-challenge', {
+          body: JSON.stringify({}),
+          method: 'POST',
+        }),
+      ),
+    );
+  }
+
+  async linkGoogleIdentity(input: GoogleCredentialInput): Promise<void> {
+    const request = googleLinkRequestSchema.parse({
+      challenge_id: input.challengeId,
+      id_token: input.idToken,
+    });
+    googleLinkResponseSchema.parse(
+      await this.request<unknown>('/auth/google/link', {
+        body: JSON.stringify(request),
+        method: 'POST',
+      }),
+    );
+  }
+
+  async listAuthenticationMethods(): Promise<AuthenticationMethod[]> {
+    const response = authenticationMethodsResponseSchema.parse(
+      await this.request<unknown>('/auth/methods'),
+    );
+    return response.methods.map(normalizeAuthenticationMethod);
+  }
+
+  async unlinkGoogleIdentity(): Promise<GoogleIdentityUnlinkResult> {
+    const response = googleUnlinkResponseSchema.parse(
+      await this.request<unknown>('/auth/google', { method: 'DELETE' }),
+    );
+
+    if (response.current_session_revoked) {
+      this.clearAccessToken();
+    }
+
+    return {
+      currentSessionRevoked: response.current_session_revoked,
+      unlinked: response.unlinked,
+    };
   }
 
   async me(): Promise<AuthSession> {
@@ -528,6 +624,40 @@ function normalizeSessionDevice(value: unknown): SessionDevice {
   if (revokedAt !== undefined) result.revokedAt = revokedAt;
   if (userAgent !== undefined) result.userAgent = userAgent;
   return result;
+}
+
+function normalizeGoogleChallenge(value: unknown): GoogleAuthChallenge {
+  const record = asRecord(value);
+  return {
+    challengeId: requiredString(record, 'challenge_id'),
+    expiresAt: requiredString(record, 'expires_at'),
+    nonce: requiredString(record, 'nonce'),
+  };
+}
+
+function normalizeAuthenticationMethod(value: unknown): AuthenticationMethod {
+  const record = asRecord(value);
+  const provider = requiredString(record, 'provider');
+
+  if (provider !== 'GOOGLE' && provider !== 'PASSWORD') {
+    throw new ApiClientError('The server returned an invalid response.', 502, 'INVALID_RESPONSE');
+  }
+
+  const method: AuthenticationMethod = {
+    canUnlink: record.can_unlink === true,
+    connected: record.connected === true,
+    provider,
+  };
+  const email = readString(record, 'email');
+  const lastUsedAt = readString(record, 'last_used_at');
+  const linkedAt = readString(record, 'linked_at');
+  const unlinkBlockReason = readString(record, 'unlink_block_reason');
+
+  if (email !== undefined) method.email = email;
+  if (lastUsedAt !== undefined) method.lastUsedAt = lastUsedAt;
+  if (linkedAt !== undefined) method.linkedAt = linkedAt;
+  if (unlinkBlockReason !== undefined) method.unlinkBlockReason = unlinkBlockReason;
+  return method;
 }
 
 function asRecord(value: unknown): JsonRecord {

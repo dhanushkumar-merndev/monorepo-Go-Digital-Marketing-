@@ -1,0 +1,248 @@
+import { z } from 'zod';
+
+import {
+  assignmentScopeSchema,
+  canonicalRoleCodeSchema,
+  membershipScopeModeSchema,
+} from '../auth/authorization.js';
+import {
+  clientOrganizationSummarySchema,
+  normalizedEmailSchema,
+  tenantUserSummarySchema,
+} from '../auth/contracts.js';
+
+const idSchema = z.uuid();
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/u);
+const nonBlank = (max: number) => z.string().trim().min(1).max(max);
+
+export const clientModuleSchema = z.enum([
+  'LEADS',
+  'TELEPHONY',
+  'INBOX',
+  'TEST_RIDES',
+  'INVENTORY',
+  'BOOKING_BILLING',
+  'DELIVERY_RC',
+  'POST_SALE',
+  'INTEGRATIONS',
+]);
+export const integrationReadinessStatusSchema = z.enum([
+  'NOT_CONNECTED',
+  'PENDING_APPROVAL',
+  'ACTIVE',
+  'DEGRADED',
+  'ACTION_REQUIRED',
+  'SUSPENDED',
+]);
+
+export const createClientRequestSchema = z.object({
+  code: nonBlank(64).regex(
+    /^[A-Z0-9_-]+$/u,
+    'Use uppercase letters, numbers, underscores or hyphens',
+  ),
+  display_name: nonBlank(200),
+  legal_name: nonBlank(240),
+  timezone: nonBlank(64).default('Asia/Kolkata'),
+});
+export const updateClientRequestSchema = z.object({
+  display_name: nonBlank(200),
+  legal_name: nonBlank(240),
+  timezone: nonBlank(64),
+});
+export const setClientStatusRequestSchema = z.object({
+  reason: nonBlank(1000),
+  status: z.enum(['ACTIVE', 'SUSPENDED']),
+});
+export const clientDetailResponseSchema = z.object({
+  client_organization: clientOrganizationSummarySchema,
+  usage: z.object({
+    active_users: z.number().int().nonnegative(),
+    branches: z.number().int().nonnegative(),
+    teams: z.number().int().nonnegative(),
+  }),
+});
+
+export const createBranchRequestSchema = z.object({
+  code: nonBlank(64),
+  name: nonBlank(200),
+  timezone: nonBlank(64),
+});
+export const updateBranchRequestSchema = z.object({
+  active: z.boolean(),
+  code: nonBlank(64),
+  name: nonBlank(200),
+  timezone: nonBlank(64),
+});
+export const createTeamRequestSchema = z.object({
+  branch_id: idSchema,
+  code: nonBlank(64),
+  name: nonBlank(200),
+});
+export const updateTeamRequestSchema = z.object({
+  active: z.boolean(),
+  code: nonBlank(64),
+  name: nonBlank(200),
+});
+
+export const workingHoursEntrySchema = z
+  .object({
+    closes_at: timeSchema.nullable(),
+    day_of_week: z.number().int().min(0).max(6),
+    is_closed: z.boolean(),
+    opens_at: timeSchema.nullable(),
+  })
+  .superRefine((entry, context) => {
+    if (entry.is_closed && (entry.opens_at !== null || entry.closes_at !== null))
+      context.addIssue({ code: 'custom', message: 'Closed days cannot have opening times' });
+    if (
+      !entry.is_closed &&
+      (!entry.opens_at || !entry.closes_at || entry.opens_at >= entry.closes_at)
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'Open days need an opening time before their closing time',
+      });
+  });
+export const setWorkingHoursRequestSchema = z.object({
+  hours: z.array(workingHoursEntrySchema).length(7),
+});
+export const workingHoursResponseSchema = z.object({
+  branch_id: idSchema,
+  hours: z.array(workingHoursEntrySchema),
+  version: z.number().int().positive(),
+});
+
+export const inviteUserRequestSchema = z
+  .object({
+    branch_ids: z.array(idSchema),
+    branch_scope_mode: membershipScopeModeSchema,
+    display_name: nonBlank(160),
+    email: normalizedEmailSchema,
+    role_code: canonicalRoleCodeSchema.exclude(['AGENCY_ADMIN']),
+    team_ids: z.array(idSchema),
+    team_scope_mode: membershipScopeModeSchema,
+    assignment_scope: assignmentScopeSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.branch_scope_mode !== 'SELECTED' && value.branch_ids.length > 0)
+      context.addIssue({
+        code: 'custom',
+        path: ['branch_ids'],
+        message: 'Branch IDs require SELECTED scope',
+      });
+    if (value.team_scope_mode !== 'SELECTED' && value.team_ids.length > 0)
+      context.addIssue({
+        code: 'custom',
+        path: ['team_ids'],
+        message: 'Team IDs require SELECTED scope',
+      });
+  });
+export const updateMembershipRequestSchema = z
+  .object({
+    branch_ids: z.array(idSchema),
+    branch_scope_mode: membershipScopeModeSchema,
+    role_code: canonicalRoleCodeSchema.exclude(['AGENCY_ADMIN']),
+    team_ids: z.array(idSchema),
+    team_scope_mode: membershipScopeModeSchema,
+    assignment_scope: assignmentScopeSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.branch_scope_mode !== 'SELECTED' && value.branch_ids.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['branch_ids'],
+        message: 'Branch IDs require SELECTED scope',
+      });
+    }
+    if (value.team_scope_mode !== 'SELECTED' && value.team_ids.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['team_ids'],
+        message: 'Team IDs require SELECTED scope',
+      });
+    }
+  });
+export const setMembershipStatusRequestSchema = z.object({
+  reason: nonBlank(1000),
+  status: z.enum(['ACTIVE', 'ENDED', 'SUSPENDED']),
+});
+export const tenantUserDetailSchema = tenantUserSummarySchema.extend({
+  assignment_scope: assignmentScopeSchema,
+  branch_ids: z.array(idSchema),
+  branch_scope_mode: membershipScopeModeSchema,
+  team_ids: z.array(idSchema),
+  team_scope_mode: membershipScopeModeSchema,
+});
+export const tenantUserDetailResponseSchema = z.object({
+  user: tenantUserDetailSchema,
+  invitation_delivery: z.literal('UNAVAILABLE'),
+});
+
+export const setClientSettingsRequestSchema = z.object({
+  lead_assignment_ready: z.boolean(),
+  retention_policy: z.object({
+    audit_log_days: z.number().int().min(30).max(3650),
+    export_days: z.number().int().min(1).max(365),
+    recording_days: z.number().int().min(1).max(3650),
+  }),
+});
+export const clientSettingsResponseSchema = z.object({
+  lead_assignment_ready: z.boolean(),
+  retention_policy: z.record(z.string(), z.unknown()),
+  version: z.number().int().positive(),
+});
+export const setModuleFlagRequestSchema = z.object({
+  enabled: z.boolean(),
+  reason: z.string().trim().max(500).nullable(),
+});
+export const moduleFlagsResponseSchema = z.object({
+  flags: z.array(
+    z.object({ enabled: z.boolean(), module: clientModuleSchema, reason: z.string().nullable() }),
+  ),
+});
+export const integrationReadinessResponseSchema = z.object({
+  integrations: z.array(
+    z.object({
+      detail: z.string().nullable(),
+      integration: z.string(),
+      status: integrationReadinessStatusSchema,
+    }),
+  ),
+});
+export const setAgencyDefaultsRequestSchema = z.object({
+  default_feature_flags: z.record(clientModuleSchema, z.boolean()),
+  default_timezone: nonBlank(64),
+});
+export const agencyDefaultsResponseSchema = z.object({
+  default_feature_flags: z.record(clientModuleSchema, z.boolean()),
+  default_timezone: z.string(),
+});
+export const auditTimelineResponseSchema = z.object({
+  events: z.array(
+    z.object({
+      action: z.string(),
+      actor_id: z.string().nullable(),
+      created_at: z.iso.datetime({ offset: true }),
+      entity_id: z.string(),
+      entity_type: z.string(),
+      new_summary: z.record(z.string(), z.unknown()).nullable(),
+      old_summary: z.record(z.string(), z.unknown()).nullable(),
+      reason: z.string().nullable(),
+    }),
+  ),
+});
+
+export type CreateClientRequest = z.infer<typeof createClientRequestSchema>;
+export type UpdateClientRequest = z.infer<typeof updateClientRequestSchema>;
+export type SetClientStatusRequest = z.infer<typeof setClientStatusRequestSchema>;
+export type CreateBranchRequest = z.infer<typeof createBranchRequestSchema>;
+export type UpdateBranchRequest = z.infer<typeof updateBranchRequestSchema>;
+export type CreateTeamRequest = z.infer<typeof createTeamRequestSchema>;
+export type UpdateTeamRequest = z.infer<typeof updateTeamRequestSchema>;
+export type InviteUserRequest = z.infer<typeof inviteUserRequestSchema>;
+export type UpdateMembershipRequest = z.infer<typeof updateMembershipRequestSchema>;
+export type SetMembershipStatusRequest = z.infer<typeof setMembershipStatusRequestSchema>;
+export type SetWorkingHoursRequest = z.infer<typeof setWorkingHoursRequestSchema>;
+export type SetClientSettingsRequest = z.infer<typeof setClientSettingsRequestSchema>;
+export type SetModuleFlagRequest = z.infer<typeof setModuleFlagRequestSchema>;
+export type SetAgencyDefaultsRequest = z.infer<typeof setAgencyDefaultsRequestSchema>;

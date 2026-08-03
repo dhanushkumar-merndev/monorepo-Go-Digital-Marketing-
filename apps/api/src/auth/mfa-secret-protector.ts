@@ -25,10 +25,9 @@ export class MfaSecretProtector {
     private readonly activeKeyId: string,
     encodedKeys: Readonly<Record<string, string>>,
   ) {
-    const entries = Object.entries(encodedKeys).map(([keyId, encoded]) => [
-      keyId,
-      decodeKey(encoded),
-    ] as const);
+    const entries = Object.entries(encodedKeys).map(
+      ([keyId, encoded]) => [keyId, decodeKey(encoded)] as const,
+    );
     this.keys = new Map(entries);
 
     if (!this.keys.has(activeKeyId)) {
@@ -37,7 +36,11 @@ export class MfaSecretProtector {
   }
 
   protect(secret: string, associatedData: string): ProtectedMfaSecret {
-    const key = this.keys.get(this.activeKeyId)!;
+    const key = this.keys.get(this.activeKeyId);
+    if (!key) {
+      throw new Error('AUTH_MFA_ACTIVE_KEY_ID must identify a configured encryption key.');
+    }
+
     const nonce = randomBytes(NONCE_BYTES);
     const cipher = createCipheriv('aes-256-gcm', key, nonce);
     cipher.setAAD(Buffer.from(associatedData, 'utf8'));

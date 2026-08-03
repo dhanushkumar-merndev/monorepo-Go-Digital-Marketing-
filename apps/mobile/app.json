@@ -29,8 +29,13 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
+    "ios": {
+      "bundleIdentifier": "in.godigitalmarketing.automobilecrm",
+      "supportsTablet": false
+    },
     "plugins": [
       "expo-router",
+      "react-native-nitro-google-signin",
       [
         "expo-secure-store",
         {

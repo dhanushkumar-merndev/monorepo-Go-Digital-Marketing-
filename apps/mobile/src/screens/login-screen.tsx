@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AccessibilityInfo, View } from 'react-native';
+import { GoogleSignInButton } from 'react-native-nitro-google-signin';
 
 import { Alert, AppText, Badge, Button, Card, Screen, TextField } from '../components/ui';
 import { useAuth } from '../auth/auth-provider';
@@ -7,7 +8,9 @@ import type { LoginInput } from '../auth/auth-types';
 import { useAuthStore } from '../store/auth-store';
 
 export interface LoginFormProps {
+  googleAvailable?: boolean;
   loading: boolean;
+  onGoogleLogin?(): Promise<void>;
   message?: string;
   onLogin(input: LoginInput): Promise<void>;
 }
@@ -32,7 +35,13 @@ export function validateLoginInput(input: LoginInput): LoginErrors {
   return errors;
 }
 
-export function LoginForm({ loading, message, onLogin }: LoginFormProps) {
+export function LoginForm({
+  googleAvailable = false,
+  loading,
+  message,
+  onGoogleLogin,
+  onLogin,
+}: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<LoginErrors>({});
@@ -68,6 +77,34 @@ export function LoginForm({ loading, message, onLogin }: LoginFormProps) {
       {message ? <Alert description={message} title="Sign-in unavailable" tone="danger" /> : null}
 
       <Card>
+        <GoogleSignInButton
+          accessibilityLabel="Sign in with Google"
+          colorScheme="light"
+          disabled={loading || !googleAvailable || !onGoogleLogin}
+          loading={loading}
+          onPress={() => {
+            void onGoogleLogin?.();
+          }}
+          signInBehavior="none"
+          size="wide"
+          style={{ height: 48, width: '100%' }}
+          testID="google-sign-in-button"
+        />
+        {!googleAvailable ? (
+          <AppText tone="muted" variant="caption">
+            Google sign-in needs a configured native development or production build. Email and
+            password sign-in remains available.
+          </AppText>
+        ) : null}
+
+        <View className="flex-row items-center gap-3">
+          <View className="h-px flex-1 bg-border" />
+          <AppText tone="muted" variant="caption">
+            OR
+          </AppText>
+          <View className="h-px flex-1 bg-border" />
+        </View>
+
         <TextField
           autoCapitalize="none"
           autoComplete="email"
@@ -115,9 +152,17 @@ export function LoginForm({ loading, message, onLogin }: LoginFormProps) {
 }
 
 export function LoginScreen() {
-  const { login } = useAuth();
+  const { googleAvailable, login, loginWithGoogle } = useAuth();
   const message = useAuthStore((state) => state.message);
   const loading = useAuthStore((state) => state.status === 'authenticating');
 
-  return <LoginForm loading={loading} {...(message ? { message } : {})} onLogin={login} />;
+  return (
+    <LoginForm
+      googleAvailable={googleAvailable}
+      loading={loading}
+      {...(message ? { message } : {})}
+      onGoogleLogin={loginWithGoogle}
+      onLogin={login}
+    />
+  );
 }

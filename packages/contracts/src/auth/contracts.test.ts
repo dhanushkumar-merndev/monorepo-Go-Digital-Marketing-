@@ -4,6 +4,9 @@ import {
   CANONICAL_ROLE_CODES,
   apiErrorEnvelopeSchema,
   createSupportElevationRequestSchema,
+  googleAuthChallengeResponseSchema,
+  googleLinkRequestSchema,
+  googleLoginRequestSchema,
   loginAuthenticatedResponseSchema,
   loginMfaEnrollmentRequiredResponseSchema,
   loginMfaRequiredResponseSchema,
@@ -90,9 +93,9 @@ describe('authentication and authorization contracts', () => {
 
   it('validates MFA enrollment and method-specific verification inputs', () => {
     const challengeToken = 'c'.repeat(48);
-    expect(
-      mfaEnrollmentStartRequestSchema.parse({ challenge_token: challengeToken }),
-    ).toEqual({ challenge_token: challengeToken });
+    expect(mfaEnrollmentStartRequestSchema.parse({ challenge_token: challengeToken })).toEqual({
+      challenge_token: challengeToken,
+    });
     expect(
       mfaEnrollmentStartResponseSchema.safeParse({
         authenticator_id: id,
@@ -248,6 +251,44 @@ describe('authentication and authorization contracts', () => {
       createSupportElevationRequestSchema.safeParse({
         client_organization_id: id,
         reason: 'help',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts only bounded Google ID-token inputs and ignores unverified profile fields', () => {
+    const parsed = googleLoginRequestSchema.parse({
+      challenge_id: id,
+      client_type: 'web',
+      email: 'attacker-controlled@example.com',
+      id_token: `header.${'a'.repeat(32)}.signature`,
+      provider_subject: 'attacker-controlled-subject',
+    });
+    expect(parsed).toEqual({
+      challenge_id: id,
+      client_type: 'web',
+      id_token: `header.${'a'.repeat(32)}.signature`,
+    });
+    expect(
+      googleLinkRequestSchema.safeParse({
+        challenge_id: id,
+        id_token: 'x'.repeat(8_193),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires a UUID challenge and a 32-byte hexadecimal Google nonce', () => {
+    expect(
+      googleAuthChallengeResponseSchema.safeParse({
+        challenge_id: id,
+        expires_at: timestamp,
+        nonce: 'a'.repeat(64),
+      }).success,
+    ).toBe(true);
+    expect(
+      googleAuthChallengeResponseSchema.safeParse({
+        challenge_id: id,
+        expires_at: timestamp,
+        nonce: 'not-a-provider-nonce',
       }).success,
     ).toBe(false);
   });

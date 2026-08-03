@@ -1,12 +1,12 @@
 # Go Digital Automobile CRM
 
 Production foundation for the Go Digital Automobile CRM: a pnpm/Turborepo monorepo with a
-Next.js office dashboard, NestJS API, Expo Android application, shared contracts and design
+Next.js office dashboard, NestJS API, Expo Android/iOS application, shared contracts and design
 tokens, and a portable PostgreSQL/Redis/S3 infrastructure boundary.
 
-Phase 0 deliberately contains no dealership workflows. Authentication, tenancy, users, leads,
-inventory, bookings, delivery, registration and post-sale modules belong to later approved
-phases.
+Phase 1 provides invitation-only email/password and Google authentication, rotating CRM sessions,
+tenant selection, and default-deny authorization. Dealership workflows such as leads, inventory,
+bookings, delivery, registration, and post-sale remain deferred to later approved phases.
 
 ## Quick start
 
@@ -37,7 +37,8 @@ run `pnpm dev:worker` in a separate terminal with PostgreSQL and Redis available
 - OpenAPI: `http://localhost:4000/docs`
 - MinIO development console: `http://localhost:9001`
 
-The Expo development client requires an Android emulator or device. For an emulator, set
+Google authentication uses a native module and therefore requires an Expo development build, not
+Expo Go. For an Android emulator, set
 `EXPO_PUBLIC_API_URL=http://10.0.2.2:4000/v1` because Android does not map its own `localhost` to
 the host computer.
 
@@ -78,13 +79,15 @@ See [local development](docs/implementation/LOCAL_DEVELOPMENT.md),
 [migration workflow](docs/implementation/DATABASE_MIGRATIONS.md) for the complete setup. The
 [deployment guide](docs/implementation/DEPLOYMENT.md) covers Cloudflare/OpenNext, Render,
 Supabase, Upstash, Tigris/R2 and all BullMQ worker modes.
+The [Google authentication setup](docs/implementation/GOOGLE_AUTH_SETUP.md) lists the exact web,
+Android, and iOS OAuth client configuration.
 
 ## Repository layout
 
 ```text
 apps/
   api/                  NestJS REST API and infrastructure adapters
-  mobile/               Expo Router Android application
+  mobile/               Expo Router Android/iOS application
   web/                  Next.js App Router office shell
 packages/
   config/               environment validation and secret/public boundaries

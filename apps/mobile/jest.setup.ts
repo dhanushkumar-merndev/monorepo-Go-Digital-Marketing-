@@ -13,3 +13,9 @@ jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => undefined),
 }));
+
+jest.mock(
+  'react-native-nitro-google-signin',
+  () => jest.requireActual('./src/__tests__/nitro-google-signin.mock'),
+  { virtual: true },
+);

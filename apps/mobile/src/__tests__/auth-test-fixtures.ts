@@ -68,6 +68,20 @@ export class FakeAuthTransport implements AuthTransport {
     Parameters<AuthTransport['authorizedRequest']>
   >(async () => jsonResponse(200, { ok: true }));
 
+  readonly createGoogleChallenge = jest.fn<
+    ReturnType<AuthTransport['createGoogleChallenge']>,
+    Parameters<AuthTransport['createGoogleChallenge']>
+  >(async () => ({
+    challengeId: '10000000-0000-4000-8000-000000000099',
+    expiresAt: new Date(Date.now() + 5 * 60 * 1_000).toISOString(),
+    nonce: 'a'.repeat(64),
+  }));
+
+  readonly googleLogin = jest.fn<
+    ReturnType<AuthTransport['googleLogin']>,
+    Parameters<AuthTransport['googleLogin']>
+  >(async () => sessionFixture());
+
   readonly login = jest.fn<ReturnType<AuthTransport['login']>, Parameters<AuthTransport['login']>>(
     async () => sessionFixture(),
   );

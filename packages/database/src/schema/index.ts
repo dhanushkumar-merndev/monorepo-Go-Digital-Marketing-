@@ -6,6 +6,8 @@ export {
   authenticationIdentityStatusEnum,
   authenticationProviderEnum,
   devicePlatformEnum,
+  externalAuthChallengePurposeEnum,
+  externalAuthChallenges,
   passwordResetTokens,
   refreshSessions,
   refreshTokenRotations,
@@ -36,6 +38,13 @@ export {
   clientOrganizations,
   teams,
 } from './organizations.js';
+export {
+  agencyDefaults,
+  branchWorkingHours,
+  clientAdministrationSettings,
+  clientIntegrationReadiness,
+  clientModuleFlags,
+} from './administration.js';
 export {
   auditEvents,
   auditOutcomeEnum,

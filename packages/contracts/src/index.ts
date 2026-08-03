@@ -1,4 +1,5 @@
 export * from './auth/index.js';
+export * from './administration/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

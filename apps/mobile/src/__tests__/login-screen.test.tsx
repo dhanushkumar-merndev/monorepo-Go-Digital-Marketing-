@@ -3,6 +3,36 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { LoginForm } from '../screens/login-screen';
 
 describe('LoginForm', () => {
+  it('starts native Google sign-in only when this build is configured', async () => {
+    const onGoogleLogin = jest.fn(async () => undefined);
+    const view = await render(
+      <LoginForm
+        googleAvailable
+        loading={false}
+        onGoogleLogin={onGoogleLogin}
+        onLogin={jest.fn(async () => undefined)}
+      />,
+    );
+
+    await fireEvent.press(view.getByRole('button', { name: 'Sign in with Google' }));
+
+    expect(onGoogleLogin).toHaveBeenCalledTimes(1);
+    expect(view.queryByText(/needs a configured native/iu)).toBeNull();
+
+    await view.rerender(
+      <LoginForm
+        googleAvailable={false}
+        loading={false}
+        onGoogleLogin={onGoogleLogin}
+        onLogin={jest.fn(async () => undefined)}
+      />,
+    );
+    expect(
+      view.getByRole('button', { name: 'Sign in with Google' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+    expect(view.getByText(/needs a configured native/iu)).toBeTruthy();
+  });
+
   it('shows field errors and does not submit incomplete credentials', async () => {
     const onLogin = jest.fn(async () => undefined);
     const view = await render(<LoginForm loading={false} onLogin={onLogin} />);

@@ -4,6 +4,18 @@ import { booleanFromEnvironment, emptyStringToUndefined } from './shared.js';
 
 const secretSchema = z.string().min(32).max(4_096);
 const durationSchema = z.coerce.number().int();
+const optionalGoogleClientIdSchema = z.preprocess(
+  emptyStringToUndefined,
+  z
+    .string()
+    .trim()
+    .max(512)
+    .regex(
+      /^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/u,
+      'Google OAuth client IDs must end in .apps.googleusercontent.com',
+    )
+    .optional(),
+);
 
 const rawAuthEnvironmentSchema = z
   .object({
@@ -32,6 +44,8 @@ const rawAuthEnvironmentSchema = z
       emptyStringToUndefined,
       booleanFromEnvironment.optional(),
     ),
+    GOOGLE_AUTH_WEB_CLIENT_ID: optionalGoogleClientIdSchema,
+    GOOGLE_AUTH_CHALLENGE_TTL_SECONDS: durationSchema.min(60).max(600).default(300),
   })
   .transform((environment) => ({
     nodeEnv: environment.NODE_ENV,
@@ -52,8 +66,24 @@ const rawAuthEnvironmentSchema = z
     refreshCookieSecure:
       environment.AUTH_REFRESH_COOKIE_SECURE ??
       (environment.NODE_ENV === 'staging' || environment.NODE_ENV === 'production'),
+    googleClientIds: environment.GOOGLE_AUTH_WEB_CLIENT_ID
+      ? [environment.GOOGLE_AUTH_WEB_CLIENT_ID]
+      : [],
+    googleWebClientId: environment.GOOGLE_AUTH_WEB_CLIENT_ID,
+    googleChallengeTtlSeconds: environment.GOOGLE_AUTH_CHALLENGE_TTL_SECONDS,
   }))
   .superRefine((environment, context) => {
+    if (
+      (environment.nodeEnv === 'staging' || environment.nodeEnv === 'production') &&
+      environment.googleWebClientId === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['GOOGLE_AUTH_WEB_CLIENT_ID'],
+        message: 'Hosted environments require a Google web OAuth client ID',
+      });
+    }
+
     if (
       (environment.nodeEnv === 'staging' || environment.nodeEnv === 'production') &&
       !environment.refreshCookieSecure

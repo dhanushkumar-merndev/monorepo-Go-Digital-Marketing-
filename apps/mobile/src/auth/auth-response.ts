@@ -1,18 +1,27 @@
 import {
   loginResponseSchema,
   refreshResponseSchema,
-  type LoginResponse,
+  type LoginAuthenticatedResponse,
   type RefreshResponse,
 } from '@gdm/contracts';
 
 import { InvalidApiResponseError } from '../api/api-error';
 import type { MobileSession } from './auth-types';
 
-type AuthenticationGrant = LoginResponse | RefreshResponse;
+/**
+ * The mobile client only consumes fully authenticated grants. Mobile has no MFA challenge
+ * surface, so an `MFA_REQUIRED`/`MFA_ENROLLMENT_REQUIRED` login response is not a usable
+ * session and is rejected like any other unexpected payload.
+ */
+type AuthenticationGrant = LoginAuthenticatedResponse | RefreshResponse;
 
 function parseGrant(value: unknown): AuthenticationGrant {
   const login = loginResponseSchema.safeParse(value);
   if (login.success) {
+    if (login.data.status !== 'AUTHENTICATED') {
+      throw new InvalidApiResponseError();
+    }
+
     return login.data;
   }
 

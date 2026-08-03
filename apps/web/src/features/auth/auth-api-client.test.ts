@@ -9,6 +9,8 @@ const clientId = '33333333-3333-4333-8333-333333333333';
 const agencyId = '44444444-4444-4444-8444-444444444444';
 const roleId = '55555555-5555-4555-8555-555555555555';
 const sessionId = '66666666-6666-4666-8666-666666666666';
+const googleLoginNonce = 'a'.repeat(64);
+const googleLinkNonce = 'b'.repeat(64);
 const now = '2026-08-02T12:00:00.000Z';
 const later = '2026-08-02T13:00:00.000Z';
 
@@ -64,6 +66,14 @@ function refreshPayload() {
     support_elevation: null,
     user: { display_name: 'Asha Rao', email: 'asha@example.com', id: userId, status: 'ACTIVE' },
   };
+}
+
+function googleLoginPayload() {
+  return {
+    ...refreshPayload(),
+    requires_membership_selection: false,
+    status: 'AUTHENTICATED',
+  } as const;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -185,5 +195,160 @@ describe('AuthApiClient', () => {
     expect(error).toBeInstanceOf(ApiClientError);
     expect((error as ApiClientError).message).not.toContain('database password');
     expect((error as ApiClientError).message).toContain('unexpected error');
+  });
+
+  it('creates a nonce-bound Google web session through the existing HttpOnly cookie transport', async () => {
+    const challengeId = '77777777-7777-4777-8777-777777777777';
+    const idToken = 'google-signed-id-token-with-at-least-32-characters';
+    const calls: {
+      body: unknown;
+      credentials: RequestCredentials | undefined;
+      url: string;
+    }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+          credentials: init?.credentials,
+          url,
+        });
+        if (url.endsWith('/auth/google/challenge')) {
+          return jsonResponse({
+            challenge_id: challengeId,
+            expires_at: '2026-08-03T13:00:00.000Z',
+            nonce: googleLoginNonce,
+          });
+        }
+        if (url.endsWith('/auth/google/login')) return jsonResponse(googleLoginPayload());
+        if (url.endsWith('/me')) return jsonResponse(refreshPayload());
+        return authError('UNEXPECTED_ROUTE', 404);
+      }),
+    );
+    const client = new AuthApiClient();
+
+    await expect(client.createGoogleLoginChallenge()).resolves.toEqual({
+      challengeId,
+      expiresAt: '2026-08-03T13:00:00.000Z',
+      nonce: googleLoginNonce,
+    });
+    await expect(client.loginWithGoogle({ challengeId, idToken })).resolves.toMatchObject({
+      user: { email: 'asha@example.com' },
+    });
+
+    expect(calls.every((call) => call.credentials === 'include')).toBe(true);
+    expect(calls[0]?.body).toEqual({ client_type: 'web' });
+    expect(calls[1]?.body).toMatchObject({
+      challenge_id: challengeId,
+      client_type: 'web',
+      device: { platform: 'web' },
+      id_token: idToken,
+    });
+    expect(calls[1]?.body).not.toHaveProperty('email');
+    expect(calls[1]?.body).not.toHaveProperty('refresh_token');
+  });
+
+  it('lists, links, and unlinks only the authenticated user Google identity', async () => {
+    const challengeId = '77777777-7777-4777-8777-777777777777';
+    const idToken = 'google-signed-id-token-with-at-least-32-characters';
+    const calls: {
+      authorization: string | null;
+      body: unknown;
+      method: string | undefined;
+      url: string;
+    }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({
+          authorization: new Headers(init?.headers).get('Authorization'),
+          body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+          method: init?.method,
+          url,
+        });
+        if (url.endsWith('/auth/google/link-challenge')) {
+          return jsonResponse({
+            challenge_id: challengeId,
+            expires_at: '2026-08-03T13:00:00.000Z',
+            nonce: googleLinkNonce,
+          });
+        }
+        if (url.endsWith('/auth/google/link')) {
+          return jsonResponse({
+            linked: true,
+            method: {
+              can_unlink: true,
+              connected: true,
+              email: 'asha@gmail.com',
+              last_used_at: null,
+              linked_at: now,
+              provider: 'GOOGLE',
+              unlink_block_reason: null,
+            },
+          });
+        }
+        if (url.endsWith('/auth/methods')) {
+          return jsonResponse({
+            methods: [
+              {
+                can_unlink: false,
+                connected: true,
+                email: 'asha@example.com',
+                last_used_at: now,
+                linked_at: now,
+                provider: 'PASSWORD',
+                unlink_block_reason: 'LAST_LOGIN_METHOD',
+              },
+              {
+                can_unlink: true,
+                connected: true,
+                email: 'asha@gmail.com',
+                last_used_at: null,
+                linked_at: now,
+                provider: 'GOOGLE',
+                unlink_block_reason: null,
+              },
+            ],
+          });
+        }
+        if (url.endsWith('/auth/google') && init?.method === 'DELETE') {
+          return jsonResponse({ current_session_revoked: false, unlinked: true });
+        }
+        return authError('UNEXPECTED_ROUTE', 404);
+      }),
+    );
+    const client = new AuthApiClient();
+    client.setAccessToken(accessToken);
+
+    await client.createGoogleLinkChallenge();
+    await client.linkGoogleIdentity({ challengeId, idToken });
+    await expect(client.listAuthenticationMethods()).resolves.toEqual([
+      {
+        canUnlink: false,
+        connected: true,
+        email: 'asha@example.com',
+        lastUsedAt: now,
+        linkedAt: now,
+        provider: 'PASSWORD',
+        unlinkBlockReason: 'LAST_LOGIN_METHOD',
+      },
+      {
+        canUnlink: true,
+        connected: true,
+        email: 'asha@gmail.com',
+        linkedAt: now,
+        provider: 'GOOGLE',
+      },
+    ]);
+    await expect(client.unlinkGoogleIdentity()).resolves.toEqual({
+      currentSessionRevoked: false,
+      unlinked: true,
+    });
+
+    expect(calls.every((call) => call.authorization === `Bearer ${accessToken}`)).toBe(true);
+    expect(calls[1]?.body).toEqual({ challenge_id: challengeId, id_token: idToken });
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE' });
   });
 });

@@ -7,6 +7,7 @@ import {
   PERMISSION_CODES,
   authenticationAuditEvents,
   authenticationIdentities,
+  externalAuthChallenges,
   membershipBranchScopes,
   membershipTeamScopes,
   memberships,
@@ -52,10 +53,32 @@ describe('Phase 1 identity and authorization schema', () => {
         'password_key_length',
         'failed_attempt_count',
         'locked_until',
+        'provider_email_normalized',
       ]),
     );
     expect(config.indexes.map((entry) => entry.config.name)).toContain(
       'authentication_identities_lockout_idx',
+    );
+    expect(config.indexes.map((entry) => entry.config.name)).toContain(
+      'authentication_identities_user_provider_uidx',
+    );
+  });
+
+  it('persists client-bound, single-use Google authentication challenges', () => {
+    const config = getTableConfig(externalAuthChallenges);
+    expect(config.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'purpose',
+        'client_type',
+        'nonce_hash',
+        'user_id',
+        'session_id',
+        'expires_at',
+        'consumed_at',
+      ]),
+    );
+    expect(config.indexes.map((entry) => entry.config.name)).toContain(
+      'external_auth_challenges_nonce_hash_uidx',
     );
   });
 

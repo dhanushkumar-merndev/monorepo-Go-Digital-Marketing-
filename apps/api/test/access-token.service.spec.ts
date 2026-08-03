@@ -14,6 +14,8 @@ const config: AuthRuntimeConfig = {
   cookieSecure: false,
   loginLockoutSeconds: 900,
   loginMaxAttempts: 5,
+  googleChallengeTtlSeconds: 300,
+  googleClientIds: ['123456789-test.apps.googleusercontent.com'],
   passwordPepper: 'password-pepper-with-at-least-thirty-two-characters',
   passwordResetTokenTtlSeconds: 1_800,
   refreshTokenPepper: 'refresh-pepper-with-at-least-thirty-two-characters',

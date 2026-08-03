@@ -1,6 +1,9 @@
 import {
   createSupportElevationRequestSchema,
   forgotPasswordRequestSchema,
+  googleAuthChallengeRequestSchema,
+  googleLinkRequestSchema,
+  googleLoginRequestSchema,
   loginRequestSchema,
   logoutRequestSchema,
   refreshRequestSchema,
@@ -11,6 +14,9 @@ import {
   PERMISSION_CODES,
   type CreateSupportElevationRequest,
   type ForgotPasswordRequest,
+  type GoogleAuthChallengeRequest,
+  type GoogleLinkRequest,
+  type GoogleLoginRequest,
   type LoginRequest,
   type LogoutRequest,
   type RefreshRequest,
@@ -45,6 +51,39 @@ export class LoginDto implements LoginRequest {
 
   @ApiProperty({ maxLength: 1024, minLength: 1, type: String, writeOnly: true })
   declare password: string;
+}
+
+export class GoogleAuthChallengeDto implements GoogleAuthChallengeRequest {
+  static readonly schema = googleAuthChallengeRequestSchema;
+
+  @ApiProperty({ enum: ['web', 'mobile'], type: String })
+  declare client_type: GoogleAuthChallengeRequest['client_type'];
+}
+
+export class GoogleLoginDto implements GoogleLoginRequest {
+  static readonly schema = googleLoginRequestSchema;
+
+  @ApiProperty({ format: 'uuid', type: String })
+  declare challenge_id: string;
+
+  @ApiProperty({ enum: ['web', 'mobile'], type: String })
+  declare client_type: GoogleLoginRequest['client_type'];
+
+  @ApiPropertyOptional({ type: () => DeviceDto })
+  declare device: GoogleLoginRequest['device'];
+
+  @ApiProperty({ maxLength: 8192, minLength: 20, type: String, writeOnly: true })
+  declare id_token: string;
+}
+
+export class GoogleLinkDto implements GoogleLinkRequest {
+  static readonly schema = googleLinkRequestSchema;
+
+  @ApiProperty({ format: 'uuid', type: String })
+  declare challenge_id: string;
+
+  @ApiProperty({ maxLength: 8192, minLength: 20, type: String, writeOnly: true })
+  declare id_token: string;
 }
 
 export class RefreshDto implements RefreshRequest {
@@ -295,8 +334,66 @@ export class RefreshResponseDto extends MeResponseDto {
 }
 
 export class LoginResponseDto extends RefreshResponseDto {
+  @ApiProperty({ enum: ['AUTHENTICATED'], type: String })
+  declare status: string;
+
   @ApiProperty({ type: Boolean })
   declare requires_membership_selection: boolean;
+}
+
+export class GoogleAuthChallengeResponseDto {
+  @ApiProperty({ format: 'uuid', type: String })
+  declare challenge_id: string;
+
+  @ApiProperty({ pattern: '^[0-9a-f]{64}$', type: String })
+  declare nonce: string;
+
+  @ApiProperty({ format: 'date-time', type: String })
+  declare expires_at: string;
+}
+
+export class AuthenticationMethodResponseDto {
+  @ApiProperty({ enum: ['PASSWORD', 'GOOGLE'], type: String })
+  declare provider: string;
+
+  @ApiProperty({ type: Boolean })
+  declare connected: boolean;
+
+  @ApiProperty({ format: 'email', nullable: true, type: String })
+  declare email: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true, type: String })
+  declare linked_at: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true, type: String })
+  declare last_used_at: string | null;
+
+  @ApiProperty({ type: Boolean })
+  declare can_unlink: boolean;
+
+  @ApiProperty({ enum: ['LAST_LOGIN_METHOD', 'NOT_SUPPORTED'], nullable: true, type: String })
+  declare unlink_block_reason: string | null;
+}
+
+export class AuthenticationMethodsResponseDto {
+  @ApiProperty({ type: [AuthenticationMethodResponseDto] })
+  declare methods: AuthenticationMethodResponseDto[];
+}
+
+export class GoogleLinkResponseDto {
+  @ApiProperty({ type: Boolean })
+  declare linked: boolean;
+
+  @ApiProperty({ type: () => AuthenticationMethodResponseDto })
+  declare method: AuthenticationMethodResponseDto;
+}
+
+export class GoogleUnlinkResponseDto {
+  @ApiProperty({ type: Boolean })
+  declare unlinked: boolean;
+
+  @ApiProperty({ type: Boolean })
+  declare current_session_revoked: boolean;
 }
 
 export class SwitchMembershipResponseDto {

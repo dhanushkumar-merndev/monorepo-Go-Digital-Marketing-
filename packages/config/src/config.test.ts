@@ -11,6 +11,7 @@ const validServerEnvironment = {
   REDIS_URL: 'redis://localhost:6379',
   S3_BUCKET: 'crm-test',
 };
+const googleWebClientId = '123456789-webclient.apps.googleusercontent.com';
 
 describe('environment validation', () => {
   it('parses API-only authentication settings without changing worker infrastructure config', () => {
@@ -72,6 +73,7 @@ describe('environment validation', () => {
         AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
         AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
         AUTH_REFRESH_COOKIE_SAME_SITE: 'none',
+        GOOGLE_AUTH_WEB_CLIENT_ID: googleWebClientId,
       }).refreshCookieSecure,
     ).toBe(true);
   });
@@ -86,6 +88,28 @@ describe('environment validation', () => {
         AUTH_REFRESH_COOKIE_SECURE: 'false',
       }),
     ).toThrow();
+  });
+
+  it('validates Google audiences and requires a web audience in hosted environments', () => {
+    const secrets = {
+      AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
+      AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
+      AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+    };
+    expect(() => parseAuthEnvironment({ ...secrets, NODE_ENV: 'production' })).toThrow();
+    expect(() =>
+      parseAuthEnvironment({
+        ...secrets,
+        GOOGLE_AUTH_WEB_CLIENT_ID: 'invalid-client-id',
+      }),
+    ).toThrow();
+    expect(
+      parseAuthEnvironment({
+        ...secrets,
+        NODE_ENV: 'production',
+        GOOGLE_AUTH_WEB_CLIENT_ID: googleWebClientId,
+      }).googleClientIds,
+    ).toEqual([googleWebClientId]);
   });
 
   it('parses server configuration and normalizes CORS origins', () => {
@@ -220,13 +244,36 @@ describe('environment validation', () => {
       parseWebEnvironment({
         NODE_ENV: 'production',
         NEXT_PUBLIC_API_URL: 'https://api.example.com/v1',
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
       }),
-    ).toEqual({ NEXT_PUBLIC_API_URL: 'https://api.example.com/v1' });
+    ).toEqual({
+      NEXT_PUBLIC_API_URL: 'https://api.example.com/v1',
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
+    });
     expect(
       parseWebEnvironment({
         NODE_ENV: 'production',
         NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1',
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
       }),
-    ).toEqual({ NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1' });
+    ).toEqual({
+      NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1',
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
+    });
+  });
+
+  it('validates and exposes only the browser-safe Google web client ID', () => {
+    expect(() =>
+      parseWebEnvironment({ NEXT_PUBLIC_GOOGLE_CLIENT_ID: 'not-a-google-client' }),
+    ).toThrow();
+    expect(
+      parseWebEnvironment({
+        GOOGLE_AUTH_WEB_CLIENT_SECRET: 'must-not-be-returned',
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
+      }),
+    ).toEqual({
+      NEXT_PUBLIC_API_URL: 'http://localhost:4000/v1',
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientId,
+    });
   });
 });

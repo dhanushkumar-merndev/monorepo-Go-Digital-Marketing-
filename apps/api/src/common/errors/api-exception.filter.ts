@@ -78,6 +78,15 @@ function detailsFrom(value: unknown): ApiErrorDetail[] {
 }
 
 function payloadFor(exception: unknown, statusCode: number): ApiErrorPayload {
+  if (statusCode === HttpStatus.SERVICE_UNAVAILABLE) {
+    return {
+      code: 'PROVIDER_UNAVAILABLE',
+      message: 'A required provider is temporarily unavailable.',
+      details: [],
+      retryable: true,
+    };
+  }
+
   if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
     return {
       code: 'INTERNAL_ERROR',

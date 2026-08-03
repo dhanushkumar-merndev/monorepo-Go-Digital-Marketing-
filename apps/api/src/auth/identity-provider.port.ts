@@ -1,19 +1,15 @@
-/**
- * Boundary for a future OAuth/OIDC identity provider. Phase 1 deliberately
- * ships only the password provider; provider tokens never enter domain code.
- */
-export interface ExternalIdentityProfile {
+export const GOOGLE_IDENTITY_PROVIDER = Symbol('GOOGLE_IDENTITY_PROVIDER');
+
+export interface VerifiedGoogleIdentity {
   email: string;
-  provider: string;
   providerSubject: string;
 }
 
-export interface ExternalIdentityProviderPort {
-  exchangeAuthorizationCode(input: {
-    authorizationCode: string;
-    codeVerifier: string;
-    redirectUri: string;
-  }): Promise<ExternalIdentityProfile>;
+export interface GoogleIdentityProviderPort {
+  verifyIdToken(input: {
+    expectedNonceHash: string;
+    idToken: string;
+  }): Promise<VerifiedGoogleIdentity>;
 }
 
 /**

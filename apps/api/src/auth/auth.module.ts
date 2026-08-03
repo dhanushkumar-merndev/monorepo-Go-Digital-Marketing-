@@ -16,6 +16,10 @@ import {
   RedisAuthenticationRateLimitStore,
 } from './authentication-rate-limiter.js';
 import { DrizzleAuthStore } from './drizzle-auth.store.js';
+import { GoogleAuthController } from './google-auth.controller.js';
+import { GoogleAuthenticationService } from './google-authentication.service.js';
+import { GoogleIdentityProviderAdapter } from './google-identity-provider.adapter.js';
+import { GOOGLE_IDENTITY_PROVIDER } from './identity-provider.port.js';
 import { MeController } from './me.controller.js';
 import { OrganizationAccessController } from './organization-access.controller.js';
 import { OrganizationAccessService } from './organization-access.service.js';
@@ -25,6 +29,8 @@ import {
   UnavailablePasswordResetDelivery,
 } from './password-reset-delivery.port.js';
 import { SupportElevationController } from './support-elevation.controller.js';
+import { AdministrationController } from '../administration/administration.controller.js';
+import { AdministrationService } from '../administration/administration.service.js';
 
 function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
   return {
@@ -38,6 +44,8 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     cookieSecure: environment.refreshCookieSecure,
     loginLockoutSeconds: environment.loginLockoutSeconds,
     loginMaxAttempts: environment.loginMaxAttempts,
+    googleChallengeTtlSeconds: environment.googleChallengeTtlSeconds,
+    googleClientIds: environment.googleClientIds,
     passwordPepper: environment.passwordPepper,
     passwordResetTokenTtlSeconds: environment.passwordResetTokenTtlSeconds,
     refreshTokenPepper: environment.refreshTokenPepper,
@@ -50,9 +58,11 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
   imports: [DatabaseInfrastructureModule, RedisInfrastructureModule],
   controllers: [
     AuthController,
+    GoogleAuthController,
     MeController,
     OrganizationAccessController,
     SupportElevationController,
+    AdministrationController,
   ],
   providers: [
     {
@@ -60,10 +70,13 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
       useFactory: (): AuthRuntimeConfig => toRuntimeConfig(parseAuthEnvironment(process.env)),
     },
     AccessTokenService,
+    AdministrationService,
     AuthenticationService,
     AuthenticationRateLimiter,
     AuthorizationPolicy,
     DrizzleAuthStore,
+    GoogleAuthenticationService,
+    GoogleIdentityProviderAdapter,
     OrganizationAccessService,
     PasswordHasher,
     UnavailablePasswordResetDelivery,
@@ -75,6 +88,10 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     {
       provide: AUTH_STORE,
       useExisting: DrizzleAuthStore,
+    },
+    {
+      provide: GOOGLE_IDENTITY_PROVIDER,
+      useExisting: GoogleIdentityProviderAdapter,
     },
     {
       provide: PASSWORD_RESET_DELIVERY,

@@ -49,6 +49,7 @@ const authResponse = {
     revoked_at: null,
   },
   support_elevation: null,
+  status: 'AUTHENTICATED',
   user: {
     display_name: 'Asha Singh',
     email: 'asha@example.com',
@@ -58,6 +59,66 @@ const authResponse = {
 };
 
 describe('HttpAuthTransport', () => {
+  it('obtains a one-time challenge and exchanges only the Google ID token for a CRM session', async () => {
+    const request = jest
+      .fn<Promise<Response>, [string, RequestInit?]>()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          challenge_id: '10000000-0000-4000-8000-000000000099',
+          expires_at: '2030-01-01T00:05:00.000Z',
+          nonce: 'a'.repeat(64),
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, authResponse));
+    const transport = new HttpAuthTransport('https://api.example.com/v1', request);
+
+    await expect(transport.createGoogleChallenge()).resolves.toEqual({
+      challengeId: '10000000-0000-4000-8000-000000000099',
+      expiresAt: '2030-01-01T00:05:00.000Z',
+      nonce: 'a'.repeat(64),
+    });
+    await transport.googleLogin(
+      {
+        challengeId: '10000000-0000-4000-8000-000000000099',
+        idToken: 'verified-by-backend-only',
+      },
+      { deviceName: 'iPhone app', platform: 'ios' },
+    );
+
+    expect(request.mock.calls[0]?.[0]).toBe('https://api.example.com/v1/auth/google/challenge');
+    expect(request.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({ client_type: 'mobile' }),
+        method: 'POST',
+      }),
+    );
+    expect(request.mock.calls[1]?.[0]).toBe('https://api.example.com/v1/auth/google/login');
+    expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body))).toEqual({
+      challenge_id: '10000000-0000-4000-8000-000000000099',
+      client_type: 'mobile',
+      device: { device_name: 'iPhone app', platform: 'ios' },
+      id_token: 'verified-by-backend-only',
+    });
+    expect(String(request.mock.calls[1]?.[1]?.body)).not.toMatch(
+      /"(?:client_organization|display_name|email|name|provider_subject|tenant)"\s*:/iu,
+    );
+  });
+
+  it('rejects malformed Google challenges before opening the provider flow', async () => {
+    const request = jest.fn<Promise<Response>, [string, RequestInit?]>(async () =>
+      jsonResponse(200, {
+        challenge_id: '10000000-0000-4000-8000-000000000099',
+        expires_at: 'not-a-date',
+        nonce: 'unsafe',
+      }),
+    );
+    const transport = new HttpAuthTransport('https://api.example.com/v1', request);
+
+    await expect(transport.createGoogleChallenge()).rejects.toMatchObject({
+      name: 'InvalidApiResponseError',
+    });
+  });
+
   it('uses the mobile login contract without accepting a tenant identifier', async () => {
     const request = jest.fn<Promise<Response>, [string, RequestInit?]>(async () =>
       jsonResponse(200, authResponse),

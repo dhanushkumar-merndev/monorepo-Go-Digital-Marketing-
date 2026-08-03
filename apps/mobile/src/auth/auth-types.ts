@@ -72,7 +72,18 @@ export interface LoginInput {
 
 export interface DeviceSessionMetadata {
   deviceName: string;
-  platform: 'android';
+  platform: 'android' | 'ios';
+}
+
+export interface GoogleAuthenticationChallenge {
+  challengeId: string;
+  expiresAt: string;
+  nonce: string;
+}
+
+export interface GoogleLoginInput {
+  challengeId: string;
+  idToken: string;
 }
 
 export interface LogoutResult {

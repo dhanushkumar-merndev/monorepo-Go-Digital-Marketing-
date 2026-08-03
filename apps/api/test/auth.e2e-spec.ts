@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import {
   apiErrorEnvelopeSchema,
-  loginResponseSchema,
+  loginAuthenticatedResponseSchema,
   meResponseSchema,
   refreshResponseSchema,
 } from '@gdm/contracts';
@@ -15,12 +15,14 @@ import { configureApplication } from '../src/application.js';
 import {
   AUTH_STORE,
   type AuthenticationAuditInput,
+  type CreateExternalAuthChallengeInput,
   type CreateSessionInput,
   type MembershipAccessRecord,
   type SessionAccessRecord,
 } from '../src/auth/auth-store.js';
 import { PasswordHasher } from '../src/auth/password-hasher.js';
 import { AUTH_RATE_LIMIT_STORE } from '../src/auth/authentication-rate-limiter.js';
+import { GOOGLE_IDENTITY_PROVIDER } from '../src/auth/identity-provider.port.js';
 import { authStoreStub, TEST_AUTH_CONFIG } from './auth-test-fixtures.js';
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
@@ -28,10 +30,12 @@ const IDENTITY_ID = '20000000-0000-4000-8000-000000000001';
 const MEMBERSHIP_ID = '30000000-0000-4000-8000-000000000001';
 const ROLE_ID = '40000000-0000-4000-8000-000000000001';
 const CLIENT_ID = '50000000-0000-4000-8000-000000000001';
+const OTHER_CLIENT_ID = '50000000-0000-4000-8000-000000000002';
 const AGENCY_ID = '60000000-0000-4000-8000-000000000001';
 const BRANCH_ID = '70000000-0000-4000-8000-000000000001';
 const TEAM_ID = '80000000-0000-4000-8000-000000000001';
 const OTHER_BRANCH_ID = '70000000-0000-4000-8000-000000000002';
+const OTHER_TEAM_ID = '80000000-0000-4000-8000-000000000002';
 const WEB_ORIGIN = 'http://localhost:3000';
 const PASSWORD = 'Correct horse battery staple';
 
@@ -61,6 +65,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
   let userStatus: 'ACTIVE' | 'SUSPENDED';
   let rotationMode: 'reused' | 'rotated' | 'user_inactive';
   let createdSession: CreateSessionInput | undefined;
+  let externalChallenge: CreateExternalAuthChallengeInput | undefined;
   let revoked: boolean;
   let rateLimitAllowed: boolean;
   let rotationAttempts: number;
@@ -81,6 +86,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     organizationDisplayName: 'Alpha Motors',
     permissionCodes: [
       'account.profile.read',
+      'account.profile.update',
       'account.sessions.read',
       'account.sessions.revoke',
       'account.tenant.select',
@@ -146,6 +152,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
       API_TRUSTED_PROXIES: '',
       CORS_ORIGINS: WEB_ORIGIN,
       DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/gdm_test',
+      GOOGLE_AUTH_WEB_CLIENT_ID: TEST_AUTH_CONFIG.googleClientIds[0],
       LOG_LEVEL: 'silent',
       REDIS_URL: 'redis://127.0.0.1:6379',
       S3_BUCKET: 'gdm-test-private',
@@ -154,6 +161,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     });
     audits = [];
     createdSession = undefined;
+    externalChallenge = undefined;
     revoked = false;
     rateLimitAllowed = true;
     rotationAttempts = 0;
@@ -161,6 +169,24 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     userStatus = 'ACTIVE';
     const passwordHash = await new PasswordHasher().hash(PASSWORD, TEST_AUTH_CONFIG.passwordPepper);
     const store = authStoreStub({
+      consumeExternalAuthChallenge: (input) => {
+        const challenge = externalChallenge;
+        externalChallenge = undefined;
+        return Promise.resolve(
+          challenge &&
+            challenge.id === input.challengeId &&
+            challenge.purpose === input.purpose &&
+            (input.clientType === undefined || challenge.clientType === input.clientType) &&
+            (input.userId === undefined || challenge.userId === input.userId) &&
+            (input.sessionId === undefined || challenge.sessionId === input.sessionId)
+            ? { clientType: challenge.clientType, nonceHash: challenge.nonceHash }
+            : undefined,
+        );
+      },
+      createExternalAuthChallenge: (input) => {
+        externalChallenge = input;
+        return Promise.resolve();
+      },
       createSession: (input) => {
         createdSession = input;
         return Promise.resolve();
@@ -187,6 +213,12 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
                 name: 'Alpha Main',
                 timezone: 'Asia/Kolkata',
               }
+            : undefined,
+        ),
+      getSessionClientType: (userId, sessionId) =>
+        Promise.resolve(
+          createdSession && userId === USER_ID && sessionId === createdSession.sessionId
+            ? createdSession.clientType
             : undefined,
         ),
       listAvailableMemberships: () => Promise.resolve([membership]),
@@ -223,6 +255,19 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
         audits.push(audit);
         return Promise.resolve();
       },
+      resolveGoogleLoginIdentity: () =>
+        Promise.resolve({
+          identity: {
+            email: 'client.admin@example.com',
+            id: IDENTITY_ID,
+            providerEmail: 'client.admin@example.com',
+            status: 'ACTIVE',
+            userDisplayName: 'Diya Client Admin',
+            userId: USER_ID,
+            userStatus,
+          },
+          kind: 'identity',
+        }),
       resolveSession: (sessionId, membershipId) =>
         Promise.resolve(
           !revoked &&
@@ -263,6 +308,14 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
       .useValue(store)
       .overrideProvider(AUTH_RATE_LIMIT_STORE)
       .useValue({ consume: () => Promise.resolve(rateLimitAllowed) })
+      .overrideProvider(GOOGLE_IDENTITY_PROVIDER)
+      .useValue({
+        verifyIdToken: () =>
+          Promise.resolve({
+            email: 'client.admin@example.com',
+            providerSubject: 'google-provider-subject',
+          }),
+      })
       .compile();
     application = testingModule.createNestApplication();
     configureApplication(application, { enableShutdownHooks: false, openApi: false });
@@ -287,7 +340,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
 
   it('creates a cookie-backed web session and serves live profile context', async () => {
     const response = await login();
-    const parsed = loginResponseSchema.parse(response.body);
+    const parsed = loginAuthenticatedResponseSchema.parse(response.body);
     assert.equal(parsed.refresh_token, undefined);
     assert.match(cookieFrom(response), /^gdm_refresh=/u);
     assert.match(setCookieHeader(response), /Path=\/v1\/auth/iu);
@@ -303,6 +356,63 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     assert.equal(me.body.active_membership.client_organization.id, CLIENT_ID);
     assert.equal(me.headers['cache-control'], 'no-store');
     meResponseSchema.parse(me.body);
+  });
+
+  it('creates the same cookie-backed CRM session after Google login and preserves tenant scope', async () => {
+    const challenge = await request(application.getHttpServer())
+      .post('/v1/auth/google/challenge')
+      .set('origin', WEB_ORIGIN)
+      .send({ client_type: 'web' })
+      .expect(200);
+    assert.match(challenge.body.nonce, /^[0-9a-f]{64}$/u);
+
+    const response = await request(application.getHttpServer())
+      .post('/v1/auth/google/login')
+      .set('origin', WEB_ORIGIN)
+      .send({
+        challenge_id: challenge.body.challenge_id,
+        client_type: 'web',
+        id_token: 'signed-google-id-token',
+      })
+      .expect(200);
+    const parsed = loginAuthenticatedResponseSchema.parse(response.body);
+    assert.equal(parsed.refresh_token, undefined);
+    assert.match(setCookieHeader(response), /HttpOnly/iu);
+    assert.equal(createdSession?.authenticationIdentityId, IDENTITY_ID);
+    assert.equal(createdSession?.audit.metadata?.provider, 'GOOGLE');
+
+    const denied = await request(application.getHttpServer())
+      .get(`/v1/branches/${OTHER_BRANCH_ID}`)
+      .set('x-client-organization-id', OTHER_CLIENT_ID)
+      .set('authorization', `Bearer ${parsed.access_token}`)
+      .expect(403);
+    assert.equal(denied.body.error.code, 'SCOPE_DENIED');
+
+    const deniedTeam = await request(application.getHttpServer())
+      .get(`/v1/teams/${OTHER_TEAM_ID}`)
+      .set('x-client-organization-id', OTHER_CLIENT_ID)
+      .set('authorization', `Bearer ${parsed.access_token}`)
+      .expect(403);
+    assert.equal(deniedTeam.body.error.code, 'SCOPE_DENIED');
+
+    const tenantUsers = await request(application.getHttpServer())
+      .get('/v1/users')
+      .set('x-client-organization-id', OTHER_CLIENT_ID)
+      .set('authorization', `Bearer ${parsed.access_token}`)
+      .expect(200);
+    assert.deepEqual(
+      tenantUsers.body.users.map((user: { user_id: string }) => user.user_id),
+      [USER_ID],
+    );
+
+    const linkChallenge = await request(application.getHttpServer())
+      .post('/v1/auth/google/link-challenge')
+      .set('authorization', `Bearer ${parsed.access_token}`)
+      .send({})
+      .expect(200);
+    assert.equal(externalChallenge?.clientType, 'web');
+    assert.equal(externalChallenge?.sessionId, createdSession?.sessionId);
+    assert.equal(linkChallenge.body.challenge_id, externalChallenge?.id);
   });
 
   it('rotates a browser refresh cookie and rejects reuse distinctly', async () => {
@@ -386,7 +496,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
   });
 
   it('denies another branch and derives tenant scope solely from the live session', async () => {
-    const loggedIn = loginResponseSchema.parse((await login()).body);
+    const loggedIn = loginAuthenticatedResponseSchema.parse((await login()).body);
     const denied = await request(application.getHttpServer())
       .get(`/v1/branches/${OTHER_BRANCH_ID}`)
       .set('authorization', `Bearer ${loggedIn.access_token}`)

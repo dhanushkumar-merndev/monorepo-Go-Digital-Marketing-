@@ -11,6 +11,8 @@ export interface AuthRuntimeConfig {
   cookieSecure: boolean;
   loginLockoutSeconds: number;
   loginMaxAttempts: number;
+  googleChallengeTtlSeconds: number;
+  googleClientIds: string[];
   passwordPepper: string;
   passwordResetTokenTtlSeconds: number;
   refreshTokenPepper: string;

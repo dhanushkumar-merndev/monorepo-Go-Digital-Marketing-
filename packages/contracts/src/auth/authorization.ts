@@ -28,8 +28,13 @@ export const PERMISSION_CODES = [
   'organization.roles.read',
   'organization.roles.manage',
   'organization.sessions.manage',
+  'organization.branches.manage',
+  'organization.teams.manage',
+  'organization.settings.manage',
+  'organization.audit.read',
   'platform.agencies.manage',
   'platform.clients.manage',
+  'platform.defaults.manage',
   'platform.support_elevation.manage',
 ] as const;
 

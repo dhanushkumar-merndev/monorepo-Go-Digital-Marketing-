@@ -14,6 +14,8 @@ const REDACTED_LOG_PATHS = [
   'req.body.password',
   'req.body.accessToken',
   'req.body.access_token',
+  'req.body.idToken',
+  'req.body.id_token',
   'req.body.refreshToken',
   'req.body.refresh_token',
   'req.body.secret',

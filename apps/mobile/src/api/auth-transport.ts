@@ -1,5 +1,6 @@
-import { logoutResponseSchema } from '@gdm/contracts';
+import { googleAuthChallengeResponseSchema, logoutResponseSchema } from '@gdm/contracts';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 import {
   ApiResponseError,
@@ -8,12 +9,20 @@ import {
   apiResponseError,
 } from './api-error';
 import { parseAuthenticationResponse } from '../auth/auth-response';
-import type { DeviceSessionMetadata, LoginInput, MobileSession } from '../auth/auth-types';
+import type {
+  DeviceSessionMetadata,
+  GoogleAuthenticationChallenge,
+  GoogleLoginInput,
+  LoginInput,
+  MobileSession,
+} from '../auth/auth-types';
 
 export type MobileFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface AuthTransport {
   authorizedRequest(session: MobileSession, path: string, init?: RequestInit): Promise<Response>;
+  createGoogleChallenge(): Promise<GoogleAuthenticationChallenge>;
+  googleLogin(input: GoogleLoginInput, device: DeviceSessionMetadata): Promise<MobileSession>;
   login(input: LoginInput, device: DeviceSessionMetadata): Promise<MobileSession>;
   logout(session: MobileSession): Promise<void>;
   refresh(session: MobileSession): Promise<MobileSession>;
@@ -65,6 +74,19 @@ async function jsonBody(response: Response): Promise<unknown> {
   }
 }
 
+function parseGoogleChallenge(value: unknown): GoogleAuthenticationChallenge {
+  const parsed = googleAuthChallengeResponseSchema.safeParse(value);
+  if (!parsed.success || !/^[a-f0-9]{64}$/iu.test(parsed.data.nonce)) {
+    throw new InvalidApiResponseError();
+  }
+
+  return {
+    challengeId: parsed.data.challenge_id,
+    expiresAt: parsed.data.expires_at,
+    nonce: parsed.data.nonce,
+  };
+}
+
 export class HttpAuthTransport implements AuthTransport {
   constructor(
     private readonly baseUrl: string,
@@ -80,6 +102,45 @@ export class HttpAuthTransport implements AuthTransport {
       ...init,
       headers: requestHeaders(init.headers, session.credentials.accessToken),
     });
+  }
+
+  async createGoogleChallenge(): Promise<GoogleAuthenticationChallenge> {
+    const response = await send(
+      this.fetchImplementation,
+      endpoint(this.baseUrl, '/auth/google/challenge'),
+      {
+        body: JSON.stringify({ client_type: 'mobile' }),
+        headers: requestHeaders({ 'Content-Type': 'application/json' }),
+        method: 'POST',
+      },
+    );
+
+    return parseGoogleChallenge(await jsonBody(response));
+  }
+
+  async googleLogin(
+    input: GoogleLoginInput,
+    device: DeviceSessionMetadata,
+  ): Promise<MobileSession> {
+    const response = await send(
+      this.fetchImplementation,
+      endpoint(this.baseUrl, '/auth/google/login'),
+      {
+        body: JSON.stringify({
+          challenge_id: input.challengeId,
+          client_type: 'mobile',
+          device: {
+            device_name: device.deviceName,
+            platform: device.platform,
+          },
+          id_token: input.idToken,
+        }),
+        headers: requestHeaders({ 'Content-Type': 'application/json' }),
+        method: 'POST',
+      },
+    );
+
+    return parseAuthenticationResponse(await jsonBody(response));
   }
 
   async login(input: LoginInput, device: DeviceSessionMetadata): Promise<MobileSession> {
@@ -134,8 +195,11 @@ export class HttpAuthTransport implements AuthTransport {
 
 export function currentDeviceSessionMetadata(): DeviceSessionMetadata {
   const version = Constants.expoConfig?.version;
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   return {
-    deviceName: `Go Digital CRM Android app${version ? ` ${version}` : ''}`,
-    platform: 'android',
+    deviceName: `Go Digital CRM ${platform === 'ios' ? 'iOS' : 'Android'} app${
+      version ? ` ${version}` : ''
+    }`,
+    platform,
   };
 }

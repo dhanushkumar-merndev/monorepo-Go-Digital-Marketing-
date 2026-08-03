@@ -2,3 +2,4 @@
 NEXTJS_ENV=development
 # Public, versioned NestJS API base. Production must also set this as a Cloudflare build variable.
 NEXT_PUBLIC_API_URL=http://localhost:4000/v1
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=123456789-example.apps.googleusercontent.com

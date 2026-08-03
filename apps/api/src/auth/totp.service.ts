@@ -47,7 +47,10 @@ export function encodeBase32(value: Uint8Array): string {
 export function decodeBase32(value: string): Buffer {
   const normalized = value.toUpperCase().replace(/[=\s-]/gu, '');
 
-  if (normalized.length === 0 || [...normalized].some((character) => !BASE32_ALPHABET.includes(character))) {
+  if (
+    normalized.length === 0 ||
+    [...normalized].some((character) => !BASE32_ALPHABET.includes(character))
+  ) {
     throw new Error('The TOTP secret is not valid Base32.');
   }
 
@@ -87,12 +90,10 @@ export function generateTotp(
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(timeStep));
   const digest = createHmac(algorithm, secret).update(counter).digest();
-  const offset = digest[digest.length - 1]! & 15;
-  const binary =
-    ((digest[offset]! & 127) << 24) |
-    ((digest[offset + 1]! & 255) << 16) |
-    ((digest[offset + 2]! & 255) << 8) |
-    (digest[offset + 3]! & 255);
+  // RFC 4226 dynamic truncation. Every supported digest is at least 20 bytes, so the
+  // four bytes starting at the low-nibble offset (max 15) are always in range.
+  const offset = digest.readUInt8(digest.length - 1) & 15;
+  const binary = digest.readUInt32BE(offset) & 0x7fff_ffff;
   const modulus = 10 ** digits;
 
   return String(binary % modulus).padStart(digits, '0');
@@ -103,7 +104,10 @@ export function hashRecoveryCode(code: string, pepper: string): string {
 }
 
 export function normalizeRecoveryCode(code: string): string {
-  return code.trim().toUpperCase().replace(/[^A-Z0-9]/gu, '');
+  return code
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/gu, '');
 }
 
 @Injectable()

@@ -2,16 +2,18 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@gdm/ui/components/alert';
 import { Badge } from '@gdm/ui/components/badge';
-import { Button } from '@gdm/ui/components/button';
+import { Button, buttonVariants } from '@gdm/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@gdm/ui/components/card';
 import {
   CheckCircle2,
+  KeyRound,
   LoaderCircle,
   RefreshCw,
   ShieldCheck,
   TriangleAlert,
   UserRound,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 
 import { ApiClientError } from '@/features/auth/auth-api-client';
@@ -139,6 +141,23 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound aria-hidden="true" className="text-primary size-4" />
+            Sign-in methods
+          </CardTitle>
+          <CardDescription>
+            Review your email/password and connected Google authentication methods.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link className={buttonVariants({ variant: 'outline' })} href="/profile/authentication">
+            Manage sign-in methods
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

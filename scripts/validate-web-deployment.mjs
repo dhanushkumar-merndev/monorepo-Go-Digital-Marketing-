@@ -1,4 +1,5 @@
 const apiUrlValue = process.env.NEXT_PUBLIC_API_URL;
+const googleClientIdValue = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 function deploymentApiUrl(value) {
   if (!value) {
@@ -26,3 +27,12 @@ function deploymentApiUrl(value) {
 }
 
 deploymentApiUrl(apiUrlValue);
+
+if (
+  !googleClientIdValue ||
+  !/^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/u.test(googleClientIdValue)
+) {
+  throw new Error(
+    'NEXT_PUBLIC_GOOGLE_CLIENT_ID must be an explicit Google OAuth web client ID before deploying.',
+  );
+}

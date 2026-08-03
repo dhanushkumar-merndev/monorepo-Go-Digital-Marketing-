@@ -3,6 +3,7 @@ import type { ApiEnvironment } from '@gdm/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Response } from 'express';
 import { Logger } from 'nestjs-pino';
+import { AUTH_RUNTIME_CONFIG, type AuthRuntimeConfig } from './auth/auth-runtime-config.js';
 import {
   attachCorrelationId,
   type CorrelatedRequest,
@@ -51,13 +52,14 @@ export function configureApplication(
   }
 
   if (options.openApi ?? true) {
+    const auth = application.get<AuthRuntimeConfig>(AUTH_RUNTIME_CONFIG);
     const configuration = new DocumentBuilder()
       .setTitle('Go Digital Automobile CRM API')
       .setDescription('Versioned REST API for the Go Digital Automobile CRM modular monolith.')
       .setVersion('0.1.0')
       .addBearerAuth()
       .addCookieAuth(
-        'gdm_refresh',
+        auth.cookieName,
         {
           description:
             'HttpOnly refresh cookie used by the web client. Mobile clients send refresh_token in the JSON body instead.',

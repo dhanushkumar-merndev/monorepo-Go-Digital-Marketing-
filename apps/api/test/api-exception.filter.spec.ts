@@ -9,15 +9,15 @@ describe('ApiExceptionFilter', () => {
     let body: unknown;
     let statusCode: number | undefined;
     const logger = {
-      setContext() {},
-      error() {},
-      warn() {},
+      setContext: (): void => undefined,
+      error: (): void => undefined,
+      warn: (): void => undefined,
     };
     const reporter: ErrorReporter = {
-      captureException() {},
+      captureException: (): void => undefined,
     };
     const response = {
-      setHeader() {},
+      setHeader: (): void => undefined,
       status(value: number) {
         statusCode = value;
         return this;
@@ -61,6 +61,66 @@ describe('ApiExceptionFilter', () => {
         message: 'An unexpected error occurred.',
         correlation_id: request.correlationId,
         details: [],
+        retryable: true,
+      },
+    });
+  });
+
+  it('keeps provider outages distinct while sanitizing the 503 response', () => {
+    let body: unknown;
+    let statusCode: number | undefined;
+    const logger = {
+      setContext: (): void => undefined,
+      error: (): void => undefined,
+      warn: (): void => undefined,
+    };
+    const reporter: ErrorReporter = {
+      captureException: (): void => undefined,
+    };
+    const response = {
+      setHeader: (): void => undefined,
+      status(value: number) {
+        statusCode = value;
+        return this;
+      },
+      json(value: unknown) {
+        body = value;
+        return this;
+      },
+    };
+    const request = {
+      correlationId: 'provider-outage-test',
+      headers: {},
+      method: 'POST',
+      path: '/v1/auth/google/login',
+      url: '/v1/auth/google/login',
+    };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => response,
+      }),
+    } as unknown as ArgumentsHost;
+
+    new ApiExceptionFilter(logger as never, reporter).catch(
+      new HttpException(
+        {
+          code: 'PROVIDER_UNAVAILABLE',
+          details: [{ reason: 'upstream transport and credential details' }],
+          message: 'sensitive upstream failure',
+        },
+        503,
+      ),
+      host,
+    );
+
+    assert.equal(statusCode, 503);
+    assert.deepEqual(body, {
+      error: {
+        code: 'PROVIDER_UNAVAILABLE',
+        correlation_id: 'provider-outage-test',
+        details: [],
+        message: 'A required provider is temporarily unavailable.',
         retryable: true,
       },
     });

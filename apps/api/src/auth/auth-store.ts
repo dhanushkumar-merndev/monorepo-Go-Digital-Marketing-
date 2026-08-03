@@ -2,6 +2,7 @@ import type {
   AgencyStatus,
   AssignmentScope,
   AuthClientType,
+  AuthenticationMethodProvider,
   CanonicalRoleCode,
   ClientOrganizationStatus,
   DevicePlatform,
@@ -18,17 +19,92 @@ import type {
 
 export const AUTH_STORE = Symbol('AUTH_STORE');
 
-export interface PasswordIdentityRecord {
+export interface AuthenticationIdentityRecord {
   email: string;
-  failedAttempts: number;
   id: string;
-  lockedUntil?: Date;
-  passwordHash: string;
-  status: 'ACTIVE' | 'DISABLED';
+  status: 'ACTIVE' | 'DISABLED' | 'SUSPENDED';
   userDisplayName: string;
   userId: string;
   userStatus: UserStatus;
 }
+
+export interface PasswordIdentityRecord extends AuthenticationIdentityRecord {
+  failedAttempts: number;
+  lockedUntil?: Date;
+  passwordHash: string;
+}
+
+export interface GoogleIdentityRecord extends AuthenticationIdentityRecord {
+  providerEmail: string;
+}
+
+export interface AuthenticationMethodRecord {
+  createdAt: Date;
+  email: string;
+  id: string;
+  lastAuthenticatedAt?: Date;
+  provider: AuthenticationMethodProvider;
+  status: 'ACTIVE' | 'DISABLED' | 'SUSPENDED';
+}
+
+export type ExternalAuthChallengePurpose = 'LINK' | 'LOGIN';
+
+export interface CreateExternalAuthChallengeInput {
+  clientType: AuthClientType;
+  expiresAt: Date;
+  id: string;
+  nonceHash: string;
+  purpose: ExternalAuthChallengePurpose;
+  sessionId?: string;
+  userId?: string;
+}
+
+export interface ConsumeExternalAuthChallengeInput {
+  challengeId: string;
+  clientType?: AuthClientType;
+  consumedAt: Date;
+  purpose: ExternalAuthChallengePurpose;
+  sessionId?: string;
+  userId?: string;
+}
+
+export interface ConsumedExternalAuthChallenge {
+  clientType: AuthClientType;
+  nonceHash: string;
+}
+
+export type GoogleLoginIdentityResolution =
+  | { identity: GoogleIdentityRecord; kind: 'identity' | 'invitation_activated' }
+  | { kind: 'account_disabled' | 'account_suspended' | 'client_inactive' }
+  | { kind: 'account_linking_required' | 'identity_conflict' | 'not_invited' };
+
+export interface ResolveGoogleLoginIdentityInput {
+  audit: AuthenticationAuditInput;
+  clientType: AuthClientType;
+  email: string;
+  identityId: string;
+  now: Date;
+  providerSubject: string;
+}
+
+export type LinkGoogleIdentityResult =
+  | { identity: GoogleIdentityRecord; kind: 'linked' }
+  | { kind: 'account_inactive' | 'email_mismatch' | 'identity_conflict' };
+
+export interface LinkGoogleIdentityInput {
+  audit: AuthenticationAuditInput;
+  email: string;
+  identityId: string;
+  linkedAt: Date;
+  providerSubject: string;
+  sessionId: string;
+  userId: string;
+}
+
+export type UnlinkGoogleIdentityResult =
+  | { currentSessionRevoked: boolean; kind: 'unlinked' }
+  | { kind: 'identity_not_linked' }
+  | { kind: 'last_login_method' };
 
 export interface MembershipAccessRecord {
   agencyId?: string;
@@ -178,6 +254,7 @@ export interface AuthenticationAuditInput {
   correlationId: string;
   deviceId?: string;
   eventType: string;
+  identifierHash?: string;
   membershipId?: string;
   metadata?: Record<string, unknown>;
   outcome: 'DENIED' | 'FAILURE' | 'SUCCESS';
@@ -283,14 +360,20 @@ export interface TeamRecord {
 }
 
 export interface AuthStore {
+  consumeExternalAuthChallenge(
+    input: ConsumeExternalAuthChallengeInput,
+  ): Promise<ConsumedExternalAuthChallenge | undefined>;
   consumePasswordReset(input: PasswordResetConsumeInput): Promise<PasswordResetConsumeResult>;
   createPasswordReset(input: PasswordResetIssueInput): Promise<void>;
+  createExternalAuthChallenge(input: CreateExternalAuthChallengeInput): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;
   createSupportElevation(
     input: CreateSupportElevationInput,
   ): Promise<SupportElevationContext | undefined>;
   findPasswordIdentity(email: string): Promise<PasswordIdentityRecord | undefined>;
+  listAuthenticationMethods(userId: string): Promise<AuthenticationMethodRecord[]>;
   getMembership(userId: string, membershipId: string): Promise<MembershipAccessRecord | undefined>;
+  getSessionClientType(userId: string, sessionId: string): Promise<AuthClientType | undefined>;
   listAvailableMemberships(
     userId: string,
     clientType: AuthClientType,
@@ -311,6 +394,9 @@ export interface AuthStore {
     policy?: LoginFailurePolicy,
   ): Promise<void>;
   recordLoginSuccess(identityId: string, authenticatedAt: Date): Promise<void>;
+  resolveGoogleLoginIdentity(
+    input: ResolveGoogleLoginIdentityInput,
+  ): Promise<GoogleLoginIdentityResolution>;
   resolveSession(sessionId: string, membershipId: string, now: Date): Promise<SessionResolution>;
   revokeAllSessions(
     userId: string,
@@ -335,5 +421,12 @@ export interface AuthStore {
   rotateRefreshToken(input: RotateRefreshTokenInput): Promise<RefreshRotationResult>;
   switchMembership(input: SwitchMembershipInput): Promise<SessionAccessRecord | undefined>;
   touchSession(sessionId: string, seenAt: Date): Promise<void>;
+  linkGoogleIdentity(input: LinkGoogleIdentityInput): Promise<LinkGoogleIdentityResult>;
+  unlinkGoogleIdentity(
+    userId: string,
+    sessionId: string,
+    unlinkedAt: Date,
+    audit: AuthenticationAuditInput,
+  ): Promise<UnlinkGoogleIdentityResult>;
   validatePasswordReset(input: PasswordResetValidationInput): Promise<boolean>;
 }

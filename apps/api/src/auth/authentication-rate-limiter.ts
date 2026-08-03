@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { Redis } from 'ioredis';
-import { RedisConnectionService } from '../infrastructure/redis/redis-connection.service.js';
+import type { RedisConnectionService } from '../infrastructure/redis/redis-connection.service.js';
 import { REDIS_CONNECTION } from '../infrastructure/redis/redis.tokens.js';
 
 export const AUTH_RATE_LIMIT_STORE = Symbol('AUTH_RATE_LIMIT_STORE');

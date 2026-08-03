@@ -68,13 +68,33 @@ Use a LAN address for a physical device and allow that origin/network only in lo
 The mobile project owns its native configuration through Expo prebuild:
 
 ```bash
-pnpm --filter @gdm/mobile prebuild -- --no-install
+pnpm --filter @gdm/mobile native:generate:android
 pnpm --filter @gdm/mobile android
 ```
 
 Generated `android/` and `ios/` folders are local build output in Phase 0. The committed Expo
 configuration requests notifications only; it does not request call logs, SMS, contacts,
 accessibility or background/active location permissions.
+
+### Google sign-in development
+
+Google sign-in needs a Google Cloud Web OAuth client ID on every client and on the API:
+
+```dotenv
+GOOGLE_AUTH_WEB_CLIENT_ID=<web-client-id>.apps.googleusercontent.com
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=<web-client-id>.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<web-client-id>.apps.googleusercontent.com
+GOOGLE_AUTH_CHALLENGE_TTL_SECONDS=300
+```
+
+The IDs are public identifiers, but Google tokens and CRM credentials remain private. The native
+Google integration cannot run in Expo Go; use an Expo development build signed by a certificate
+registered for the Android package. iOS also needs its own client ID. Follow
+`docs/implementation/GOOGLE_AUTH_SETUP.md` before testing a native build.
+
+`apps/mobile/eas.json` selects separate `development`, `preview` and `production` EAS environments.
+Use `eas env:pull --environment development` for local native work, or configure the same public
+variable names in each EAS environment. Do not use `NODE_ENV` to choose Google/API credentials.
 
 ## API endpoints
 
@@ -106,6 +126,8 @@ server listens. Important rules:
   endpoint, bucket or credentials.
 - CORS origins are an explicit comma-separated allowlist.
 - Empty `SENTRY_DSN` selects the no-op error reporter.
+- Google OAuth client IDs must end in `.apps.googleusercontent.com`. Hosted API/web environments
+  require the Web client ID; Android and iOS registrations remain platform-specific.
 
 Do not put real provider secrets in an `EXPO_PUBLIC_*` or `NEXT_PUBLIC_*` variable, logs, fixtures,
 or committed files.

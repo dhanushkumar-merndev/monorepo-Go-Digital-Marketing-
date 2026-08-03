@@ -1,10 +1,21 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const migrationsFolder = fileURLToPath(new URL('../migrations', import.meta.url));
+
+// Derived from the journal rather than hardcoded so adding a reviewed migration cannot
+// silently leave this assertion asserting a stale migration count.
+const journalEntryCount = (
+  JSON.parse(
+    readFileSync(fileURLToPath(new URL('../migrations/meta/_journal.json', import.meta.url)), {
+      encoding: 'utf8',
+    }),
+  ) as { entries: readonly unknown[] }
+).entries.length;
 const agencyId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446700';
 const tenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446761';
 const otherTenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446762';
@@ -23,6 +34,9 @@ const clientMembershipId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446772';
 const agencySessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446781';
 const clientSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446782';
 const rotationId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446791';
+const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
+const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
+const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
 describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
   let client: PGlite;
@@ -112,7 +126,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
     await client.close();
   });
 
-  it('applies both reviewed migrations and records the complete Phase 1 table set', async () => {
+  it('applies every reviewed migration and records the complete Phase 1 table set', async () => {
     const tables = await client.query<{ table_name: string }>(`
       select table_name
       from information_schema.tables
@@ -120,6 +134,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         and table_name in (
           'agencies', 'audit_events', 'authentication_audit_events',
           'authentication_identities', 'branches', 'client_organizations',
+          'external_auth_challenges',
           'membership_branch_scopes', 'membership_team_scopes', 'memberships',
           'outbox_events', 'password_reset_tokens', 'permissions', 'refresh_sessions',
           'refresh_token_rotations', 'role_permission_mappings', 'roles',
@@ -138,6 +153,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       'authentication_identities',
       'branches',
       'client_organizations',
+      'external_auth_challenges',
       'membership_branch_scopes',
       'membership_team_scopes',
       'memberships',
@@ -153,7 +169,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       'users',
       'webhook_events',
     ]);
-    expect(metadata.rows[0]?.count).toBe(2);
+    expect(metadata.rows[0]?.count).toBe(journalEntryCount);
   });
 
   it('installs canonical roles, permissions and least-privilege mappings', async () => {
@@ -198,7 +214,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
     `);
 
     expect(roleCount.rows[0]?.count).toBe(11);
-    expect(permissionCount.rows[0]?.count).toBe(16);
+    expect(permissionCount.rows[0]?.count).toBe(21);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -207,6 +223,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         'organization.teams.read',
         'organization.users.read',
         'platform.clients.manage',
+        'platform.defaults.manage',
         'platform.support_elevation.manage',
       ]),
     );
@@ -222,21 +239,19 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       roleFamilies.set(row.code, family);
     }
 
-    expect([...roleFamilies.keys()].sort()).toEqual(
-      [
-        'AGENCY_ADMIN',
-        'BILLING_DOCUMENTATION_EXECUTIVE',
-        'CLIENT_ADMIN',
-        'DELIVERY_EXECUTIVE',
-        'INVENTORY_EXECUTIVE',
-        'MANAGER',
-        'RC_REGISTRATION_EXECUTIVE',
-        'SALESPERSON',
-        'SALES_MANAGER',
-        'TELECALLER',
-        'TEST_RIDE_EXECUTIVE',
-      ],
-    );
+    expect([...roleFamilies.keys()].sort()).toEqual([
+      'AGENCY_ADMIN',
+      'BILLING_DOCUMENTATION_EXECUTIVE',
+      'CLIENT_ADMIN',
+      'DELIVERY_EXECUTIVE',
+      'INVENTORY_EXECUTIVE',
+      'MANAGER',
+      'RC_REGISTRATION_EXECUTIVE',
+      'SALESPERSON',
+      'SALES_MANAGER',
+      'TELECALLER',
+      'TEST_RIDE_EXECUTIVE',
+    ]);
     for (const family of roleFamilies.values()) {
       expect(family.permissions.has('account.profile.read')).toBe(true);
       expect(family.permissions.has('account.sessions.revoke')).toBe(true);
@@ -371,6 +386,129 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         )
       `),
     ).rejects.toThrow();
+  });
+
+  it('enforces Google identity shape and one identity per provider per user', async () => {
+    await expect(
+      client.exec(`
+        insert into authentication_identities (
+          id, user_id, provider, provider_key, subject_normalized,
+          provider_email_normalized, status, verified_at
+        ) values (
+          '${googleIdentityId}', '${clientUserId}', 'OAUTH', 'GOOGLE',
+          'google-subject-client', 'client@test.example', 'ACTIVE', now()
+        )
+      `),
+    ).resolves.toBeDefined();
+
+    await expect(
+      client.exec(`
+        insert into authentication_identities (
+          user_id, provider, provider_key, subject_normalized, status
+        ) values (
+          '${agencyUserId}', 'OAUTH', 'GOOGLE', 'google-subject-without-email', 'ACTIVE'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into authentication_identities (
+          user_id, provider, provider_key, subject_normalized,
+          provider_email_normalized, status
+        ) values (
+          '${agencyUserId}', 'OAUTH', 'GOOGLE', 'google-subject-without-verification',
+          'agency@test.example', 'ACTIVE'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into authentication_identities (
+          user_id, provider, provider_key, subject_normalized,
+          provider_email_normalized, status
+        ) values (
+          '${clientUserId}', 'OAUTH', 'GOOGLE', 'second-google-subject',
+          'client@test.example', 'ACTIVE'
+        )
+      `),
+    ).rejects.toThrow();
+  });
+
+  it('enforces client-bound Google challenge hashes, bindings and expiry', async () => {
+    const challengeId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446801';
+    await expect(
+      client.exec(`
+        insert into external_auth_challenges (
+          id, purpose, client_type, nonce_hash, expires_at
+        ) values (
+          '${challengeId}', 'LOGIN', 'WEB', repeat('a', 64), now() + interval '5 minutes'
+        )
+      `),
+    ).resolves.toBeDefined();
+    await expect(
+      client.exec(`
+        insert into external_auth_challenges (
+          purpose, client_type, nonce_hash, expires_at
+        ) values ('LOGIN', 'MOBILE', 'not-a-hash', now() + interval '5 minutes')
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into external_auth_challenges (
+          purpose, client_type, nonce_hash, expires_at
+        ) values ('LINK', 'WEB', repeat('b', 64), now() + interval '5 minutes')
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into external_auth_challenges (
+          purpose, client_type, nonce_hash, expires_at
+        ) values ('LOGIN', 'WEB', repeat('c', 64), now() - interval '1 minute')
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into external_auth_challenges (
+          purpose, client_type, nonce_hash, expires_at
+        ) values ('LOGIN', 'WEB', repeat('a', 64), now() + interval '5 minutes')
+      `),
+    ).rejects.toThrow();
+  });
+
+  it('revokes every Google-bound session without revoking password sessions', async () => {
+    await client.exec(`
+      insert into refresh_sessions (
+        id, user_id, authentication_identity_id, current_membership_id,
+        client_type, device_platform, refresh_token_version, expires_at
+      ) values
+        (
+          '${googleSessionId}', '${clientUserId}', '${googleIdentityId}',
+          '${clientMembershipId}', 'WEB', 'WEB', 1, now() + interval '30 days'
+        ),
+        (
+          '${secondGoogleSessionId}', '${clientUserId}', '${googleIdentityId}',
+          '${clientMembershipId}', 'MOBILE', 'ANDROID', 1, now() + interval '30 days'
+        );
+      update authentication_identities
+      set status = 'DISABLED'
+      where id = '${googleIdentityId}';
+    `);
+    const googleSessions = await client.query<{
+      revoked_at: Date | null;
+      revoked_reason: string | null;
+    }>(`
+      select revoked_at, revoked_reason from refresh_sessions
+      where id in ('${googleSessionId}', '${secondGoogleSessionId}')
+    `);
+    const passwordSession = await client.query<{ revoked_at: Date | null }>(`
+      select revoked_at from refresh_sessions where id = '${clientSessionId}'
+    `);
+    expect(googleSessions.rows).toHaveLength(2);
+    expect(googleSessions.rows.every((session) => session.revoked_at !== null)).toBe(true);
+    expect(
+      googleSessions.rows.every((session) => session.revoked_reason === 'IDENTITY_DISABLED'),
+    ).toBe(true);
+    expect(passwordSession.rows[0]?.revoked_at).toBeNull();
   });
 
   it('keeps refresh rotation history append-only', async () => {

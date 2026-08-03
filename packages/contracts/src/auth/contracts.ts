@@ -34,6 +34,12 @@ export const opaqueAuthTokenSchema = z
   .min(32)
   .max(2_048)
   .regex(/^\S+$/u, 'Token must not contain whitespace');
+export const googleIdTokenSchema = z
+  .string()
+  .trim()
+  .min(20)
+  .max(8_192)
+  .regex(/^\S+$/u, 'Google ID token must not contain whitespace');
 
 export const mfaMethodSchema = z.enum(['TOTP', 'RECOVERY_CODE']);
 export const mfaTotpCodeSchema = z
@@ -220,6 +226,28 @@ export const loginRequestSchema = z.object({
   device: deviceInputSchema.optional(),
 });
 
+export const googleAuthChallengeRequestSchema = z.object({
+  client_type: authClientTypeSchema,
+});
+
+export const googleAuthChallengeResponseSchema = z.object({
+  challenge_id: idSchema,
+  nonce: z.string().regex(/^[0-9a-f]{64}$/u, 'Google nonce must be 32 random bytes in hex'),
+  expires_at: timestampSchema,
+});
+
+export const googleLoginRequestSchema = z.object({
+  challenge_id: idSchema,
+  id_token: googleIdTokenSchema,
+  client_type: authClientTypeSchema,
+  device: deviceInputSchema.optional(),
+});
+
+export const googleLinkRequestSchema = z.object({
+  challenge_id: idSchema,
+  id_token: googleIdTokenSchema,
+});
+
 export const loginAuthenticatedResponseSchema = z.object({
   status: z.literal('AUTHENTICATED'),
   ...tokenPairShape,
@@ -248,6 +276,34 @@ export const loginResponseSchema = z.discriminatedUnion('status', [
   loginMfaRequiredResponseSchema,
   loginMfaEnrollmentRequiredResponseSchema,
 ]);
+
+export const googleLoginResponseSchema = loginAuthenticatedResponseSchema;
+
+export const authenticationMethodProviderSchema = z.enum(['PASSWORD', 'GOOGLE']);
+export const authenticationMethodUnlinkBlockReasonSchema = z.enum([
+  'LAST_LOGIN_METHOD',
+  'NOT_SUPPORTED',
+]);
+export const authenticationMethodSchema = z.object({
+  provider: authenticationMethodProviderSchema,
+  connected: z.boolean(),
+  email: normalizedEmailSchema.nullable(),
+  linked_at: nullableTimestampSchema,
+  last_used_at: nullableTimestampSchema,
+  can_unlink: z.boolean(),
+  unlink_block_reason: authenticationMethodUnlinkBlockReasonSchema.nullable(),
+});
+export const authenticationMethodsResponseSchema = z.object({
+  methods: z.array(authenticationMethodSchema),
+});
+export const googleLinkResponseSchema = z.object({
+  linked: z.literal(true),
+  method: authenticationMethodSchema,
+});
+export const googleUnlinkResponseSchema = z.object({
+  unlinked: z.literal(true),
+  current_session_revoked: z.boolean(),
+});
 
 export const mfaEnrollmentStartRequestSchema = z.object({
   challenge_token: opaqueAuthTokenSchema,
@@ -360,6 +416,16 @@ export type DeviceInput = z.infer<typeof deviceInputSchema>;
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
 export type ForgotPasswordResponse = z.infer<typeof forgotPasswordResponseSchema>;
+export type GoogleAuthChallengeResponse = z.infer<typeof googleAuthChallengeResponseSchema>;
+export type GoogleAuthChallengeRequest = z.infer<typeof googleAuthChallengeRequestSchema>;
+export type GoogleLoginRequest = z.infer<typeof googleLoginRequestSchema>;
+export type GoogleLoginResponse = z.infer<typeof googleLoginResponseSchema>;
+export type GoogleLinkRequest = z.infer<typeof googleLinkRequestSchema>;
+export type GoogleLinkResponse = z.infer<typeof googleLinkResponseSchema>;
+export type GoogleUnlinkResponse = z.infer<typeof googleUnlinkResponseSchema>;
+export type AuthenticationMethod = z.infer<typeof authenticationMethodSchema>;
+export type AuthenticationMethodProvider = z.infer<typeof authenticationMethodProviderSchema>;
+export type AuthenticationMethodsResponse = z.infer<typeof authenticationMethodsResponseSchema>;
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 export type LoginAuthenticatedResponse = z.infer<typeof loginAuthenticatedResponseSchema>;

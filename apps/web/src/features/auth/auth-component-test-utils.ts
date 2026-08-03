@@ -46,10 +46,23 @@ export function testAuthContext(overrides: Partial<AuthContextValue> = {}): Auth
   const unimplemented = async () => undefined;
   return {
     api: null as never,
+    createGoogleLinkChallenge: async () => ({
+      challengeId: 'google-link-challenge',
+      expiresAt: '2026-08-03T13:00:00.000Z',
+      nonce: 'google-link-nonce',
+    }),
+    createGoogleLoginChallenge: async () => ({
+      challengeId: 'google-login-challenge',
+      expiresAt: '2026-08-03T13:00:00.000Z',
+      nonce: 'google-login-nonce',
+    }),
     endSupportElevation: unimplemented,
     error: null,
+    linkGoogleIdentity: unimplemented,
+    listAuthenticationMethods: async () => [],
     listSessions: async () => [],
     login: unimplemented,
+    loginWithGoogle: unimplemented,
     logout: unimplemented,
     logoutAll: unimplemented,
     refreshProfile: unimplemented,
@@ -61,6 +74,7 @@ export function testAuthContext(overrides: Partial<AuthContextValue> = {}): Auth
     startSupportElevation: unimplemented,
     status: 'authenticated',
     switchMembership: unimplemented,
+    unlinkGoogleIdentity: async () => ({ currentSessionRevoked: false, unlinked: true }),
     ...overrides,
   };
 }

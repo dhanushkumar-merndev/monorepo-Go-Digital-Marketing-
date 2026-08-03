@@ -53,20 +53,38 @@ describe('Cloudflare deployment configuration', () => {
     expect(rootPackageJson.scripts?.['deploy:web']).toContain('--filter @gdm/web run deploy');
   });
 
-  it('fails deployment preflight unless the versioned API URL uses HTTPS', () => {
+  it('runs Cloudflare and Docker packaging in Linux CI with non-production public OAuth IDs', () => {
+    const workflow = readWebFile('../../.github/workflows/ci.yml');
+
+    expect(workflow).toContain('runs-on: ubuntu-latest');
+    expect(workflow).toContain(
+      'NEXT_PUBLIC_GOOGLE_CLIENT_ID: 123456789-ci.apps.googleusercontent.com',
+    );
+    expect(workflow).toContain('run: pnpm build:web:cloudflare');
+    expect(workflow).toContain('docker build --file apps/api/Dockerfile --tag gdm-api:ci .');
+    expect(workflow).not.toMatch(/GOOGLE_(?:AUTH_)?(?:CLIENT_SECRET|WEB_CLIENT_SECRET):/u);
+  });
+
+  it('fails deployment preflight unless API and Google browser configuration are valid', () => {
     const preflight = resolve(process.cwd(), '../../scripts/validate-web-deployment.mjs');
-    const runPreflight = (apiUrl?: string) =>
+    const runPreflight = (apiUrl?: string, googleClientId?: string) =>
       spawnSync(process.execPath, [preflight], {
         env: {
           ...process.env,
           NEXT_PUBLIC_API_URL: apiUrl,
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleClientId,
         },
         encoding: 'utf8',
       });
 
     expect(runPreflight().status).not.toBe(0);
-    expect(runPreflight('http://localhost:4000/v1').status).not.toBe(0);
-    expect(runPreflight('https://api.example.com/v1').status).toBe(0);
+    expect(
+      runPreflight('http://localhost:4000/v1', '123456789-web.apps.googleusercontent.com').status,
+    ).not.toBe(0);
+    expect(runPreflight('https://api.example.com/v1').status).not.toBe(0);
+    expect(
+      runPreflight('https://api.example.com/v1', '123456789-web.apps.googleusercontent.com').status,
+    ).toBe(0);
   });
 
   it('does not pass backend credentials into client workspace commands', () => {
@@ -82,6 +100,7 @@ describe('Cloudflare deployment configuration', () => {
         'TIGRIS_SECRET_ACCESS_KEY',
       ]),
     );
+    expect(rootTurboConfig.globalEnv).toContain('NEXT_PUBLIC_GOOGLE_CLIENT_ID');
 
     const workspaceWrapper = resolve(process.cwd(), '../../scripts/run-workspace-command.mjs');
     const result = spawnSync(
@@ -94,13 +113,14 @@ describe('Cloudflare deployment configuration', () => {
         'node',
         '--input-type=module',
         '-e',
-        'if (process.env.DATABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY) process.exit(1)',
+        'if (process.env.DATABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.GOOGLE_AUTH_WEB_CLIENT_SECRET) process.exit(1)',
       ],
       {
         cwd: resolve(process.cwd(), '../..'),
         env: {
           ...process.env,
           DATABASE_URL: 'postgresql://backend-only',
+          GOOGLE_AUTH_WEB_CLIENT_SECRET: 'backend-only-google-secret',
           SUPABASE_SERVICE_ROLE_KEY: 'backend-only',
         },
         encoding: 'utf8',
@@ -112,5 +132,12 @@ describe('Cloudflare deployment configuration', () => {
 
   it('keeps standalone output scoped to the adapter build', () => {
     expect(readWebFile('next.config.ts')).not.toMatch(/output\s*:\s*['"]standalone['"]/u);
+  });
+
+  it('keeps popup authentication communication available without weakening framing policy', () => {
+    const nextConfig = readWebFile('next.config.ts');
+    expect(nextConfig).toContain('Cross-Origin-Opener-Policy');
+    expect(nextConfig).toContain('same-origin-allow-popups');
+    expect(nextConfig).toContain("{ key: 'X-Frame-Options', value: 'DENY' }");
   });
 });
