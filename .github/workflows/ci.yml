@@ -45,7 +45,7 @@ jobs:
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 123456789-ci-ios.apps.googleusercontent.com
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
