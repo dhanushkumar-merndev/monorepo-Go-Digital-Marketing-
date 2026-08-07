@@ -9,6 +9,8 @@ const authResponse = {
     assignment_scope: 'ASSIGNED',
     branch_ids: ['10000000-0000-4000-8000-000000000001'],
     branch_scope_mode: 'SELECTED',
+    department_ids: ['10000000-0000-4000-8000-000000000009'],
+    department_scope_mode: 'SELECTED',
     client_organization: {
       agency_id: '10000000-0000-4000-8000-000000000002',
       display_name: 'Northside Motors',
@@ -21,6 +23,7 @@ const authResponse = {
     effective_from: '2029-01-01T00:00:00.000Z',
     effective_until: null,
     id: '10000000-0000-4000-8000-000000000004',
+    job_title: 'Sales Consultant',
     role: {
       application: 'MOBILE',
       code: 'SALESPERSON',

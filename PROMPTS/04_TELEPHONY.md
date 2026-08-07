@@ -30,6 +30,11 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement provider-neutral calling and call-history support without unsafe Android permissions.
 
+Attach every call, outcome and recording reference to the canonical Phase 3 Lead/Contact and
+activity architecture, using Phase 2 user/team scope. Do not introduce duplicate customer or
+manager records. Provider-side business recording is preferred; SIM/mobile recording remains
+blocked pending device, provider, Google Play, consent, privacy and legal validation.
+
 Create a `TelephonyProvider` interface for start call, webhook verification/parsing, recording retrieval, reconciliation, status mapping and health checks.
 
 Create a development adapter, generic webhook framework, one real provider only when credentials/docs are available, and a `tel:` fallback.

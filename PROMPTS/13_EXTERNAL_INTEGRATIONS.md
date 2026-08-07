@@ -24,11 +24,15 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 ---
 
-# PHASE 13 — EXTERNAL INTEGRATIONS AND CLIENT ONBOARDING
+# PHASE 13 — EXTERNAL INTEGRATIONS, AI, SOCIAL AND CLIENT ONBOARDING
 
 ## Objective
 
 Connect production providers using already-built adapters and workflows.
+
+Consume the canonical Phase 2 organization model and Phase 3 Lead/Contact/activity identities.
+Providers must create Leads through the canonical Lead service rather than writing Lead tables
+directly.
 
 ## Priority
 
@@ -42,6 +46,25 @@ Connect production providers using already-built adapters and workflows.
 8. Google Business Profile
 9. Google Maps/routing
 10. Push notifications
+11. AI image generation provider
+12. AI transcription and structured CRM-suggestion provider
+13. Supported social publishing and Google Reviews APIs
+
+## AI image creation
+
+Implement Brand Profile → Brand Template → Creative Request → provider-neutral AI Image Adapter →
+Generated Asset → Moderation → Human Review → Approval → Download or supported publishing →
+History. Store binary assets in private object storage and metadata/references in PostgreSQL. Human
+approval is mandatory before publishing.
+
+## Transcript and CRM suggestions
+
+Implement Call → Recording → Transcript → Summary → structured suggested CRM changes → Human
+Review → Explicit Save. AI must never silently overwrite authoritative Lead data.
+
+AI auto-calling remains blocked until provider, consent and telecom/privacy compliance are approved.
+Social publishing requires official APIs and granted platform permissions. Personal WhatsApp QR or
+unofficial WhatsApp Web automation is prohibited.
 
 ## Integration centre
 

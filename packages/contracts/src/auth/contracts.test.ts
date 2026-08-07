@@ -17,6 +17,7 @@ import {
   mfaEnrollmentStartRequestSchema,
   mfaEnrollmentStartResponseSchema,
   mfaVerificationRequestSchema,
+  setWorkingHoursRequestSchema,
 } from '../index.js';
 
 const id = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446761';
@@ -24,7 +25,24 @@ const otherId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446762';
 const timestamp = '2026-08-02T12:00:00.000Z';
 
 describe('authentication and authorization contracts', () => {
-  it('keeps all eleven role codes stable and distinct', () => {
+  it('requires one working-hours entry for every weekday', () => {
+    const openDay = (day: number) => ({
+      closes_at: '18:00',
+      day_of_week: day,
+      is_closed: false,
+      opens_at: '09:00',
+    });
+    expect(
+      setWorkingHoursRequestSchema.safeParse({
+        hours: [openDay(0), openDay(1), openDay(2), openDay(3), openDay(4), openDay(5), openDay(5)],
+      }).success,
+    ).toBe(false);
+    expect(
+      setWorkingHoursRequestSchema.safeParse({ hours: [0, 1, 2, 3, 4, 5, 6].map(openDay) }).success,
+    ).toBe(true);
+  });
+
+  it('keeps all twelve role codes stable and distinct', () => {
     expect(CANONICAL_ROLE_CODES).toEqual([
       'AGENCY_ADMIN',
       'CLIENT_ADMIN',
@@ -37,8 +55,9 @@ describe('authentication and authorization contracts', () => {
       'BILLING_DOCUMENTATION_EXECUTIVE',
       'DELIVERY_EXECUTIVE',
       'RC_REGISTRATION_EXECUTIVE',
+      'TEAM_MANAGER',
     ]);
-    expect(new Set(CANONICAL_ROLE_CODES).size).toBe(11);
+    expect(new Set(CANONICAL_ROLE_CODES).size).toBe(12);
   });
 
   it('normalizes login email while retaining a client-specific token transport', () => {
@@ -199,6 +218,9 @@ describe('authentication and authorization contracts', () => {
       },
       branch_scope_mode: 'ALL',
       branch_ids: [],
+      department_scope_mode: 'ALL',
+      department_ids: [],
+      job_title: 'CRM Admin',
       team_scope_mode: 'ALL',
       team_ids: [],
       assignment_scope: 'ALL',

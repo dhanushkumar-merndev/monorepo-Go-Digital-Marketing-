@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement configurable post-sale reminder plans without a full service-centre module.
 
+Consume the canonical customer/vehicle lifecycle. Feedback, complaints and escalation append to
+the shared customer activity model without rewriting Phase 3 Lead history.
+
 ## Reminder types
 
 Service Due, Insurance Expiry, PUC Expiry, Warranty Expiry, AMC Expiry, Roadside Assistance Expiry, RC Pending, Service Appointment, Exchange Eligibility and Upgrade Opportunity.

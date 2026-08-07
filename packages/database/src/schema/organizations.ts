@@ -91,8 +91,8 @@ export const branches = pgTable(
   ],
 );
 
-export const teams = pgTable(
-  'teams',
+export const departments = pgTable(
+  'departments',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     clientOrganizationId: uuid('client_organization_id').notNull(),
@@ -107,6 +107,49 @@ export const teams = pgTable(
     foreignKey({
       columns: [table.clientOrganizationId, table.branchId],
       foreignColumns: [branches.clientOrganizationId, branches.id],
+      name: 'departments_client_branch_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('departments_client_branch_code_uidx').on(
+      table.clientOrganizationId,
+      table.branchId,
+      table.code,
+    ),
+    unique('departments_client_id_unique').on(table.clientOrganizationId, table.id),
+    unique('departments_client_branch_id_unique').on(
+      table.clientOrganizationId,
+      table.branchId,
+      table.id,
+    ),
+    index('departments_client_branch_active_idx').on(
+      table.clientOrganizationId,
+      table.branchId,
+      table.active,
+    ),
+  ],
+);
+
+export const teams = pgTable(
+  'teams',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientOrganizationId: uuid('client_organization_id').notNull(),
+    branchId: uuid('branch_id').notNull(),
+    departmentId: uuid('department_id').notNull(),
+    code: varchar('code', { length: 64 }).notNull(),
+    name: varchar('name', { length: 200 }).notNull(),
+    active: boolean('active').default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId, table.branchId, table.departmentId],
+      foreignColumns: [departments.clientOrganizationId, departments.branchId, departments.id],
+      name: 'teams_client_branch_department_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.branchId],
+      foreignColumns: [branches.clientOrganizationId, branches.id],
       name: 'teams_client_branch_fk',
     }).onDelete('restrict'),
     uniqueIndex('teams_client_branch_code_uidx').on(
@@ -118,6 +161,12 @@ export const teams = pgTable(
     unique('teams_client_branch_id_unique').on(
       table.clientOrganizationId,
       table.branchId,
+      table.id,
+    ),
+    unique('teams_client_branch_department_id_unique').on(
+      table.clientOrganizationId,
+      table.branchId,
+      table.departmentId,
       table.id,
     ),
     index('teams_client_branch_active_idx').on(

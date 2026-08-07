@@ -20,6 +20,9 @@ const membership = {
   assignment_scope: 'ALL',
   branch_ids: [],
   branch_scope_mode: 'ALL',
+  department_ids: [],
+  department_scope_mode: 'ALL',
+  job_title: 'CRM Admin',
   client_organization: {
     agency_id: agencyId,
     display_name: 'Northstar Motors',

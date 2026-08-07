@@ -9,6 +9,7 @@ import { AccessTokenService } from '../src/auth/access-token.service.js';
 import type { SessionAccessRecord } from '../src/auth/auth-store.js';
 import { AuthenticationGuard } from '../src/authorization/authentication.guard.js';
 import { AuthorizationPolicy } from '../src/authorization/authorization-policy.js';
+import type { ClientModuleAccessService } from '../src/authorization/client-module-access.service.js';
 import {
   BRANCH_PARAMETER_KEY,
   REQUIRED_PERMISSIONS_KEY,
@@ -32,8 +33,11 @@ function accessContext(
     assignmentScope: 'ASSIGNED',
     branchIds: new Set(['11111111-1111-4111-8111-111111111111']),
     branchScopeMode: 'SELECTED',
+    departmentIds: new Set(['22222222-2222-4222-8222-222222222223']),
+    departmentScopeMode: 'SELECTED',
     clientOrganizationId: '22222222-2222-4222-8222-222222222222',
     membershipId: randomUUID(),
+    managedTeamIds: new Set<string>(),
     permissionCodes: new Set(permissionCodes),
     roleCode,
     sessionId: randomUUID(),
@@ -51,6 +55,8 @@ function activeSession(context: AuthorizationContext): SessionAccessRecord {
       assignmentScope: context.assignmentScope,
       branchIds: [...context.branchIds],
       branchScopeMode: context.branchScopeMode,
+      departmentIds: [...context.departmentIds],
+      departmentScopeMode: context.departmentScopeMode,
       clientAgencyId: randomUUID(),
       clientDisplayName: 'Tenant Alpha',
       clientLegalName: 'Tenant Alpha Private Limited',
@@ -62,6 +68,7 @@ function activeSession(context: AuthorizationContext): SessionAccessRecord {
       contextType: 'CLIENT',
       effectiveFrom: now,
       id: context.membershipId,
+      managedTeamIds: [...context.managedTeamIds],
       organizationDisplayName: 'Tenant Alpha',
       permissionCodes: [...context.permissionCodes],
       roleApplication: ['SALESPERSON', 'TEST_RIDE_EXECUTIVE', 'DELIVERY_EXECUTIVE'].includes(
@@ -142,6 +149,7 @@ describe('AuthenticationGuard role and scope enforcement', () => {
         tokens,
         store,
         new AuthorizationPolicy(),
+        { assertEnabled: () => Promise.resolve() } as unknown as ClientModuleAccessService,
       );
       const handler = (): undefined => undefined;
       Reflect.defineMetadata(REQUIRED_PERMISSIONS_KEY, ['organization.users.read'], handler);
@@ -186,6 +194,7 @@ describe('AuthenticationGuard role and scope enforcement', () => {
       tokens,
       store,
       new AuthorizationPolicy(),
+      { assertEnabled: () => Promise.resolve() } as unknown as ClientModuleAccessService,
     );
     const handler = (): undefined => undefined;
     Reflect.defineMetadata(REQUIRED_PERMISSIONS_KEY, ['organization.branches.read'], handler);

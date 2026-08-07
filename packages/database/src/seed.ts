@@ -9,6 +9,8 @@ import {
   PERMISSION_CODES,
   agencies,
   agencyDefaults,
+  assignmentQueueMembers,
+  assignmentQueues,
   authenticationIdentities,
   branchWorkingHours,
   branches,
@@ -16,12 +18,19 @@ import {
   clientAdministrationSettings,
   clientIntegrationReadiness,
   clientModuleFlags,
+  departments,
+  leadSettings,
   membershipBranchScopes,
+  membershipDepartmentScopes,
   membershipTeamScopes,
   memberships,
   permissions,
+  publicLeadForms,
   rolePermissionMappings,
+  reportingLines,
   roles,
+  teamManagerAssignments,
+  teamMemberships,
   teams,
   users,
 } from './schema/index.js';
@@ -46,6 +55,9 @@ const BETA_CLIENT_ID = '20000000-0000-4000-8000-000000000002';
 const ALPHA_PUNE_BRANCH_ID = '21000000-0000-4000-8000-000000000001';
 const ALPHA_MUMBAI_BRANCH_ID = '21000000-0000-4000-8000-000000000002';
 const BETA_NASHIK_BRANCH_ID = '21000000-0000-4000-8000-000000000003';
+const ALPHA_PUNE_DEPARTMENT_ID = '21500000-0000-4000-8000-000000000001';
+const ALPHA_MUMBAI_DEPARTMENT_ID = '21500000-0000-4000-8000-000000000002';
+const BETA_NASHIK_DEPARTMENT_ID = '21500000-0000-4000-8000-000000000003';
 const ALPHA_PUNE_TEAM_ID = '22000000-0000-4000-8000-000000000001';
 const ALPHA_MUMBAI_TEAM_ID = '22000000-0000-4000-8000-000000000002';
 const BETA_NASHIK_TEAM_ID = '22000000-0000-4000-8000-000000000003';
@@ -148,6 +160,13 @@ const roleDefinitions: readonly {
     application: 'WEB',
     description: 'Assigned registration and RC cases.',
   },
+  {
+    code: 'TEAM_MANAGER',
+    displayName: 'Team Manager',
+    contextType: 'CLIENT',
+    application: 'WEB',
+    description: 'Canonical supervision of assigned team members and their lead workload.',
+  },
 ];
 
 const permissionDescriptions: Record<PermissionCode, string> = {
@@ -158,6 +177,7 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'account.tenant.select': 'Select one of the authenticated user active memberships.',
   'organization.clients.read': 'Read permitted client organization summaries.',
   'organization.branches.read': 'Read branches within effective tenant and branch scope.',
+  'organization.departments.read': 'Read departments within effective branch and department scope.',
   'organization.teams.read': 'Read teams within effective tenant and team scope.',
   'organization.users.read': 'Read client users within effective scope.',
   'organization.users.manage': 'Manage client users and memberships.',
@@ -165,6 +185,9 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'organization.roles.manage': 'Manage client role mappings.',
   'organization.sessions.manage': 'Revoke another client user session with audit evidence.',
   'organization.branches.manage': 'Create and update branches within the active client.',
+  'organization.departments.manage': 'Create and update departments within the active client.',
+  'organization.hierarchy.read': 'Read team membership, Team Manager and reporting relationships.',
+  'organization.hierarchy.manage': 'Manage reasoned team and reporting relationships.',
   'organization.teams.manage': 'Create and update teams within the active client.',
   'organization.settings.manage': 'Configure client profile, working hours and retention settings.',
   'organization.audit.read': 'Read account and permission administration audit events.',
@@ -172,7 +195,35 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'platform.clients.manage': 'Manage client organization lifecycle.',
   'platform.defaults.manage': 'Configure safe agency-wide administrative defaults.',
   'platform.support_elevation.manage': 'Create and revoke reasoned support elevation.',
+  'leads.read': 'Read leads permitted by tenant, branch, team and assignment scope.',
+  'leads.create': 'Create lead opportunities and contact evidence.',
+  'leads.transition': 'Record valid lead lifecycle transitions and outcomes.',
+  'leads.assign': 'Assign and reassign leads with reasoned history.',
+  'leads.followups.manage': 'Create and complete lead follow-ups.',
+  'leads.notes.create': 'Append notes to permitted leads.',
+  'leads.tasks.manage': 'Create and complete lead tasks.',
+  'leads.duplicates.manage': 'Review tenant-scoped duplicate candidates.',
+  'leads.sla.manage': 'Review and reconcile lead SLA timers and escalations.',
 };
+
+const leadManagerPermissions = [
+  'leads.read',
+  'leads.create',
+  'leads.transition',
+  'leads.assign',
+  'leads.followups.manage',
+  'leads.notes.create',
+  'leads.tasks.manage',
+  'leads.duplicates.manage',
+  'leads.sla.manage',
+] as const satisfies readonly PermissionCode[];
+const leadAgentPermissions = [
+  'leads.read',
+  'leads.transition',
+  'leads.followups.manage',
+  'leads.notes.create',
+  'leads.tasks.manage',
+] as const satisfies readonly PermissionCode[];
 
 const accountPermissions = [
   'account.profile.read',
@@ -183,6 +234,7 @@ const accountPermissions = [
 ] as const satisfies readonly PermissionCode[];
 const scopedOrganizationReadPermissions = [
   'organization.branches.read',
+  'organization.departments.read',
   'organization.teams.read',
 ] as const satisfies readonly PermissionCode[];
 
@@ -191,6 +243,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...accountPermissions,
     'organization.clients.read',
     'organization.branches.read',
+    'organization.departments.read',
     'organization.teams.read',
     'organization.users.read',
     'organization.roles.read',
@@ -199,9 +252,13 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'platform.defaults.manage',
     'platform.support_elevation.manage',
     'organization.branches.manage',
+    'organization.departments.manage',
     'organization.teams.manage',
+    'organization.hierarchy.read',
+    'organization.hierarchy.manage',
     'organization.settings.manage',
     'organization.audit.read',
+    ...leadManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -213,9 +270,13 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.roles.manage',
     'organization.sessions.manage',
     'organization.branches.manage',
+    'organization.departments.manage',
     'organization.teams.manage',
+    'organization.hierarchy.read',
+    'organization.hierarchy.manage',
     'organization.settings.manage',
     'organization.audit.read',
+    ...leadManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -224,20 +285,42 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.users.read',
     'organization.roles.read',
     'organization.sessions.manage',
+    'organization.hierarchy.read',
+    'organization.hierarchy.manage',
+    ...leadManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     'organization.users.read',
     'organization.roles.read',
+    'organization.hierarchy.read',
+    'organization.hierarchy.manage',
+    ...leadManagerPermissions,
   ],
-  TELECALLER: [...accountPermissions, ...scopedOrganizationReadPermissions],
-  SALESPERSON: [...accountPermissions, ...scopedOrganizationReadPermissions],
+  TELECALLER: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    'leads.create',
+    ...leadAgentPermissions,
+  ],
+  SALESPERSON: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...leadAgentPermissions,
+  ],
   TEST_RIDE_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   INVENTORY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   BILLING_DOCUMENTATION_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   DELIVERY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   RC_REGISTRATION_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
+  TEAM_MANAGER: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    'organization.users.read',
+    'organization.hierarchy.read',
+    ...leadManagerPermissions,
+  ],
 };
 
 interface SeedUser {
@@ -250,6 +333,9 @@ interface SeedUser {
   contextType: 'AGENCY' | 'CLIENT';
   clientOrganizationId?: string;
   branchScopeMode: 'ALL' | 'SELECTED' | 'NONE';
+  departmentScopeMode?: 'ALL' | 'SELECTED' | 'NONE';
+  departmentScopes?: readonly { branchId: string; departmentId: string }[];
+  jobTitle?: string;
   teamScopeMode: 'ALL' | 'SELECTED' | 'NONE';
   assignmentScope: 'ALL' | 'TEAM' | 'OWNED' | 'ASSIGNED' | 'OWNED_OR_ASSIGNED' | 'NONE';
   branchIds?: readonly string[];
@@ -423,7 +509,45 @@ const seedUsers: readonly SeedUser[] = [
     teamScopeMode: 'ALL',
     assignmentScope: 'ALL',
   },
+  {
+    userId: '50000000-0000-4000-8000-000000000013',
+    identityId: '70000000-0000-4000-8000-000000000013',
+    membershipId: '60000000-0000-4000-8000-000000000013',
+    displayName: 'Nisha Team Manager',
+    email: 'team.manager@seed.godigital.test',
+    roleCode: 'TEAM_MANAGER',
+    contextType: 'CLIENT',
+    clientOrganizationId: ALPHA_CLIENT_ID,
+    branchScopeMode: 'SELECTED',
+    departmentScopeMode: 'SELECTED',
+    departmentScopes: [{ branchId: ALPHA_PUNE_BRANCH_ID, departmentId: ALPHA_PUNE_DEPARTMENT_ID }],
+    jobTitle: 'Team Manager',
+    teamScopeMode: 'SELECTED',
+    assignmentScope: 'TEAM',
+    branchIds: [ALPHA_PUNE_BRANCH_ID],
+    teamScopes: [{ branchId: ALPHA_PUNE_BRANCH_ID, teamId: ALPHA_PUNE_TEAM_ID }],
+  },
 ];
+
+const defaultJobTitleByRole: Partial<Record<RoleCode, string>> = {
+  CLIENT_ADMIN: 'CRM Admin',
+  MANAGER: 'Business Owner',
+  SALES_MANAGER: 'Showroom Manager',
+  TEAM_MANAGER: 'Team Manager',
+  TELECALLER: 'Telecaller',
+  SALESPERSON: 'Sales Consultant',
+  TEST_RIDE_EXECUTIVE: 'Test Ride Executive',
+  INVENTORY_EXECUTIVE: 'Stock / Inventory Team',
+  BILLING_DOCUMENTATION_EXECUTIVE: 'Finance / Documentation Team',
+  DELIVERY_EXECUTIVE: 'Delivery Coordinator',
+  RC_REGISTRATION_EXECUTIVE: 'RTO Team',
+};
+
+const departmentByBranch: Record<string, string> = {
+  [ALPHA_PUNE_BRANCH_ID]: ALPHA_PUNE_DEPARTMENT_ID,
+  [ALPHA_MUMBAI_BRANCH_ID]: ALPHA_MUMBAI_DEPARTMENT_ID,
+  [BETA_NASHIK_BRANCH_ID]: BETA_NASHIK_DEPARTMENT_ID,
+};
 
 function derivePassword(password: string, pepper: string, salt: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -566,11 +690,44 @@ async function seed(): Promise<void> {
           });
       }
 
+      for (const department of [
+        {
+          id: ALPHA_PUNE_DEPARTMENT_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          code: 'PUNE_SALES',
+          name: 'Sales',
+        },
+        {
+          id: ALPHA_MUMBAI_DEPARTMENT_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          branchId: ALPHA_MUMBAI_BRANCH_ID,
+          code: 'MUMBAI_OPERATIONS',
+          name: 'Operations',
+        },
+        {
+          id: BETA_NASHIK_DEPARTMENT_ID,
+          clientOrganizationId: BETA_CLIENT_ID,
+          branchId: BETA_NASHIK_BRANCH_ID,
+          code: 'NASHIK_SALES',
+          name: 'Sales',
+        },
+      ]) {
+        await transaction
+          .insert(departments)
+          .values({ ...department, active: true, createdAt: SEED_DATE, updatedAt: SEED_DATE })
+          .onConflictDoUpdate({
+            target: departments.id,
+            set: { active: true, name: department.name, updatedAt: SEED_DATE },
+          });
+      }
+
       for (const team of [
         {
           id: ALPHA_PUNE_TEAM_ID,
           clientOrganizationId: ALPHA_CLIENT_ID,
           branchId: ALPHA_PUNE_BRANCH_ID,
+          departmentId: ALPHA_PUNE_DEPARTMENT_ID,
           code: 'PUNE_SALES',
           name: 'Pune Sales',
         },
@@ -578,6 +735,7 @@ async function seed(): Promise<void> {
           id: ALPHA_MUMBAI_TEAM_ID,
           clientOrganizationId: ALPHA_CLIENT_ID,
           branchId: ALPHA_MUMBAI_BRANCH_ID,
+          departmentId: ALPHA_MUMBAI_DEPARTMENT_ID,
           code: 'MUMBAI_SALES',
           name: 'Mumbai Sales',
         },
@@ -585,6 +743,7 @@ async function seed(): Promise<void> {
           id: BETA_NASHIK_TEAM_ID,
           clientOrganizationId: BETA_CLIENT_ID,
           branchId: BETA_NASHIK_BRANCH_ID,
+          departmentId: BETA_NASHIK_DEPARTMENT_ID,
           code: 'NASHIK_SALES',
           name: 'Nashik Sales',
         },
@@ -724,7 +883,7 @@ async function seed(): Promise<void> {
       }
 
       for (const role of roleDefinitions) {
-        await transaction
+        const [resolvedRole] = await transaction
           .insert(roles)
           .values({
             id: roleIdByCode[role.code],
@@ -733,18 +892,22 @@ async function seed(): Promise<void> {
             createdAt: SEED_DATE,
           })
           .onConflictDoUpdate({
-            target: roles.id,
+            target: roles.code,
             set: {
               displayName: role.displayName,
               description: role.description,
               application: role.application,
               active: true,
             },
-          });
+          })
+          .returning({ id: roles.id });
+
+        if (!resolvedRole) throw new Error(`Could not resolve seeded role ${role.code}.`);
+        roleIdByCode[role.code] = resolvedRole.id;
       }
 
       for (const code of PERMISSION_CODES) {
-        await transaction
+        const [resolvedPermission] = await transaction
           .insert(permissions)
           .values({
             id: permissionIdByCode[code],
@@ -753,9 +916,13 @@ async function seed(): Promise<void> {
             createdAt: SEED_DATE,
           })
           .onConflictDoUpdate({
-            target: permissions.id,
+            target: permissions.code,
             set: { description: permissionDescriptions[code] },
-          });
+          })
+          .returning({ id: permissions.id });
+
+        if (!resolvedPermission) throw new Error(`Could not resolve seeded permission ${code}.`);
+        permissionIdByCode[code] = resolvedPermission.id;
       }
 
       for (const roleCode of CANONICAL_ROLE_CODES) {
@@ -842,6 +1009,14 @@ async function seed(): Promise<void> {
             roleId: roleIdByCode[user.roleCode],
             status: 'ACTIVE',
             branchScopeMode: user.branchScopeMode,
+            departmentScopeMode:
+              user.departmentScopeMode ??
+              (user.contextType === 'AGENCY'
+                ? 'NONE'
+                : user.branchScopeMode === 'ALL'
+                  ? 'ALL'
+                  : 'SELECTED'),
+            jobTitle: user.jobTitle ?? defaultJobTitleByRole[user.roleCode] ?? null,
             teamScopeMode: user.teamScopeMode,
             assignmentScope: user.assignmentScope,
             effectiveFrom: SEED_DATE,
@@ -854,6 +1029,14 @@ async function seed(): Promise<void> {
               roleId: roleIdByCode[user.roleCode],
               status: 'ACTIVE',
               branchScopeMode: user.branchScopeMode,
+              departmentScopeMode:
+                user.departmentScopeMode ??
+                (user.contextType === 'AGENCY'
+                  ? 'NONE'
+                  : user.branchScopeMode === 'ALL'
+                    ? 'ALL'
+                    : 'SELECTED'),
+              jobTitle: user.jobTitle ?? defaultJobTitleByRole[user.roleCode] ?? null,
               teamScopeMode: user.teamScopeMode,
               assignmentScope: user.assignmentScope,
               effectiveUntil: null,
@@ -865,6 +1048,9 @@ async function seed(): Promise<void> {
           await transaction
             .delete(membershipBranchScopes)
             .where(sql`${membershipBranchScopes.membershipId} = ${user.membershipId}`);
+          await transaction
+            .delete(membershipDepartmentScopes)
+            .where(sql`${membershipDepartmentScopes.membershipId} = ${user.membershipId}`);
           await transaction
             .delete(membershipTeamScopes)
             .where(sql`${membershipTeamScopes.membershipId} = ${user.membershipId}`);
@@ -891,8 +1077,158 @@ async function seed(): Promise<void> {
               })),
             );
           }
+
+          const departmentScopes =
+            user.departmentScopes ??
+            (user.branchIds ?? []).flatMap((branchId) => {
+              const departmentId = departmentByBranch[branchId];
+              return departmentId ? [{ branchId, departmentId }] : [];
+            });
+          if (
+            (user.departmentScopeMode ?? (user.branchScopeMode === 'ALL' ? 'ALL' : 'SELECTED')) ===
+              'SELECTED' &&
+            departmentScopes.length > 0
+          )
+            await transaction.insert(membershipDepartmentScopes).values(
+              departmentScopes.map((scope) => ({
+                branchId: scope.branchId,
+                clientOrganizationId: user.clientOrganizationId as string,
+                createdAt: SEED_DATE,
+                departmentId: scope.departmentId,
+                membershipId: user.membershipId,
+              })),
+            );
         }
       }
+
+      await transaction
+        .insert(teamMemberships)
+        .values([
+          {
+            id: '62000000-0000-4000-8000-000000000001',
+            assignedBy: '50000000-0000-4000-8000-000000000002',
+            branchId: ALPHA_PUNE_BRANCH_ID,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            departmentId: ALPHA_PUNE_DEPARTMENT_ID,
+            membershipId: '60000000-0000-4000-8000-000000000005',
+            reason: 'Development seed sales-team membership.',
+            startedAt: SEED_DATE,
+            teamId: ALPHA_PUNE_TEAM_ID,
+          },
+          {
+            id: '62000000-0000-4000-8000-000000000002',
+            assignedBy: '50000000-0000-4000-8000-000000000002',
+            branchId: ALPHA_PUNE_BRANCH_ID,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            departmentId: ALPHA_PUNE_DEPARTMENT_ID,
+            membershipId: '60000000-0000-4000-8000-000000000006',
+            reason: 'Development seed sales-team membership.',
+            startedAt: SEED_DATE,
+            teamId: ALPHA_PUNE_TEAM_ID,
+          },
+        ])
+        .onConflictDoNothing();
+      await transaction
+        .insert(teamManagerAssignments)
+        .values({
+          id: '63000000-0000-4000-8000-000000000001',
+          assignedBy: '50000000-0000-4000-8000-000000000002',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          departmentId: ALPHA_PUNE_DEPARTMENT_ID,
+          managerMembershipId: '60000000-0000-4000-8000-000000000013',
+          reason: 'Development seed canonical Team Manager.',
+          startedAt: SEED_DATE,
+          teamId: ALPHA_PUNE_TEAM_ID,
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(reportingLines)
+        .values([
+          {
+            id: '64000000-0000-4000-8000-000000000001',
+            assignedBy: '50000000-0000-4000-8000-000000000002',
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            managerMembershipId: '60000000-0000-4000-8000-000000000013',
+            reason: 'Development seed reporting hierarchy.',
+            startedAt: SEED_DATE,
+            subordinateMembershipId: '60000000-0000-4000-8000-000000000005',
+          },
+          {
+            id: '64000000-0000-4000-8000-000000000002',
+            assignedBy: '50000000-0000-4000-8000-000000000002',
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            managerMembershipId: '60000000-0000-4000-8000-000000000013',
+            reason: 'Development seed reporting hierarchy.',
+            startedAt: SEED_DATE,
+            subordinateMembershipId: '60000000-0000-4000-8000-000000000006',
+          },
+        ])
+        .onConflictDoNothing();
+
+      const alphaQueueId = '81000000-0000-4000-8000-000000000001';
+      await transaction
+        .insert(leadSettings)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          firstActionSlaMinutes: 15,
+          warningBeforeMinutes: 5,
+          updatedAt: SEED_DATE,
+          updatedBy: '50000000-0000-4000-8000-000000000002',
+        })
+        .onConflictDoUpdate({
+          target: leadSettings.clientOrganizationId,
+          set: { firstActionSlaMinutes: 15, warningBeforeMinutes: 5, updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(assignmentQueues)
+        .values({
+          id: alphaQueueId,
+          active: true,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          code: 'PUNE-INBOUND',
+          languageRules: ['English', 'Hindi', 'Marathi'],
+          name: 'Pune inbound leads',
+          sourceRules: [],
+          strategy: 'ROUND_ROBIN',
+          teamId: ALPHA_PUNE_TEAM_ID,
+        })
+        .onConflictDoUpdate({
+          target: assignmentQueues.id,
+          set: { active: true, strategy: 'ROUND_ROBIN', updatedAt: SEED_DATE },
+        });
+      for (const membershipId of [
+        '60000000-0000-4000-8000-000000000005',
+        '60000000-0000-4000-8000-000000000006',
+      ]) {
+        await transaction
+          .insert(assignmentQueueMembers)
+          .values({
+            active: true,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            membershipId,
+            queueId: alphaQueueId,
+          })
+          .onConflictDoUpdate({
+            target: [assignmentQueueMembers.queueId, assignmentQueueMembers.membershipId],
+            set: { active: true },
+          });
+      }
+      await transaction
+        .insert(publicLeadForms)
+        .values({
+          assignmentQueueId: alphaQueueId,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientFormKey: 'alpha-pune-website',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          consentNoticeVersion: 'lead-response-v1',
+          name: 'Alpha Pune website enquiry',
+        })
+        .onConflictDoUpdate({
+          target: publicLeadForms.clientFormKey,
+          set: { active: true, assignmentQueueId: alphaQueueId, updatedAt: SEED_DATE },
+        });
     });
   } finally {
     await connection.close();

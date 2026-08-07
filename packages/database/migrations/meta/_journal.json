@@ -36,6 +36,55 @@
       "when": 1785756317791,
       "tag": "0004_fast_blink",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786099552305,
+      "tag": "0005_thin_wrecking_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786099789813,
+      "tag": "0006_third_tenebrous",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786100911809,
+      "tag": "0007_white_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786101074197,
+      "tag": "0008_phase3_lead_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786103495256,
+      "tag": "0009_mean_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786103639934,
+      "tag": "0010_phase2_organization_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786104440280,
+      "tag": "0011_yielding_barracuda",
+      "breakpoints": true
     }
   ]
 }

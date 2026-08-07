@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement registration/RC as a parallel post-booking process.
 
+Reuse the canonical Customer/Contact and delivered-vehicle identities; do not create a second
+customer record for registration work.
+
 ## States
 
 Documents Ready, Registration Started, RTO Submitted, Temporary Registration/Number Allotted, RC Pending, RC Received, RC Shared/Collected and Case Closed.

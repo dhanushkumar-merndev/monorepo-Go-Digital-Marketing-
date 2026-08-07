@@ -7,6 +7,7 @@ import { ApiExceptionFilter } from './common/errors/api-exception.filter.js';
 import { ZodValidationPipe } from './common/validation/zod-validation.pipe.js';
 import { API_ENVIRONMENT, ApiConfigModule } from './config/api-config.module.js';
 import { HealthModule } from './health/health.module.js';
+import { LeadsModule } from './leads/leads.module.js';
 import { DatabaseInfrastructureModule } from './infrastructure/database/database.module.js';
 import { RedisInfrastructureModule } from './infrastructure/redis/redis.module.js';
 import { StorageInfrastructureModule } from './infrastructure/storage/storage.module.js';
@@ -31,6 +32,7 @@ import { createPinoHttpOptions } from './observability/pino-options.js';
     StorageInfrastructureModule,
     ObservabilityModule,
     HealthModule,
+    LeadsModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

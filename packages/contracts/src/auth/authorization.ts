@@ -12,6 +12,7 @@ export const CANONICAL_ROLE_CODES = [
   'BILLING_DOCUMENTATION_EXECUTIVE',
   'DELIVERY_EXECUTIVE',
   'RC_REGISTRATION_EXECUTIVE',
+  'TEAM_MANAGER',
 ] as const;
 
 export const PERMISSION_CODES = [
@@ -32,10 +33,23 @@ export const PERMISSION_CODES = [
   'organization.teams.manage',
   'organization.settings.manage',
   'organization.audit.read',
+  'leads.read',
+  'leads.create',
+  'leads.transition',
+  'leads.assign',
+  'leads.followups.manage',
+  'leads.notes.create',
+  'leads.tasks.manage',
+  'leads.duplicates.manage',
+  'leads.sla.manage',
   'platform.agencies.manage',
   'platform.clients.manage',
   'platform.defaults.manage',
   'platform.support_elevation.manage',
+  'organization.departments.read',
+  'organization.departments.manage',
+  'organization.hierarchy.read',
+  'organization.hierarchy.manage',
 ] as const;
 
 export const canonicalRoleCodeSchema = z.enum(CANONICAL_ROLE_CODES);

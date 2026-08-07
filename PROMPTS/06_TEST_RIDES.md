@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement complete test-ride scheduling, assignment, execution and active-job tracking.
 
+Consume canonical Phase 2 users/teams and Phase 3 Lead/Contact identities. Active location starts
+only after explicit job action and stops immediately when the job ends.
+
 ## States
 
 Requested, Booked, Customer Confirmed, Executive Assigned, Active, Completed, Cancelled and No-show.

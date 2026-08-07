@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement provider-neutral conversations and WhatsApp Cloud API-ready architecture.
 
+Use canonical Phase 3 Contacts/Leads and the Phase 2 conversation-owner/team scope. Personal
+WhatsApp QR or unofficial WhatsApp Web automation is prohibited; use official provider APIs.
+
 ## Entities
 
 Conversations, participants, messages, media, templates, statuses, assignments, integration connections, webhook events, outbound outbox and opt-in/suppression records.

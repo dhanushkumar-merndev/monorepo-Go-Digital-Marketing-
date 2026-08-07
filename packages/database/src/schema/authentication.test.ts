@@ -17,9 +17,9 @@ import {
 } from './index.js';
 
 describe('Phase 1 identity and authorization schema', () => {
-  it('preserves all canonical roles and Phase 1 permission definitions', () => {
-    expect(CANONICAL_ROLE_CODES).toHaveLength(11);
-    expect(new Set(CANONICAL_ROLE_CODES).size).toBe(11);
+  it('preserves all canonical roles and permission definitions', () => {
+    expect(CANONICAL_ROLE_CODES).toHaveLength(12);
+    expect(new Set(CANONICAL_ROLE_CODES).size).toBe(12);
     expect(PERMISSION_CODES).toContain('platform.support_elevation.manage');
     expect(PERMISSION_CODES).toContain('organization.clients.read');
   });

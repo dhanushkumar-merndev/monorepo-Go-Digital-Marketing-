@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement delivery scheduling, readiness enforcement, mobile execution and proof.
 
+Consume canonical booking, inventory, customer and Phase 2 delivery-team identities. Accessories,
+PDI and delivery readiness remain operational state separate from the Lead pipeline.
+
 ## States
 
 Vehicle Allocated, Vehicle Preparation, Ready for Delivery, Delivery Scheduled, Out for Delivery, Delivered, Delayed, Failed, Rescheduled and controlled Cancelled.

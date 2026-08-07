@@ -26,6 +26,9 @@ export interface AuthorizationContext {
   branchIds: ReadonlySet<string>;
   branchScopeMode: ScopeMode;
   clientOrganizationId?: string;
+  departmentIds: ReadonlySet<string>;
+  departmentScopeMode: ScopeMode;
+  managedTeamIds: ReadonlySet<string>;
   membershipId: string;
   permissionCodes: ReadonlySet<PermissionCode>;
   roleCode: string;
@@ -46,4 +49,5 @@ export interface ResourceScope {
   clientOrganizationId: string;
   ownerId?: string | null;
   teamId?: string | null;
+  departmentId?: string | null;
 }

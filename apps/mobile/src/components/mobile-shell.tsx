@@ -45,6 +45,14 @@ export function MobileShell({ children, title }: MobileShellProps) {
         />
         <Button
           accessibilityRole="tab"
+          accessibilityState={{ selected: pathname.startsWith('/leads') }}
+          className="flex-1"
+          label="Leads"
+          onPress={() => router.replace('/(app)/leads')}
+          variant={pathname.startsWith('/leads') ? 'primary' : 'secondary'}
+        />
+        <Button
+          accessibilityRole="tab"
           accessibilityState={{ selected: pathname === '/profile' }}
           className="flex-1"
           label="Profile"

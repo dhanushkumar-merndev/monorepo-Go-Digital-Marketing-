@@ -16,6 +16,7 @@ import {
   CarFront,
   Home,
   Laptop2,
+  ListChecks,
   LoaderCircle,
   LogOut,
   Menu,
@@ -40,6 +41,7 @@ interface AppShellProps {
 
 const navigation = [
   { href: '/', icon: Home, label: 'Overview' },
+  { href: '/leads', icon: ListChecks, label: 'Leads', permission: 'leads.read' },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {
     href: '/sessions',

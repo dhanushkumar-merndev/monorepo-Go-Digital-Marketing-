@@ -19,6 +19,7 @@ export {
   assignmentScopeEnum,
   canonicalRoleCodeEnum,
   membershipBranchScopes,
+  membershipDepartmentScopes,
   membershipContextTypeEnum,
   membershipScopeModeEnum,
   membershipStatusEnum,
@@ -29,6 +30,9 @@ export {
   roleApplicationEnum,
   rolePermissionMappings,
   roles,
+  reportingLines,
+  teamManagerAssignments,
+  teamMemberships,
 } from './authorization.js';
 export {
   agencies,
@@ -36,6 +40,7 @@ export {
   branches,
   clientOrganizationStatusEnum,
   clientOrganizations,
+  departments,
   teams,
 } from './organizations.js';
 export {
@@ -55,3 +60,4 @@ export {
   webhookStatusEnum,
 } from './platform.js';
 export { users, userStatusEnum } from './users.js';
+export * from './leads.js';

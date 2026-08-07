@@ -27,9 +27,21 @@ export class AuthorizationPolicy {
       return false;
     }
 
+    if (context.roleCode === 'TEAM_MANAGER') {
+      return context.managedTeamIds.has(teamId);
+    }
+
     return (
       context.teamScopeMode === 'ALL' ||
       (context.teamScopeMode === 'SELECTED' && context.teamIds.has(teamId))
+    );
+  }
+
+  canAccessDepartment(context: AuthorizationContext, departmentId: string): boolean {
+    if (!context.clientOrganizationId) return false;
+    return (
+      context.departmentScopeMode === 'ALL' ||
+      (context.departmentScopeMode === 'SELECTED' && context.departmentIds.has(departmentId))
     );
   }
 
@@ -49,11 +61,19 @@ export class AuthorizationPolicy {
       return false;
     }
 
+    if (resource.departmentId && !this.canAccessDepartment(context, resource.departmentId)) {
+      return false;
+    }
+
     switch (context.assignmentScope) {
       case 'ALL':
         return true;
       case 'TEAM':
-        return resource.teamId !== undefined && resource.teamId !== null;
+        return (
+          resource.teamId !== undefined &&
+          resource.teamId !== null &&
+          this.canAccessTeam(context, resource.teamId)
+        );
       case 'OWNED':
         return resource.ownerId === context.userId;
       case 'ASSIGNED':

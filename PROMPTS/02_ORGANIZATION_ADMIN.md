@@ -24,11 +24,19 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 ---
 
-# PHASE 2 — AGENCY, CLIENT, BRANCH, TEAM AND USER ADMINISTRATION
+# PHASE 2 — ORGANIZATION, HIERARCHY, ROLE/SCOPE AND USER ADMINISTRATION
 
 ## Objective
 
-Implement operational administration required to onboard and manage dealerships.
+Implement the canonical organization and access foundation required to onboard and manage
+dealerships. Phase 3 and every later business module must consume these relationships rather than
+create parallel branch, department, team or manager models.
+
+## Canonical organization model
+
+Support Client Organization / Tenant → Branch / Showroom → Department → Team → Team Members,
+with effective-dated Team Manager assignments and configurable reporting lines. Management layers
+are optional; do not force every dealership to use every title.
 
 ## Agency Admin capabilities
 
@@ -43,9 +51,10 @@ Implement operational administration required to onboard and manage dealerships.
 ## Client Admin capabilities
 
 - Manage dealership profile
-- Create/manage branches and teams
+- Create/manage branches, departments and teams
 - Invite users
-- Assign roles, branches and team scopes
+- Assign internal role/profile, display job title, branch, department and team scopes
+- Assign/end team membership, replace Team Manager and configure reporting relationships
 - Activate/deactivate users
 - Configure working hours
 - Configure lead-assignment readiness
@@ -61,14 +70,34 @@ Implement operational administration required to onboard and manage dealerships.
 - Historical ownership remains intact.
 - Role changes apply immediately and are audited.
 - Branch transfer never rewrites historical records silently.
+- Team membership, Team Manager replacement and reporting changes require a reason, retain history
+  and create immutable audit evidence.
+- Reject cross-tenant, invalid branch/department/team relationships, self-reporting, reporting
+  cycles, unauthorized cross-team management and unauthorized cross-branch management.
+- Team Manager scope derives only from active canonical manager assignments and never implies
+  whole-branch access.
+
+## Role and job-title reconciliation
+
+- Preserve stable internal codes such as CLIENT_ADMIN, MANAGER, SALES_MANAGER, TELECALLER and
+  SALESPERSON.
+- Add the canonical TEAM_MANAGER profile.
+- Represent CRM Admin as tenant CLIENT_ADMIN + job title, never as Agency Admin / Super Admin.
+- Represent Sales Consultant as SALESPERSON + job title.
+- Use job title + department + team + permission set + scope for Business Owner, GM / Sales Head,
+  Showroom Manager and specialist department wording where this avoids duplicate hard-coded roles.
+- CRM Admin receives no cross-tenant, deployment, infrastructure, unrestricted-secret or platform
+  security authority.
 
 ## Web screens
 
 - Agency client list/create/detail/suspension
 - Branch management
+- Department management
 - Team management
+- Team membership, Team Manager and reporting hierarchy management
 - User directory and invitation
-- Role and scope assignment
+- Role, job-title and branch/department/team scope assignment
 - Module feature flags
 - Working hours
 - Permission view
@@ -82,3 +111,7 @@ Implement operational administration required to onboard and manage dealerships.
 - Historical references remain intact.
 - Feature flags are enforced in UI and backend.
 - Permission changes audit old/new values.
+- Departments and teams are tenant/branch consistent at the database boundary.
+- Team Manager replacement preserves prior history and management visibility is team-scoped.
+- Reporting cycles, self-reporting and unauthorized cross-team/cross-branch changes are rejected.
+- CRM Admin remains tenant-only and Sales Consultant retains the stable SALESPERSON internal code.

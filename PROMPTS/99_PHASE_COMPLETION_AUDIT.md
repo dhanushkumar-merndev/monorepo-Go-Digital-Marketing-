@@ -14,8 +14,11 @@ Inspect the actual repository and perform a strict completion audit for the phas
 8. Run production builds for all affected apps/packages.
 9. Inspect authorization and tenant isolation.
 10. Inspect migrations and data integrity.
+    - For recovery/backfill migrations, verify existing-row compatibility, explicit ambiguity
+      handling, preservation of IDs/history and cross-phase foreign-key consistency.
 11. Identify incomplete, mocked, hardcoded, insecure or non-functional work.
 12. Fix issues that belong to the current phase.
+    - Re-run the earlier phase audit before auditing a dependent later phase.
 13. Do not implement future-phase features.
 14. Update:
     - `docs/implementation/PHASE_STATUS.md`

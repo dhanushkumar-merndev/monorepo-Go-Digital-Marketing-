@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { parseAuthEnvironment, type AuthEnvironment } from '@gdm/config';
 import { AuthenticationGuard } from '../authorization/authentication.guard.js';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import { ClientModuleAccessService } from '../authorization/client-module-access.service.js';
 import { DatabaseInfrastructureModule } from '../infrastructure/database/database.module.js';
 import { RedisInfrastructureModule } from '../infrastructure/redis/redis.module.js';
 import { AccessTokenService } from './access-token.service.js';
@@ -74,6 +75,7 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     AuthenticationService,
     AuthenticationRateLimiter,
     AuthorizationPolicy,
+    ClientModuleAccessService,
     DrizzleAuthStore,
     GoogleAuthenticationService,
     GoogleIdentityProviderAdapter,
@@ -102,6 +104,14 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
       useClass: AuthenticationGuard,
     },
   ],
-  exports: [AUTH_RUNTIME_CONFIG, AUTH_STORE, AccessTokenService, AuthenticationService],
+  exports: [
+    AUTH_RUNTIME_CONFIG,
+    AUTH_STORE,
+    AccessTokenService,
+    AuthenticationService,
+    AuthenticationRateLimiter,
+    AuthorizationPolicy,
+    ClientModuleAccessService,
+  ],
 })
 export class AuthModule {}

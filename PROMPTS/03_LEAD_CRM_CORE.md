@@ -30,9 +30,19 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement the complete internal lead-management foundation.
 
+## Phase 2 dependency
+
+Consume canonical Phase 2 branches, departments, teams, memberships, Team Manager assignments,
+working hours, permission profiles and scope. Do not store redundant manager IDs on Lead rows.
+Team Manager sees only actively managed teams; Showroom Manager, GM / Sales Head and Business Owner
+visibility follows their authorized branch/department/team scope.
+
 ## Lead sources
 
 Use exactly: META, WHATSAPP_AD, GOOGLE_ADS, WEBSITE, WALK_IN and OTHER. Manual entry is an entry method, not automatically a source.
+
+Tele-in, Facebook, IndiaMART, Justdial, CarWale, CarDekho and similar client labels must use source
+detail/provider metadata and campaign attribution without bypassing the canonical Lead service.
 
 ## Required entities
 
@@ -52,6 +62,9 @@ Lost reasons: Price, Finance rejected, Model unavailable, Competitor purchase, P
 
 Manual and round-robin assignment, branch/team eligibility, working-hours awareness, active-user filtering, reassignment reason/history and the three-owner model.
 
+Queue and assignee eligibility must consume active canonical Phase 2 team membership and department
+scope. Team authorization scope alone is not evidence of actual team membership.
+
 ## Deduplication
 
 Normalize Indian phone numbers. Do not globally merge across tenants. Support candidate review, canonical contacts and legitimate repeat opportunities. Never silently destructively merge.
@@ -68,6 +81,9 @@ Lead inbox/list/detail, customer timeline, manual creation, duplicate review, as
 
 Assigned leads, details, accept/reject, contact outcome, follow-up, notes, transitions, showroom update and safe offline outbox.
 
+Offline replay must be idempotent, tenant-scoped, contain no credentials and preserve conflicts for
+explicit review. Actual calling remains Phase 4.
+
 ## Acceptance criteria
 
 - Duplicate events do not create duplicate leads.
@@ -78,3 +94,5 @@ Assigned leads, details, accept/reject, contact outcome, follow-up, notes, trans
 - SLA behaviour is deterministic and tested.
 - Salesperson sees only assigned leads.
 - Reassignment requires reason and audit.
+- Team Manager sees managed-team Leads but not unrelated Leads in the same branch.
+- Follow-up replay does not create duplicate work items.

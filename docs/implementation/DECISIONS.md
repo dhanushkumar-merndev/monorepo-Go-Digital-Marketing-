@@ -1,5 +1,133 @@
 # Architecture Decisions
 
+## ADR-0028 — Phase 3 assignment consumes canonical Phase 2 team relationships
+
+- **Date:** 2026-08-07
+- **Decision:** A team-bound Lead queue accepts an assignee only when the user and membership are
+  active, branch and department scope cover the queue, and an active effective-dated Phase 2 team
+  membership exists. Team Manager Lead visibility is derived from active
+  `team_manager_assignments`; no manager column is added to Lead records. Follow-up commands use the
+  same durable idempotency-receipt pattern as other mobile replay commands.
+- **Reason:** Authorization scope is permission to access a team, not proof that the employee is an
+  actual team member. Reusing the canonical hierarchy removes the temporary Phase 3 assumption and
+  prevents Team Managers from inheriting whole-branch visibility.
+- **Alternatives considered:** Continuing to infer membership from `membership_team_scopes` and
+  storing manager IDs on Leads were rejected as duplicate organization models.
+- **Status:** Accepted
+- **Affected modules:** Phase 2 hierarchy/authentication store, `apps/api/src/leads`, Lead web/mobile
+  clients, migrations `0010`–`0011`
+
+## ADR-0027 — Recovery migrations are additive and preserve Phase 3 identifiers/history
+
+- **Date:** 2026-08-07
+- **Decision:** Add migrations `0009`–`0011` after the existing Phase 3 migrations. Backfill one
+  `RECOVERY_DEFAULT` department per existing branch before requiring `teams.department_id`, seed
+  effective team membership from explicit selected team scopes, and fail with descriptive
+  preflight errors for ambiguous branch/team queue or cross-tenant assignment history.
+- **Reason:** Phase 2 was recovered after Phase 3. Rewriting/renumbering Phase 3 migrations or
+  recreating Lead data would risk IDs, history and audit evidence.
+- **Alternatives considered:** Dropping/recreating organization or Lead tables and guessing
+  inconsistent mappings were rejected. Compatibility departments and inferred memberships are
+  explicitly reviewable after migration.
+- **Status:** Accepted; compatibility labels/membership must be reviewed in staging
+- **Affected modules:** `packages/database/migrations/0009_*`, `0010_*`, `0011_*`, seed and migration
+  integration tests
+
+## ADR-0026 — Canonical organization hierarchy uses effective-dated relationships
+
+- **Date:** 2026-08-07
+- **Decision:** Phase 2 owns Department, Team membership, Team Manager assignment and reporting-line
+  history. Relationships carry tenant/branch/department/team foreign keys, reason, actor and
+  start/end timestamps. Reporting commands reject self-reporting, cycles and actor scope violations.
+- **Reason:** Client hierarchies vary and cannot be represented safely by one manager field or
+  hard-coded title chain. Effective-dated rows retain attribution and audit history.
+- **Alternatives considered:** A `manager_id` column on Team/User/Lead and a mandatory fixed
+  Business Owner → GM → Showroom Manager → Team Manager tree were rejected.
+- **Status:** Accepted
+- **Affected modules:** organization/authorization schemas, administration contracts/API/web,
+  authentication context and tests
+
+## ADR-0025 — Stable role profiles are combined with job title and organization scope
+
+- **Date:** 2026-08-07
+- **Decision:** Preserve existing internal role codes and append `TEAM_MANAGER`. Map CRM Admin to
+  `CLIENT_ADMIN`, Sales Consultant to `SALESPERSON`, and management/client wording through job title,
+  department/team placement, permissions and scope. CRM Admin remains tenant-only and distinct from
+  `AGENCY_ADMIN`.
+- **Reason:** Renaming or multiplying role enums would break guards, sessions and migrations while
+  providing less configurability for dealership-specific structures.
+- **Alternatives considered:** One hard-coded role for every client title was rejected. Fully custom
+  role profiles remain later scope; this phase reuses the canonical permission engine.
+- **Status:** Accepted
+- **Affected modules:** contracts, authorization schema/policy, seed, administration UI/API, PRD and
+  phase prompts
+
+## ADR-0024 — SLA uses durable business-time deadlines and idempotent database claiming
+
+- **Date:** 2026-08-07
+- **Decision:** Persist each first-action SLA start, warning and deadline using the branch timezone
+  and seven-day working-hours calendar. Reconcile every minute from the API and through an
+  authorized manual endpoint; compare-and-update the timer's prior state before emitting one
+  escalation/outbox event.
+- **Reason:** Deadlines must survive Redis loss and process restarts, behave deterministically
+  outside working hours, and remain safe when more than one API instance runs the monitor.
+- **Alternatives considered:** In-memory timers and Redis-only delayed jobs were rejected because
+  neither is the business-data source of truth. A hardcoded commercial threshold was rejected;
+  minutes and warning are versioned tenant settings with database defaults.
+- **Status:** Accepted
+- **Affected modules:** `apps/api/src/leads`, `packages/database/src/schema/leads.ts`
+
+## ADR-0023 — Lead commands are optimistic, append-only and outbox-atomic
+
+- **Date:** 2026-08-07
+- **Decision:** Lifecycle, reassignment and sensitive work-item commands validate expected lead
+  version and write current state, append-only history/outcome/assignment evidence, immutable audit
+  and outbox records in one PostgreSQL transaction. Invalid transitions fail before all writes.
+- **Reason:** Mobile replay and concurrent staff work must expose conflicts instead of silently
+  overwriting workflow or attribution history.
+- **Status:** Accepted
+- **Affected modules:** `apps/api/src/leads`, `packages/contracts/src/leads`, Phase 3 tests
+
+## ADR-0022 — Tenant-scoped contact candidates never trigger destructive automatic merge
+
+- **Date:** 2026-08-07
+- **Decision:** Normalize Indian phones to E.164 and HMAC them with tenant ID and a backend pepper.
+  Exact phone matches reuse the contact while creating a legitimate repeat opportunity; email-only
+  matches create a duplicate candidate. Review may link one contact to a canonical contact or keep
+  both, but never moves/deletes history automatically or searches across tenants.
+- **Reason:** Repeat vehicle enquiries are valid opportunities and a global phone merge would leak
+  tenant/customer information or destroy attribution.
+- **Alternatives considered:** Global uniqueness and silent destructive merging were rejected.
+- **Status:** Accepted
+- **Affected modules:** `packages/database/src/schema/leads.ts`, `apps/api/src/leads`
+
+## ADR-0021 — Lead access uses live membership scope plus current-process assignment
+
+- **Date:** 2026-08-07
+- **Decision:** Derive tenant only from `AuthorizationContext`; apply branch/team scope and the live
+  assignment policy in repositories/services. A Salesperson is restricted specifically to
+  `current_process_owner_id`, while relationship and conversation owners remain separate fields.
+  Protected lead routes also require the active tenant's `LEADS` module flag.
+- **Reason:** The Phase 3 acceptance criterion is assigned-only salesperson visibility, and a
+  historic relationship owner must not retain operational access after reassignment.
+- **Status:** Accepted
+- **Affected modules:** authorization guard/module access service, lead service, role permissions
+
+## ADR-0020 — Administration updates return and audit resolved scope state
+
+- **Date:** 2026-08-07
+- **Decision:** Resolve membership role, branch scope and team scope inside the same transaction as
+  an administrative change; return the resolved values and store explicit old/new scope modes and
+  IDs in the audit event. Dealership-profile writes and their audit event are one transaction.
+- **Reason:** The Phase 2 audit found a hardcoded `CLIENT_ADMIN` response with empty scopes and a
+  profile write that could commit without its audit record. Both outcomes violate accurate access
+  administration and immutable audit expectations.
+- **Alternatives considered:** Returning only an acknowledgement or relying on a later client
+  refetch was rejected because it hides an incorrect command result and does not repair audit
+  integrity.
+- **Status:** Accepted
+- **Affected modules:** `apps/api/src/administration`, `packages/contracts`, Phase 2 PGlite tests
+
 ## ADR-0019 — Administrative configuration is tenant-owned and auditable
 
 - **Date:** 2026-08-03
@@ -304,3 +432,38 @@
   still external release evidence.
 - **Affected modules:** `.github/workflows/ci.yml`,
   `apps/web/src/lib/cloudflare-deployment-config.test.ts`
+
+## ADR-0029 — Phase 4 starts provider-neutral and does not authorize unsafe mobile recording
+
+- **Date:** 2026-08-07
+- **Decision:** Phase 4 may implement the `TelephonyProvider` interface, development adapter,
+  generic authoritative webhook, reconciliation, `tel:` fallback and consent-aware private-recording
+  access without selecting a live telephony provider or supplying its credentials. A real provider
+  remains disabled until its webhook signing, tenant credential storage, consent/recording-retention,
+  reconciliation and outage behaviour are approved. SIM/mobile recording through call-log, SMS,
+  contacts, accessibility, hidden microphone capture or other restricted-permission workarounds is
+  prohibited.
+- **Reason:** The approved Phase 4 prompt deliberately separates testable provider-neutral domain
+  work from external provider/compliance activation. This preserves Phase 2 hierarchy and Phase 3
+  Lead/Contact/activity authority while avoiding invented vendor selection or unsafe Android scope.
+- **Alternatives considered:** Blocking all Phase 4 development until production credentials exist
+  would leave the required adapter and webhook controls untested. Selecting a vendor without client
+  approval, or treating `tel:` as a recording/duration source, would create unsupported claims and
+  compliance risk.
+- **Status:** Accepted for development; real-provider activation remains a release prerequisite.
+- **Affected modules:** `PROMPTS/04_TELEPHONY.md`, future `apps/api` telephony module, contracts,
+  database migrations, web/mobile Phase 4 clients and deployment configuration.
+
+## ADR-0030 — Development seed resolves migration-owned roles and permissions by stable code
+
+- **Date:** 2026-08-07
+- **Decision:** Seed roles and permissions by their unique business codes, capture the returned
+  database IDs, and use those resolved IDs for later mapping and membership inserts.
+- **Reason:** Migrations `0010` and `0008` create canonical records with database-generated IDs.
+  An ID-only seed upsert collided on the unique code after a real migration chain, preventing the
+  supported development seed from running.
+- **Alternatives considered:** Rewriting migration-generated IDs, deleting migration-owned records,
+  or manually altering migration history were rejected because they would damage accepted references
+  or invalidate migration evidence.
+- **Status:** Accepted and verified on disposable PostgreSQL.
+- **Affected modules:** `packages/database/src/seed.ts`, development migration/seed workflow.

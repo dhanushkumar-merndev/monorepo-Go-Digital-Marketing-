@@ -30,6 +30,10 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement booking confirmation, financial-status tracking and readiness without processing customer money.
 
+Consume canonical Phase 3 Lead/Contact and Phase 7 Inventory identities. Quotation, used-car /
+exchange, finance, insurance, booking, billing and payment states remain separate operational
+records; do not turn them into one expanded Lead status enum.
+
 ## Entities
 
 Bookings, items, price components, discounts, payment entries/proofs, finance cases, invoices, insurance, booking documents, verification events and delivery-readiness gate.

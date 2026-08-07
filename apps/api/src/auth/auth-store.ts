@@ -113,6 +113,8 @@ export interface MembershipAccessRecord {
   assignmentScope: AssignmentScope;
   branchIds: string[];
   branchScopeMode: MembershipScopeMode;
+  departmentIds: string[];
+  departmentScopeMode: MembershipScopeMode;
   clientAgencyId?: string;
   clientDisplayName?: string;
   clientLegalName?: string;
@@ -121,6 +123,8 @@ export interface MembershipAccessRecord {
   clientTimezone?: string;
   contextType: 'AGENCY' | 'CLIENT';
   id: string;
+  jobTitle?: string | null;
+  managedTeamIds: string[];
   organizationDisplayName: string;
   effectiveFrom: Date;
   effectiveUntil?: Date;
@@ -322,9 +326,12 @@ export interface TenantUserRecord {
   branchIds: string[];
   branchScopeMode: MembershipScopeMode;
   displayName: string;
+  departmentIds: string[];
+  departmentScopeMode: MembershipScopeMode;
   email: string;
   membershipId: string;
   membershipStatus: MembershipStatus;
+  jobTitle?: string | null;
   roleCode: CanonicalRoleCode;
   teamIds: string[];
   teamScopeMode: MembershipScopeMode;

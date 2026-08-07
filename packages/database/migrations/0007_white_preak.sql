@@ -1,0 +1,3 @@
+DROP INDEX "lead_opportunities_external_uidx";--> statement-breakpoint
+ALTER TABLE "lead_opportunities" ADD COLUMN "source_metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "lead_opportunities_external_uidx" ON "lead_opportunities" USING btree ("client_organization_id","external_provider","external_lead_id") WHERE "lead_opportunities"."external_lead_id" is not null;

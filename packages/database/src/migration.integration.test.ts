@@ -21,6 +21,8 @@ const tenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446761';
 const otherTenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446762';
 const branchId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446711';
 const otherBranchId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446712';
+const departmentId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446731';
+const otherDepartmentId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446732';
 const teamId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446721';
 const otherTeamId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446722';
 const agencyRoleId = '30000000-0000-4000-8000-000000000001';
@@ -38,7 +40,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
+describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -64,9 +66,13 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         ('${branchId}', '${tenantId}', 'A_MAIN', 'Tenant A Main'),
         ('${otherBranchId}', '${otherTenantId}', 'B_MAIN', 'Tenant B Main');
 
-      insert into teams (id, client_organization_id, branch_id, code, name) values
-        ('${teamId}', '${tenantId}', '${branchId}', 'A_SALES', 'Tenant A Sales'),
-        ('${otherTeamId}', '${otherTenantId}', '${otherBranchId}', 'B_SALES', 'Tenant B Sales');
+      insert into departments (id, client_organization_id, branch_id, code, name) values
+        ('${departmentId}', '${tenantId}', '${branchId}', 'A_SALES', 'Tenant A Sales'),
+        ('${otherDepartmentId}', '${otherTenantId}', '${otherBranchId}', 'B_SALES', 'Tenant B Sales');
+
+      insert into teams (id, client_organization_id, branch_id, department_id, code, name) values
+        ('${teamId}', '${tenantId}', '${branchId}', '${departmentId}', 'A_SALES', 'Tenant A Sales'),
+        ('${otherTeamId}', '${otherTenantId}', '${otherBranchId}', '${otherDepartmentId}', 'B_SALES', 'Tenant B Sales');
 
       insert into users (id, display_name, primary_email_normalized, status) values
         ('${agencyUserId}', 'Agency Admin', 'agency@test.example', 'ACTIVE'),
@@ -126,7 +132,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
     await client.close();
   });
 
-  it('applies every reviewed migration and records the complete Phase 1 table set', async () => {
+  it('applies every reviewed migration and records the canonical foundation table set', async () => {
     const tables = await client.query<{ table_name: string }>(`
       select table_name
       from information_schema.tables
@@ -134,11 +140,13 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         and table_name in (
           'agencies', 'audit_events', 'authentication_audit_events',
           'authentication_identities', 'branches', 'client_organizations',
-          'external_auth_challenges',
-          'membership_branch_scopes', 'membership_team_scopes', 'memberships',
+          'departments', 'external_auth_challenges',
+          'membership_branch_scopes', 'membership_department_scopes',
+          'membership_team_scopes', 'memberships',
           'outbox_events', 'password_reset_tokens', 'permissions', 'refresh_sessions',
           'refresh_token_rotations', 'role_permission_mappings', 'roles',
-          'support_elevations', 'teams', 'users', 'webhook_events'
+          'reporting_lines', 'support_elevations', 'team_manager_assignments',
+          'team_memberships', 'teams', 'users', 'webhook_events'
         )
       order by table_name
     `);
@@ -153,8 +161,10 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       'authentication_identities',
       'branches',
       'client_organizations',
+      'departments',
       'external_auth_challenges',
       'membership_branch_scopes',
+      'membership_department_scopes',
       'membership_team_scopes',
       'memberships',
       'outbox_events',
@@ -162,9 +172,12 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       'permissions',
       'refresh_sessions',
       'refresh_token_rotations',
+      'reporting_lines',
       'role_permission_mappings',
       'roles',
       'support_elevations',
+      'team_manager_assignments',
+      'team_memberships',
       'teams',
       'users',
       'webhook_events',
@@ -201,6 +214,13 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
           )
         )
     `);
+    const clientAdminPlatformMappings = await client.query<{ count: number }>(`
+      select count(*)::int as count
+      from role_permission_mappings rpm
+      join roles r on r.id = rpm.role_id
+      join permissions p on p.id = rpm.permission_id
+      where r.code = 'CLIENT_ADMIN' and p.code::text like 'platform.%'
+    `);
     const roleFamilyRows = await client.query<{
       application: string;
       code: string;
@@ -213,8 +233,8 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       order by r.code, p.code
     `);
 
-    expect(roleCount.rows[0]?.count).toBe(11);
-    expect(permissionCount.rows[0]?.count).toBe(21);
+    expect(roleCount.rows[0]?.count).toBe(12);
+    expect(permissionCount.rows[0]?.count).toBe(34);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -225,9 +245,12 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         'platform.clients.manage',
         'platform.defaults.manage',
         'platform.support_elevation.manage',
+        'leads.read',
+        'leads.assign',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
+    expect(clientAdminPlatformMappings.rows[0]?.count).toBe(0);
 
     const roleFamilies = new Map<string, { application: string; permissions: Set<string> }>();
     for (const row of roleFamilyRows.rows) {
@@ -249,6 +272,7 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
       'RC_REGISTRATION_EXECUTIVE',
       'SALESPERSON',
       'SALES_MANAGER',
+      'TEAM_MANAGER',
       'TELECALLER',
       'TEST_RIDE_EXECUTIVE',
     ]);
@@ -262,6 +286,12 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         .map(([code]) => code)
         .sort(),
     ).toEqual(['DELIVERY_EXECUTIVE', 'SALESPERSON', 'TEST_RIDE_EXECUTIVE']);
+    expect(
+      roleFamilies.get('SALES_MANAGER')?.permissions.has('organization.hierarchy.manage'),
+    ).toBe(true);
+    expect(
+      roleFamilies.get('SALES_MANAGER')?.permissions.has('organization.departments.manage'),
+    ).toBe(false);
   });
 
   it('enforces platform/client scope and tenant roots at the database boundary', async () => {
@@ -357,6 +387,61 @@ describe('Phase 0 and Phase 1 PostgreSQL migrations', () => {
         insert into membership_team_scopes (
           client_organization_id, membership_id, branch_id, team_id
         ) values ('${tenantId}', '${clientMembershipId}', '${branchId}', '${teamId}')
+      `),
+    ).resolves.toBeDefined();
+  });
+
+  it('prevents cross-tenant departments, canonical team membership and branch/team queues', async () => {
+    await expect(
+      client.exec(`
+        insert into membership_department_scopes (
+          client_organization_id, membership_id, branch_id, department_id
+        ) values (
+          '${tenantId}', '${clientMembershipId}', '${otherBranchId}', '${otherDepartmentId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into team_memberships (
+          client_organization_id, branch_id, department_id, team_id, membership_id, reason
+        ) values (
+          '${tenantId}', '${otherBranchId}', '${otherDepartmentId}', '${otherTeamId}',
+          '${clientMembershipId}', 'Cross-tenant relationship must fail.'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into team_manager_assignments (
+          client_organization_id, branch_id, department_id, team_id,
+          manager_membership_id, reason, assigned_by
+        ) values (
+          '${tenantId}', '${otherBranchId}', '${otherDepartmentId}', '${otherTeamId}',
+          '${clientMembershipId}', 'Cross-tenant manager assignment must fail.', '${clientUserId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into lead_assignment_queues (
+          client_organization_id, branch_id, team_id, code, name
+        ) values (
+          '${tenantId}', '${branchId}', '${otherTeamId}', 'INVALID_QUEUE', 'Invalid queue'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into membership_department_scopes (
+          client_organization_id, membership_id, branch_id, department_id
+        ) values ('${tenantId}', '${clientMembershipId}', '${branchId}', '${departmentId}');
+        insert into team_memberships (
+          client_organization_id, branch_id, department_id, team_id, membership_id, reason
+        ) values (
+          '${tenantId}', '${branchId}', '${departmentId}', '${teamId}',
+          '${clientMembershipId}', 'Valid canonical team membership.'
+        )
       `),
     ).resolves.toBeDefined();
   });

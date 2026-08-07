@@ -566,6 +566,7 @@ export class DrizzleAuthStore implements AuthStore {
         agencyStatus: schema.agencies.status,
         assignmentScope: schema.memberships.assignmentScope,
         branchScopeMode: schema.memberships.branchScopeMode,
+        departmentScopeMode: schema.memberships.departmentScopeMode,
         clientAgencyId: schema.clientOrganizations.agencyId,
         clientDisplayName: schema.clientOrganizations.displayName,
         clientId: schema.clientOrganizations.id,
@@ -576,6 +577,7 @@ export class DrizzleAuthStore implements AuthStore {
         effectiveFrom: schema.memberships.effectiveFrom,
         effectiveUntil: schema.memberships.effectiveUntil,
         id: schema.memberships.id,
+        jobTitle: schema.memberships.jobTitle,
         roleApplication: schema.roles.application,
         roleCode: schema.roles.code,
         roleDisplayName: schema.roles.displayName,
@@ -615,6 +617,7 @@ export class DrizzleAuthStore implements AuthStore {
         agencyStatus: schema.agencies.status,
         assignmentScope: schema.memberships.assignmentScope,
         branchScopeMode: schema.memberships.branchScopeMode,
+        departmentScopeMode: schema.memberships.departmentScopeMode,
         clientAgencyId: schema.clientOrganizations.agencyId,
         clientDisplayName: schema.clientOrganizations.displayName,
         clientId: schema.clientOrganizations.id,
@@ -625,6 +628,7 @@ export class DrizzleAuthStore implements AuthStore {
         effectiveFrom: schema.memberships.effectiveFrom,
         effectiveUntil: schema.memberships.effectiveUntil,
         id: schema.memberships.id,
+        jobTitle: schema.memberships.jobTitle,
         roleApplication: schema.roles.application,
         roleCode: schema.roles.code,
         roleDisplayName: schema.roles.displayName,
@@ -775,12 +779,15 @@ export class DrizzleAuthStore implements AuthStore {
       assignmentScope: support ? 'ALL' : membership.assignmentScope,
       branchIds: new Set(membership.branchIds),
       branchScopeMode: support ? 'ALL' : membership.branchScopeMode,
+      departmentIds: new Set(membership.departmentIds),
+      departmentScopeMode: support ? 'ALL' : membership.departmentScopeMode,
       ...(support
         ? { clientOrganizationId: support.targetClientOrganizationId }
         : membership.clientOrganizationId
           ? { clientOrganizationId: membership.clientOrganizationId }
           : {}),
       membershipId: membership.id,
+      managedTeamIds: new Set(membership.managedTeamIds),
       permissionCodes: new Set(membership.permissionCodes),
       roleCode: membership.roleCode,
       sessionId: row.sessionId,
@@ -2124,10 +2131,12 @@ export class DrizzleAuthStore implements AuthStore {
     const rows = await this.connection.db
       .select({
         branchScopeMode: schema.memberships.branchScopeMode,
+        departmentScopeMode: schema.memberships.departmentScopeMode,
         displayName: schema.users.displayName,
         email: schema.users.primaryEmailNormalized,
         membershipId: schema.memberships.id,
         membershipStatus: schema.memberships.status,
+        jobTitle: schema.memberships.jobTitle,
         roleCode: schema.roles.code,
         teamScopeMode: schema.memberships.teamScopeMode,
         userId: schema.users.id,
@@ -2144,7 +2153,7 @@ export class DrizzleAuthStore implements AuthStore {
     }
 
     const membershipIds = rows.map((row) => row.membershipId);
-    const [branchScopes, teamScopes] = await Promise.all([
+    const [branchScopes, departmentScopes, teamScopes] = await Promise.all([
       this.connection.db
         .select({
           branchId: schema.membershipBranchScopes.branchId,
@@ -2152,6 +2161,13 @@ export class DrizzleAuthStore implements AuthStore {
         })
         .from(schema.membershipBranchScopes)
         .where(inArray(schema.membershipBranchScopes.membershipId, membershipIds)),
+      this.connection.db
+        .select({
+          departmentId: schema.membershipDepartmentScopes.departmentId,
+          membershipId: schema.membershipDepartmentScopes.membershipId,
+        })
+        .from(schema.membershipDepartmentScopes)
+        .where(inArray(schema.membershipDepartmentScopes.membershipId, membershipIds)),
       this.connection.db
         .select({
           membershipId: schema.membershipTeamScopes.membershipId,
@@ -2166,6 +2182,9 @@ export class DrizzleAuthStore implements AuthStore {
       branchIds: branchScopes
         .filter((scope) => scope.membershipId === row.membershipId)
         .map((scope) => scope.branchId),
+      departmentIds: departmentScopes
+        .filter((scope) => scope.membershipId === row.membershipId)
+        .map((scope) => scope.departmentId),
       teamIds: teamScopes
         .filter((scope) => scope.membershipId === row.membershipId)
         .map((scope) => scope.teamId),
@@ -2259,6 +2278,7 @@ export class DrizzleAuthStore implements AuthStore {
       agencyStatus: 'ACTIVE' | 'CLOSED' | 'SUSPENDED' | null;
       assignmentScope: MembershipAccessRecord['assignmentScope'];
       branchScopeMode: MembershipAccessRecord['branchScopeMode'];
+      departmentScopeMode: MembershipAccessRecord['departmentScopeMode'];
       clientAgencyId: string | null;
       clientDisplayName: string | null;
       clientId: string | null;
@@ -2269,6 +2289,7 @@ export class DrizzleAuthStore implements AuthStore {
       effectiveFrom: Date;
       effectiveUntil: Date | null;
       id: string;
+      jobTitle: string | null;
       roleApplication: 'MOBILE' | 'WEB';
       roleCode: MembershipAccessRecord['roleCode'];
       roleDisplayName: string;
@@ -2277,24 +2298,38 @@ export class DrizzleAuthStore implements AuthStore {
       teamScopeMode: MembershipAccessRecord['teamScopeMode'];
     },
   ): Promise<MembershipAccessRecord> {
-    const [permissionRows, branchRows, teamRows] = await Promise.all([
-      this.connection.db
-        .select({ code: schema.permissions.code })
-        .from(schema.rolePermissionMappings)
-        .innerJoin(
-          schema.permissions,
-          eq(schema.rolePermissionMappings.permissionId, schema.permissions.id),
-        )
-        .where(eq(schema.rolePermissionMappings.roleId, row.roleId)),
-      this.connection.db
-        .select({ id: schema.membershipBranchScopes.branchId })
-        .from(schema.membershipBranchScopes)
-        .where(eq(schema.membershipBranchScopes.membershipId, row.id)),
-      this.connection.db
-        .select({ id: schema.membershipTeamScopes.teamId })
-        .from(schema.membershipTeamScopes)
-        .where(eq(schema.membershipTeamScopes.membershipId, row.id)),
-    ]);
+    const [permissionRows, branchRows, departmentRows, teamRows, managedTeamRows] =
+      await Promise.all([
+        this.connection.db
+          .select({ code: schema.permissions.code })
+          .from(schema.rolePermissionMappings)
+          .innerJoin(
+            schema.permissions,
+            eq(schema.rolePermissionMappings.permissionId, schema.permissions.id),
+          )
+          .where(eq(schema.rolePermissionMappings.roleId, row.roleId)),
+        this.connection.db
+          .select({ id: schema.membershipBranchScopes.branchId })
+          .from(schema.membershipBranchScopes)
+          .where(eq(schema.membershipBranchScopes.membershipId, row.id)),
+        this.connection.db
+          .select({ id: schema.membershipDepartmentScopes.departmentId })
+          .from(schema.membershipDepartmentScopes)
+          .where(eq(schema.membershipDepartmentScopes.membershipId, row.id)),
+        this.connection.db
+          .select({ id: schema.membershipTeamScopes.teamId })
+          .from(schema.membershipTeamScopes)
+          .where(eq(schema.membershipTeamScopes.membershipId, row.id)),
+        this.connection.db
+          .select({ id: schema.teamManagerAssignments.teamId })
+          .from(schema.teamManagerAssignments)
+          .where(
+            and(
+              eq(schema.teamManagerAssignments.managerMembershipId, row.id),
+              isNull(schema.teamManagerAssignments.endedAt),
+            ),
+          ),
+      ]);
 
     return {
       ...(row.agencyId ? { agencyId: row.agencyId } : {}),
@@ -2303,6 +2338,8 @@ export class DrizzleAuthStore implements AuthStore {
       assignmentScope: row.assignmentScope,
       branchIds: branchRows.map((scope) => scope.id),
       branchScopeMode: row.branchScopeMode,
+      departmentIds: departmentRows.map((scope) => scope.id),
+      departmentScopeMode: row.departmentScopeMode,
       ...(row.clientAgencyId ? { clientAgencyId: row.clientAgencyId } : {}),
       ...(row.clientDisplayName ? { clientDisplayName: row.clientDisplayName } : {}),
       ...(row.clientLegalName ? { clientLegalName: row.clientLegalName } : {}),
@@ -2313,6 +2350,8 @@ export class DrizzleAuthStore implements AuthStore {
       effectiveFrom: row.effectiveFrom,
       ...(row.effectiveUntil ? { effectiveUntil: row.effectiveUntil } : {}),
       id: row.id,
+      ...(row.jobTitle ? { jobTitle: row.jobTitle } : {}),
+      managedTeamIds: managedTeamRows.map((scope) => scope.id),
       organizationDisplayName:
         row.contextType === 'AGENCY'
           ? (row.agencyDisplayName ?? 'Agency')

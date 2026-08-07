@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement MVP inventory needed for booking, test rides and delivery.
 
+This phase owns physical stock. Use canonical Phase 2 branches/departments/users and do not encode
+inventory state in the Phase 3 Lead lifecycle.
+
 ## Entities
 
 Brands, models, variants, colours, physical units, VIN/chassis, engine number, branch stock, status history, reservations, allocations, transfers, demo designation and expected arrivals.

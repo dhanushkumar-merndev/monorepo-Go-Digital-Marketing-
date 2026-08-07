@@ -15,7 +15,7 @@ describe('development seed definition', () => {
         ),
       ).size,
     ).toBe(2);
-    expect(DEVELOPMENT_SEED_USERS).toHaveLength(12);
+    expect(DEVELOPMENT_SEED_USERS).toHaveLength(13);
   });
 
   it('provides scope records only when the corresponding mode is SELECTED', () => {

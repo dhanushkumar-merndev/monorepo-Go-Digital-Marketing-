@@ -15,7 +15,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { agencies, branches, clientOrganizations, teams } from './organizations.js';
+import { agencies, branches, clientOrganizations, departments, teams } from './organizations.js';
 import { users } from './users.js';
 
 export const CANONICAL_ROLE_CODES = [
@@ -30,6 +30,7 @@ export const CANONICAL_ROLE_CODES = [
   'BILLING_DOCUMENTATION_EXECUTIVE',
   'DELIVERY_EXECUTIVE',
   'RC_REGISTRATION_EXECUTIVE',
+  'TEAM_MANAGER',
 ] as const;
 
 export const PERMISSION_CODES = [
@@ -54,6 +55,19 @@ export const PERMISSION_CODES = [
   'platform.clients.manage',
   'platform.defaults.manage',
   'platform.support_elevation.manage',
+  'leads.read',
+  'leads.create',
+  'leads.transition',
+  'leads.assign',
+  'leads.followups.manage',
+  'leads.notes.create',
+  'leads.tasks.manage',
+  'leads.duplicates.manage',
+  'leads.sla.manage',
+  'organization.departments.read',
+  'organization.departments.manage',
+  'organization.hierarchy.read',
+  'organization.hierarchy.manage',
 ] as const;
 
 export const canonicalRoleCodeEnum = pgEnum('canonical_role_code', CANONICAL_ROLE_CODES);
@@ -143,8 +157,10 @@ export const memberships = pgTable(
     roleId: uuid('role_id').notNull(),
     status: membershipStatusEnum('status').default('INVITED').notNull(),
     branchScopeMode: membershipScopeModeEnum('branch_scope_mode').default('NONE').notNull(),
+    departmentScopeMode: membershipScopeModeEnum('department_scope_mode').default('NONE').notNull(),
     teamScopeMode: membershipScopeModeEnum('team_scope_mode').default('NONE').notNull(),
     assignmentScope: assignmentScopeEnum('assignment_scope').default('NONE').notNull(),
+    jobTitle: varchar('job_title', { length: 160 }),
     effectiveFrom: timestamp('effective_from', { withTimezone: true, mode: 'date' })
       .defaultNow()
       .notNull(),
@@ -191,6 +207,7 @@ export const memberships = pgTable(
         AND ${table.agencyId} IS NOT NULL
         AND ${table.clientOrganizationId} IS NULL
         AND ${table.branchScopeMode} = 'NONE'
+        AND ${table.departmentScopeMode} = 'NONE'
         AND ${table.teamScopeMode} = 'NONE'
         AND ${table.assignmentScope} = 'NONE'
       ) OR (
@@ -261,5 +278,173 @@ export const membershipTeamScopes = pgTable(
       name: 'membership_team_scopes_team_tenant_fk',
     }).onDelete('restrict'),
     index('membership_team_scopes_client_team_idx').on(table.clientOrganizationId, table.teamId),
+  ],
+);
+
+export const membershipDepartmentScopes = pgTable(
+  'membership_department_scopes',
+  {
+    clientOrganizationId: uuid('client_organization_id').notNull(),
+    membershipId: uuid('membership_id').notNull(),
+    branchId: uuid('branch_id').notNull(),
+    departmentId: uuid('department_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'membership_department_scopes_pk',
+      columns: [table.membershipId, table.departmentId],
+    }),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.membershipId],
+      foreignColumns: [memberships.clientOrganizationId, memberships.id],
+      name: 'membership_department_scopes_membership_tenant_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.branchId, table.departmentId],
+      foreignColumns: [departments.clientOrganizationId, departments.branchId, departments.id],
+      name: 'membership_department_scopes_department_tenant_fk',
+    }).onDelete('restrict'),
+    index('membership_department_scopes_client_department_idx').on(
+      table.clientOrganizationId,
+      table.departmentId,
+    ),
+  ],
+);
+
+export const teamMemberships = pgTable(
+  'team_memberships',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientOrganizationId: uuid('client_organization_id').notNull(),
+    branchId: uuid('branch_id').notNull(),
+    departmentId: uuid('department_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    membershipId: uuid('membership_id').notNull(),
+    reason: text('reason').notNull(),
+    assignedBy: uuid('assigned_by'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId, table.branchId, table.departmentId, table.teamId],
+      foreignColumns: [teams.clientOrganizationId, teams.branchId, teams.departmentId, teams.id],
+      name: 'team_memberships_team_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.membershipId],
+      foreignColumns: [memberships.clientOrganizationId, memberships.id],
+      name: 'team_memberships_membership_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.assignedBy],
+      foreignColumns: [users.id],
+      name: 'team_memberships_assigned_by_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('team_memberships_active_uidx')
+      .on(table.clientOrganizationId, table.teamId, table.membershipId)
+      .where(sql`${table.endedAt} is null`),
+    index('team_memberships_member_active_idx').on(
+      table.clientOrganizationId,
+      table.membershipId,
+      table.endedAt,
+    ),
+    check(
+      'team_memberships_window_check',
+      sql`${table.endedAt} is null or ${table.endedAt} > ${table.startedAt}`,
+    ),
+  ],
+);
+
+export const teamManagerAssignments = pgTable(
+  'team_manager_assignments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientOrganizationId: uuid('client_organization_id').notNull(),
+    branchId: uuid('branch_id').notNull(),
+    departmentId: uuid('department_id').notNull(),
+    teamId: uuid('team_id').notNull(),
+    managerMembershipId: uuid('manager_membership_id').notNull(),
+    reason: text('reason').notNull(),
+    assignedBy: uuid('assigned_by'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId, table.branchId, table.departmentId, table.teamId],
+      foreignColumns: [teams.clientOrganizationId, teams.branchId, teams.departmentId, teams.id],
+      name: 'team_manager_assignments_team_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.managerMembershipId],
+      foreignColumns: [memberships.clientOrganizationId, memberships.id],
+      name: 'team_manager_assignments_manager_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.assignedBy],
+      foreignColumns: [users.id],
+      name: 'team_manager_assignments_assigned_by_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('team_manager_assignments_current_team_uidx')
+      .on(table.clientOrganizationId, table.teamId)
+      .where(sql`${table.endedAt} is null`),
+    index('team_manager_assignments_manager_active_idx').on(
+      table.clientOrganizationId,
+      table.managerMembershipId,
+      table.endedAt,
+    ),
+    check(
+      'team_manager_assignments_window_check',
+      sql`${table.endedAt} is null or ${table.endedAt} > ${table.startedAt}`,
+    ),
+  ],
+);
+
+export const reportingLines = pgTable(
+  'reporting_lines',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    clientOrganizationId: uuid('client_organization_id').notNull(),
+    subordinateMembershipId: uuid('subordinate_membership_id').notNull(),
+    managerMembershipId: uuid('manager_membership_id').notNull(),
+    reason: text('reason').notNull(),
+    assignedBy: uuid('assigned_by'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    endedAt: timestamp('ended_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.clientOrganizationId, table.subordinateMembershipId],
+      foreignColumns: [memberships.clientOrganizationId, memberships.id],
+      name: 'reporting_lines_subordinate_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.clientOrganizationId, table.managerMembershipId],
+      foreignColumns: [memberships.clientOrganizationId, memberships.id],
+      name: 'reporting_lines_manager_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.assignedBy],
+      foreignColumns: [users.id],
+      name: 'reporting_lines_assigned_by_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('reporting_lines_current_subordinate_uidx')
+      .on(table.clientOrganizationId, table.subordinateMembershipId)
+      .where(sql`${table.endedAt} is null`),
+    index('reporting_lines_manager_active_idx').on(
+      table.clientOrganizationId,
+      table.managerMembershipId,
+      table.endedAt,
+    ),
+    check(
+      'reporting_lines_not_self_check',
+      sql`${table.subordinateMembershipId} <> ${table.managerMembershipId}`,
+    ),
+    check(
+      'reporting_lines_window_check',
+      sql`${table.endedAt} is null or ${table.endedAt} > ${table.startedAt}`,
+    ),
   ],
 );

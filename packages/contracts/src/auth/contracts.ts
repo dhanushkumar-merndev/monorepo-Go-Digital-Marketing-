@@ -141,6 +141,9 @@ export const membershipSummarySchema = z
     role: roleSummarySchema,
     branch_scope_mode: membershipScopeModeSchema,
     branch_ids: z.array(idSchema),
+    department_scope_mode: membershipScopeModeSchema,
+    department_ids: z.array(idSchema),
+    job_title: z.string().trim().min(1).max(160).nullable(),
     team_scope_mode: membershipScopeModeSchema,
     team_ids: z.array(idSchema),
     assignment_scope: assignmentScopeSchema,
@@ -177,6 +180,14 @@ export const membershipSummarySchema = z
         code: 'custom',
         path: ['team_ids'],
         message: 'Team IDs are allowed only for SELECTED team scope',
+      });
+    }
+
+    if (membership.department_scope_mode !== 'SELECTED' && membership.department_ids.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['department_ids'],
+        message: 'Department IDs are allowed only for SELECTED department scope',
       });
     }
   });

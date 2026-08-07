@@ -4,9 +4,17 @@ Production foundation for the Go Digital Automobile CRM: a pnpm/Turborepo monore
 Next.js office dashboard, NestJS API, Expo Android/iOS application, shared contracts and design
 tokens, and a portable PostgreSQL/Redis/S3 infrastructure boundary.
 
-Phase 1 provides invitation-only email/password and Google authentication, rotating CRM sessions,
-tenant selection, and default-deny authorization. Dealership workflows such as leads, inventory,
-bookings, delivery, registration, and post-sale remain deferred to later approved phases.
+Phases 1-3 provide invitation-only authentication, rotating CRM sessions, tenant administration,
+and the lead-management foundation. Leads include public/manual capture, tenant-scoped contact
+deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation, web operations and
+an offline-aware salesperson mobile flow. Inventory, booking, delivery, registration and post-sale
+remain deferred to their approved phases.
+
+Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
+effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
+Admin uses the tenant-only `CLIENT_ADMIN` profile; Sales Consultant retains the stable
+`SALESPERSON` code plus a display job title. Phase 3 derives assignment eligibility and manager
+visibility from those live relationships.
 
 ## Quick start
 
@@ -19,6 +27,7 @@ cp .env.example .env
 pnpm install
 pnpm services:up
 pnpm db:migrate
+pnpm db:seed
 ```
 
 Start each application independently in a separate terminal:
@@ -81,6 +90,18 @@ See [local development](docs/implementation/LOCAL_DEVELOPMENT.md),
 Supabase, Upstash, Tigris/R2 and all BullMQ worker modes.
 The [Google authentication setup](docs/implementation/GOOGLE_AUTH_SETUP.md) lists the exact web,
 Android, and iOS OAuth client configuration.
+
+The development seed enables `LEADS`, creates the `PUNE-INBOUND` round-robin queue and publishes
+form key `alpha-pune-website`. Public capture is
+`POST /v1/public/lead-forms/alpha-pune-website` and requires an `Idempotency-Key`, affirmative
+lead-response consent, the active notice version, an Indian mobile number and originating page URL.
+Set `LEAD_PHONE_LOOKUP_PEPPER` to an independent backend-only secret before using non-development
+data; changing it requires a controlled phone-hash backfill.
+
+When upgrading an existing Phase 3 database, review the forward-only recovery migrations
+`0009_mean_domino.sql` through `0011_yielding_barracuda.sql` before `pnpm db:migrate`. After staging
+apply, rename `RECOVERY_DEFAULT` Departments and confirm team memberships inferred from explicit
+selected team scopes. See [Database migration workflow](docs/implementation/DATABASE_MIGRATIONS.md).
 
 ## Repository layout
 

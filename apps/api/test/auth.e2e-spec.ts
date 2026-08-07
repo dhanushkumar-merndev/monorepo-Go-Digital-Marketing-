@@ -33,6 +33,7 @@ const CLIENT_ID = '50000000-0000-4000-8000-000000000001';
 const OTHER_CLIENT_ID = '50000000-0000-4000-8000-000000000002';
 const AGENCY_ID = '60000000-0000-4000-8000-000000000001';
 const BRANCH_ID = '70000000-0000-4000-8000-000000000001';
+const DEPARTMENT_ID = '75000000-0000-4000-8000-000000000001';
 const TEAM_ID = '80000000-0000-4000-8000-000000000001';
 const OTHER_BRANCH_ID = '70000000-0000-4000-8000-000000000002';
 const OTHER_TEAM_ID = '80000000-0000-4000-8000-000000000002';
@@ -74,6 +75,8 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     assignmentScope: 'ALL',
     branchIds: [BRANCH_ID],
     branchScopeMode: 'SELECTED',
+    departmentIds: [DEPARTMENT_ID],
+    departmentScopeMode: 'SELECTED',
     clientAgencyId: AGENCY_ID,
     clientDisplayName: 'Alpha Motors',
     clientLegalName: 'Alpha Motors Private Limited',
@@ -83,6 +86,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     contextType: 'CLIENT',
     effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
     id: MEMBERSHIP_ID,
+    managedTeamIds: [],
     organizationDisplayName: 'Alpha Motors',
     permissionCodes: [
       'account.profile.read',
@@ -111,8 +115,11 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
         assignmentScope: membership.assignmentScope,
         branchIds: new Set(membership.branchIds),
         branchScopeMode: membership.branchScopeMode,
+        departmentIds: new Set(membership.departmentIds),
+        departmentScopeMode: membership.departmentScopeMode,
         clientOrganizationId: CLIENT_ID,
         membershipId: MEMBERSHIP_ID,
+        managedTeamIds: new Set(membership.managedTeamIds),
         permissionCodes: new Set(membership.permissionCodes),
         roleCode: membership.roleCode,
         sessionId: createdSession.sessionId,
@@ -239,11 +246,15 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
           {
             branchIds: [BRANCH_ID],
             branchScopeMode: 'SELECTED',
+            departmentIds: [DEPARTMENT_ID],
+            departmentScopeMode: 'SELECTED',
             displayName: 'Diya Client Admin',
             email: 'client.admin@example.com',
             membershipId: MEMBERSHIP_ID,
             membershipStatus: 'ACTIVE',
+            jobTitle: 'CRM Admin',
             roleCode: 'CLIENT_ADMIN',
+            managedTeamIds: [],
             teamIds: [TEAM_ID],
             teamScopeMode: 'SELECTED',
             userId: USER_ID,

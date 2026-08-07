@@ -73,8 +73,19 @@ export const updateBranchRequestSchema = z.object({
   name: nonBlank(200),
   timezone: nonBlank(64),
 });
+export const createDepartmentRequestSchema = z.object({
+  branch_id: idSchema,
+  code: nonBlank(64),
+  name: nonBlank(200),
+});
+export const updateDepartmentRequestSchema = z.object({
+  active: z.boolean(),
+  code: nonBlank(64),
+  name: nonBlank(200),
+});
 export const createTeamRequestSchema = z.object({
   branch_id: idSchema,
+  department_id: idSchema,
   code: nonBlank(64),
   name: nonBlank(200),
 });
@@ -103,9 +114,19 @@ export const workingHoursEntrySchema = z
         message: 'Open days need an opening time before their closing time',
       });
   });
-export const setWorkingHoursRequestSchema = z.object({
-  hours: z.array(workingHoursEntrySchema).length(7),
-});
+export const setWorkingHoursRequestSchema = z
+  .object({
+    hours: z.array(workingHoursEntrySchema).length(7),
+  })
+  .superRefine((value, context) => {
+    const days = value.hours.map((entry) => entry.day_of_week);
+    if (new Set(days).size !== 7)
+      context.addIssue({
+        code: 'custom',
+        path: ['hours'],
+        message: 'Provide exactly one entry for each day of the week.',
+      });
+  });
 export const workingHoursResponseSchema = z.object({
   branch_id: idSchema,
   hours: z.array(workingHoursEntrySchema),
@@ -117,7 +138,10 @@ export const inviteUserRequestSchema = z
     branch_ids: z.array(idSchema),
     branch_scope_mode: membershipScopeModeSchema,
     display_name: nonBlank(160),
+    department_ids: z.array(idSchema),
+    department_scope_mode: membershipScopeModeSchema,
     email: normalizedEmailSchema,
+    job_title: nonBlank(160).nullable(),
     role_code: canonicalRoleCodeSchema.exclude(['AGENCY_ADMIN']),
     team_ids: z.array(idSchema),
     team_scope_mode: membershipScopeModeSchema,
@@ -136,11 +160,20 @@ export const inviteUserRequestSchema = z
         path: ['team_ids'],
         message: 'Team IDs require SELECTED scope',
       });
+    if (value.department_scope_mode !== 'SELECTED' && value.department_ids.length > 0)
+      context.addIssue({
+        code: 'custom',
+        path: ['department_ids'],
+        message: 'Department IDs require SELECTED scope',
+      });
   });
 export const updateMembershipRequestSchema = z
   .object({
     branch_ids: z.array(idSchema),
     branch_scope_mode: membershipScopeModeSchema,
+    department_ids: z.array(idSchema),
+    department_scope_mode: membershipScopeModeSchema,
+    job_title: nonBlank(160).nullable(),
     role_code: canonicalRoleCodeSchema.exclude(['AGENCY_ADMIN']),
     team_ids: z.array(idSchema),
     team_scope_mode: membershipScopeModeSchema,
@@ -161,6 +194,13 @@ export const updateMembershipRequestSchema = z
         message: 'Team IDs require SELECTED scope',
       });
     }
+    if (value.department_scope_mode !== 'SELECTED' && value.department_ids.length > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['department_ids'],
+        message: 'Department IDs require SELECTED scope',
+      });
+    }
   });
 export const setMembershipStatusRequestSchema = z.object({
   reason: nonBlank(1000),
@@ -170,8 +210,71 @@ export const tenantUserDetailSchema = tenantUserSummarySchema.extend({
   assignment_scope: assignmentScopeSchema,
   branch_ids: z.array(idSchema),
   branch_scope_mode: membershipScopeModeSchema,
+  department_ids: z.array(idSchema),
+  department_scope_mode: membershipScopeModeSchema,
+  job_title: z.string().nullable(),
   team_ids: z.array(idSchema),
   team_scope_mode: membershipScopeModeSchema,
+});
+
+export const assignTeamMemberRequestSchema = z.object({
+  membership_id: idSchema,
+  reason: nonBlank(1000),
+});
+export const endTeamMembershipRequestSchema = z.object({ reason: nonBlank(1000) });
+export const replaceTeamManagerRequestSchema = z.object({
+  manager_membership_id: idSchema,
+  reason: nonBlank(1000),
+});
+export const setReportingManagerRequestSchema = z.object({
+  manager_membership_id: idSchema.nullable(),
+  reason: nonBlank(1000),
+});
+
+export const organizationHierarchyResponseSchema = z.object({
+  departments: z.array(
+    z.object({
+      active: z.boolean(),
+      branch_id: idSchema,
+      code: z.string(),
+      id: idSchema,
+      name: z.string(),
+    }),
+  ),
+  reporting_lines: z.array(
+    z.object({
+      id: idSchema,
+      manager_membership_id: idSchema,
+      started_at: z.iso.datetime({ offset: true }),
+      subordinate_membership_id: idSchema,
+    }),
+  ),
+  team_manager_assignments: z.array(
+    z.object({
+      id: idSchema,
+      manager_membership_id: idSchema,
+      started_at: z.iso.datetime({ offset: true }),
+      team_id: idSchema,
+    }),
+  ),
+  team_memberships: z.array(
+    z.object({
+      id: idSchema,
+      membership_id: idSchema,
+      started_at: z.iso.datetime({ offset: true }),
+      team_id: idSchema,
+    }),
+  ),
+  teams: z.array(
+    z.object({
+      active: z.boolean(),
+      branch_id: idSchema,
+      code: z.string(),
+      department_id: idSchema,
+      id: idSchema,
+      name: z.string(),
+    }),
+  ),
 });
 export const tenantUserDetailResponseSchema = z.object({
   user: tenantUserDetailSchema,
@@ -236,7 +339,9 @@ export type CreateClientRequest = z.infer<typeof createClientRequestSchema>;
 export type UpdateClientRequest = z.infer<typeof updateClientRequestSchema>;
 export type SetClientStatusRequest = z.infer<typeof setClientStatusRequestSchema>;
 export type CreateBranchRequest = z.infer<typeof createBranchRequestSchema>;
+export type CreateDepartmentRequest = z.infer<typeof createDepartmentRequestSchema>;
 export type UpdateBranchRequest = z.infer<typeof updateBranchRequestSchema>;
+export type UpdateDepartmentRequest = z.infer<typeof updateDepartmentRequestSchema>;
 export type CreateTeamRequest = z.infer<typeof createTeamRequestSchema>;
 export type UpdateTeamRequest = z.infer<typeof updateTeamRequestSchema>;
 export type InviteUserRequest = z.infer<typeof inviteUserRequestSchema>;
@@ -246,3 +351,7 @@ export type SetWorkingHoursRequest = z.infer<typeof setWorkingHoursRequestSchema
 export type SetClientSettingsRequest = z.infer<typeof setClientSettingsRequestSchema>;
 export type SetModuleFlagRequest = z.infer<typeof setModuleFlagRequestSchema>;
 export type SetAgencyDefaultsRequest = z.infer<typeof setAgencyDefaultsRequestSchema>;
+export type AssignTeamMemberRequest = z.infer<typeof assignTeamMemberRequestSchema>;
+export type EndTeamMembershipRequest = z.infer<typeof endTeamMembershipRequestSchema>;
+export type ReplaceTeamManagerRequest = z.infer<typeof replaceTeamManagerRequestSchema>;
+export type SetReportingManagerRequest = z.infer<typeof setReportingManagerRequestSchema>;

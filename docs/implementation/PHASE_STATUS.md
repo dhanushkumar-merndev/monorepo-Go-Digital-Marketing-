@@ -1,177 +1,134 @@
 # Phase Status
 
-- **Current phase:** Phase 2 agency, client, branch, team and user administration
-- **Current status:** Phase 2 backend administration commands, migration, contracts, seed data and
-  initial web console are implemented and repository-verified. Completion remains **partial**:
-  the browser console still needs direct profile, role/scope-assignment and working-hours editors,
-  and feature flags need to be attached to the future module routes they will govern. OpenNext's
-  Windows-only symlink packaging failure still requires a Linux run, and signed Android/iOS Google
-  verification still requires provider/release credentials and devices. Phase 2 has not started.
-- **Completed phases:** Phase 0 foundation, Phase 0 deployment amendment, Phase 1 core
-  authentication / tenancy / authorization and its strict audit
-- **Last updated:** 2026-08-03
+- **Current phase:** Phase-order recovery; sequential Phase 2 and Phase 3 strict audits.
+- **Current status:** **Phase 2 and Phase 3 code complete; external validation remains.** Repository
+  formatting, lint, strict TypeScript, unit, integration, migration and normal production-build
+  gates pass. Client PDFs and the replacement PRD reconcile with the phase mapping. The canonical
+  migration chain now passes on the confirmed disposable development PostgreSQL database; Linux
+  Cloudflare packaging remains unverified on this host.
+- **Completed phases:** Phase 0 foundation and Phase 1 authentication/tenancy. Phase 2 and Phase 3
+  have code-complete audit classifications subject to the external gates below.
+- **Next phase:** Phase 4 is not started. Its provider-neutral implementation gate is open; it is
+  not release-cleared by this audit.
+- **Last updated:** 2026-08-07
 
-## Phase 2 implementation status
+## Phase-order recovery
 
-- [x] Agency client creation, suspension/reactivation, usage counts, support-elevation reuse and
-      safe defaults are implemented with immutable audit events.
-- [x] Client-scoped branch/team CRUD, invited memberships, membership status/role/scope commands,
-      session revocation, module flags, integration readiness, retention/lead readiness and audit
-      timeline contracts/routes are implemented.
-- [x] Migration `0004_fast_blink.sql` adds administrative settings/readiness/flag/working-hours
-      tables and additional least-privilege permissions; seed data includes realistic defaults.
-- [x] PGlite business-rule coverage proves default propagation and the final active Client Admin
-      cannot be removed; migration/integration suites pass.
-- [ ] Web console needs direct editors for dealership profile, working hours and role/team/branch
-      scope assignment before Phase 2 can be declared complete.
-- [ ] Feature-flag middleware must be attached when the gated operational module routes are added;
-      the current phase has no operational module endpoint to guard.
+- [x] Preserved all existing Phase 3 Lead/Contact IDs, ownership fields and append-only histories.
+- [x] Added the missing canonical Phase 2 Department, team membership, Team Manager and reporting
+      hierarchy beneath the existing Lead implementation.
+- [x] Reused the existing membership/permission engine and stable role codes; appended only
+      `TEAM_MANAGER` and department/hierarchy permissions.
+- [x] Reconciled Phase 3 assignment and manager visibility to active Phase 2 relationships without
+      adding manager IDs to Leads.
+- [x] Added forward-only migrations `0009`–`0011`; no existing Phase 3 migration was rewritten or
+      renumbered.
+- [x] Reconciled the editable PRD, client analysis/mapping and Phase 2–14/audit prompts.
+- [x] Cross-checked all four core-functions PDF pages and both user-roles PDF pages against the
+      PRD, prompts and client mapping; no Phase 2/3 delta was found.
 
-## Phase 2 verification (2026-08-03)
+## Phase 2 strict-audit checklist
 
-`pnpm format:check`, `pnpm lint`, `pnpm type-check`, `pnpm test`, `pnpm test:integration`,
-`pnpm db:check` and `pnpm build` passed. `pnpm build:web:cloudflare` compiled Next.js and the new
-`/administration` route, then hit the existing Windows OpenNext symlink `EPERM` limitation.
+- [x] Tenant → Branch → Department → Team is canonical; Team requires a tenant/branch-valid
+      Department.
+- [x] Effective-dated team memberships, Team Manager assignments and reporting lines preserve
+      actor, reason and history.
+- [x] Valid Team Manager assignment and replacement succeed; prior assignments remain searchable.
+- [x] Cross-tenant Department, team membership and Team Manager relationships fail through
+      composite foreign keys and service-scoped lookup.
+- [x] Self-reporting, reporting cycles, invalid role/team eligibility, unauthorized cross-team
+      management and tenant/branch/department/team scope violations are rejected.
+- [x] Authentication context hydrates live department scope and managed team IDs; backend policy is
+      authoritative independently of UI visibility.
+- [x] CRM Admin maps to tenant-scoped `CLIENT_ADMIN`, has no platform permissions and remains
+      distinct from Agency/Super Admin.
+- [x] Sales Consultant preserves the stable `SALESPERSON` role code; dealership titles use
+      `job_title` plus department/team/scope rather than duplicate hard-coded roles.
+- [x] Disabled users and suspended tenants remain blocked by the shared live-session guard.
+- [x] Administration commands validate tenant/object scope and append immutable audit evidence.
+- [x] Administration web controls are functional for Departments, team membership, Team Manager,
+      reporting line, department scope and job title, with loading/error/empty/success states.
+- [x] Migration ordering, foreign keys, unique-current constraints, indexes and compatibility
+      backfills pass migrated-PGlite tests.
+- [x] Canonical migrations `0000` through `0011` applied to the configured disposable development
+      PostgreSQL database; it seeded two tenants/13 `.test` users with valid Departments, Teams,
+      memberships, Team Manager assignments and reporting lines.
+- [ ] Compatibility Department names and inferred team memberships still need review when a
+      non-empty client/staging database is migrated.
+- [ ] Replacement PRD opens in Word and its 67-page/81-table structure and Appendix F content were
+      inspected, but page-image rendering remains unavailable because this host has no LibreOffice.
 
-## Google authentication amendment acceptance criteria
+**Phase 2 classification:** `PHASE 2 CODE COMPLETE — EXTERNAL VALIDATION REMAINS`
 
-- [x] Email/password login and the existing NestJS access-token/rotating-refresh session model are
-      unchanged; Google is an additional identity provider.
-- [x] No public registration or automatic membership creation exists. A real migrated-database
-      integration test proves Google activation reuses an eligible invitation and its membership.
-- [x] Google ID tokens are verified server-side for RS256 signature, Google issuer, the sole Web
-      client audience, expiry, nonce, subject, verified email and multi-audience `azp`.
-- [x] Random challenges are stored only as hashes and consumed once with expiry, purpose,
-      client-type and, for linking, user/session binding.
-- [x] Existing active local accounts require an authenticated controlled-linking flow; matching an
-      email string alone never silently merges accounts.
-- [x] Google identities are separate records. Unlinking requires another supported active login
-      method and revokes every CRM session bound to the disabled Google identity.
-- [x] Disabled users, suspended users, inactive clients, inactive memberships and cross-tenant or
-      out-of-scope authorization remain blocked by the shared live-session policy.
-- [x] Web uses the official GIS-rendered button, explicit failure/invitation states, profile
-      link/unlink UI and the existing Secure/HttpOnly refresh cookie.
-- [x] Mobile uses an Expo-compatible native Google flow, keeps only CRM sessions in SecureStore,
-      and has separate EAS development/preview/production environments with fail-closed IDs.
-- [x] The requested valid/invalid provider, provisioning, conflict, refresh, logout/revocation,
-      duplicate identity, audit, cross-tenant, branch and team cases are covered by unit, HTTP and
-      migrated-PGlite integration tests. Invalid issuer now has a dedicated test.
-- [x] Configuration, OpenAPI DTOs, deployment/setup guides and all four tracking documents are
-      updated without adding Google secrets to a client bundle.
-- [ ] `pnpm build:web:cloudflare` completes the Next.js build but OpenNext 1.20.2 fails while
-      creating a Windows symlink (`EPERM`). Re-run this packaging step under Linux/WSL or Windows
-      Developer Mode before release.
-- [ ] Live Android SHA/client registration, iOS client configuration and signed-device Google token
-      exchange require the real provider credentials and release signing environment.
+## Phase 3 strict-audit checklist
 
-## Original Phase 1 acceptance criteria
+- [x] Uses exactly `META`, `WHATSAPP_AD`, `GOOGLE_ADS`, `WEBSITE`, `WALK_IN`, `OTHER`; manual entry
+      remains an entry method and client examples remain provider/source metadata.
+- [x] Contacts/channels, consent, opportunities, source/campaign metadata, three owners,
+      assignments/history, lifecycle/outcome history, follow-ups, notes, tasks, queues, SLA,
+      escalations, duplicate candidates, public forms and command receipts are tenant-owned.
+- [x] Duplicate capture and follow-up replay are idempotent; ambiguous contacts are never silently
+      or destructively merged and checks never cross tenants.
+- [x] Invalid transitions and concurrent stale versions are rejected without partial writes.
+- [x] Rejected and Lost remain distinct/searchable; reopen preserves source and all prior history.
+- [x] Round robin uses deterministic working hours and skips inactive, ineligible or non-member
+      users; manual reassignment applies the same canonical eligibility and requires reason.
+- [x] Three-owner fields remain separate; assignment/reassignment append audit, history and outbox
+      evidence atomically.
+- [x] SLA deadlines are deterministic, versioned, working-hours aware and claimed idempotently.
+- [x] Sales Consultant sees only current-process assigned Leads; Team Manager sees only Leads in
+      actively managed teams; branch and tenant scopes remain default-deny.
+- [x] Public `POST /v1/public/lead-forms/{clientFormKey}` validates consent, phone/page/source data,
+      rate limit, bot adapter and idempotency before atomic contact/Lead/assignment/outbox work.
+- [x] Web implements Lead inbox/detail/timeline/manual capture/filtering, queues, rejected/lost,
+      reopen, follow-up, SLA and functional duplicate decisions.
+- [x] Mobile implements assigned Lead work and a tenant/idempotency/version-aware SQLite outbox;
+      conflicts are retained and follow-ups use the real API command.
+- [x] Activity timeline includes status, assignments, notes, follow-ups, tasks and duplicate
+      decisions while immutable security audit remains separate.
+- [ ] Mobile outbox payload is OS-sandboxed but not application-layer encrypted.
+- [ ] Hosted bot/provider, device and deployment validation remains external.
 
-- [x] Cross-tenant requests are denied. Tenant context is read only from the resolved session
-      membership; `OrganizationAccessService` derives `client_organization_id` from
-      `AuthorizationContext` and never from a request body, header or path.
-- [x] Suspended users cannot obtain or refresh sessions. `resolveSession` returns `user_inactive`
-      and the guard raises `ACCOUNT_SUSPENDED`; the refresh route clears the refresh cookie.
-- [x] Revoked refresh tokens cannot be reused. Rotation sequence is compared with the session
-      version; a mismatch terminates the session and writes a `REFRESH_REUSE_DETECTED` audit event.
-- [x] Branch-scoped users cannot access another branch. `@BranchParameter` plus
-      `AuthorizationPolicy.canAccessBranch` returns `SCOPE_DENIED` and records `ACCESS_DENIED`.
-- [x] Mobile field roles cannot access admin APIs. Role application (`WEB`/`MOBILE`) and permission
-      mappings are enforced in the backend and asserted in `mobile-access.test.ts`.
-- [x] Support elevation expires and is audited. Reason is mandatory, TTL is
-      `AUTH_SUPPORT_ELEVATION_TTL_SECONDS` (default 900s, max 3600s), state is visible in the web
-      shell, and creation/revocation write immutable audit events.
-- [x] Web and mobile recover correctly from expired access tokens. The web client refreshes through
-      the `HttpOnly` cookie and falls back to the session-expired route; the mobile auth manager
-      refreshes from the secure credential vault.
-- [x] Authorization tests cover every role family. Canonical roles, permissions and least-privilege
-      mappings are asserted in the database integration suite and the guard/policy specs.
-- [x] Formatting, migration metadata, lint, strict type-check, unit tests, integration tests and
-      the monorepo production build all pass.
-- [ ] `pnpm build:web:cloudflare` was re-run. Next.js compile/type/static generation passed, then
-      OpenNext failed at the documented Windows symlink operation. See KNOWN_ISSUES.md.
+**Phase 3 classification:** `PHASE 3 CODE COMPLETE — EXTERNAL VALIDATION REMAINS`
 
-## Remediation applied during this audit
+## Fresh verification results
 
-The Phase 1 commit did not pass its own completion protocol. Five mandatory gates failed on a clean
-checkout and were fixed inside this phase:
+| Command                                               | Result                         | Actual evidence                                                                                                        |
+| ----------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                      | Pass                           | All 11 workspace projects already up to date; pnpm 11.18.0                                                             |
+| `pnpm format:check`                                   | Pass after formatting          | Initial check identified 31 touched files; `pnpm format` fixed them; rerun passed                                      |
+| `pnpm lint`                                           | Pass after audit fix           | Initial run found two unused hierarchy-test bindings; rerun: 8/8 tasks                                                 |
+| `pnpm type-check`                                     | Pass                           | 13/13 strict TypeScript tasks                                                                                          |
+| `pnpm test`                                           | Pass after stale-fixture fixes | 275 tests: API 88 (59 unit + 29 integration), web 59, mobile 72, config 24, contracts 18, database 12, design tokens 2 |
+| `pnpm test:integration`                               | Pass                           | 43 tests: API/PGlite 29 and database migration/PGlite 14                                                               |
+| `pnpm --filter @gdm/database test:integration`        | Pass                           | 14 tests after final cross-tenant Team Manager assertion                                                               |
+| `pnpm --filter @gdm/api test:integration`             | Pass                           | 29 tests after final self-reporting assertion                                                                          |
+| `pnpm db:check`                                       | Pass                           | All 12 journaled migrations/snapshots validate                                                                         |
+| `pnpm --filter @gdm/mobile exec expo install --check` | Pass                           | Dependencies are up to date; configured React exclusions reported                                                      |
+| `pnpm build`                                          | Pass                           | 8/8 tasks; Nest API, Next web (13 routes), Android 4.7 MB, iOS 4.5 MB and shared packages                              |
+| `pnpm build:web:cloudflare`                           | Environment failure            | Next compile/type/page generation passed; OpenNext 1.20.2 bundle symlink failed with Windows `EPERM`                   |
+| Linux container availability check                    | Unavailable                    | `podman` and `docker` are absent; WSL has no installed distribution, so no Linux rerun was possible                    |
+| `pnpm db:migrate`                                     | Pass on development PostgreSQL | Applied real pending migrations `0001` through `0011` after existing canonical `0000`; journal now has 12 rows         |
+| `pnpm db:seed`                                        | Pass on development PostgreSQL | Seeded 13 `.test` users across two tenants after resolving migration-created role/permission IDs by code               |
 
-1. **Mobile tests and mobile production build were broken.** `react-native-worklets@0.10.1` needs
-   `@babel/traverse` without declaring it, and the workspace carried two React versions
-   (`apps/web` 19.2.8, `apps/mobile` 19.2.3) which produced two `react-native` instances and
-   nondeterministic Jest resolution ("Invalid hook call"). Fixed by adding a root `@babel/traverse`
-   devDependency and aligning `apps/mobile` on React 19.2.8. See ADR-0013.
-2. **The API never emitted `status: 'AUTHENTICATED'`.** Login responses violated the shared
-   `loginResponseSchema` contract, the API failed its own type-check, and both auth e2e tests
-   failed. Fixed in `authentication.service.ts`, `LoginResult` and `LoginResponseDto`. See ADR-0014.
-3. **17 ESLint errors** in `@gdm/api` (dead `sessionSummaryFor`, non-null assertions in
-   `totp.service.ts`/`mfa-secret-protector.ts`, missing return types, empty test stubs).
-4. **14 TypeScript errors** in `apps/mobile/src/auth/auth-response.ts` — the `AuthenticationGrant`
-   union was dereferenced without narrowing.
-5. **Stale migration assertion** — the integration test asserted two applied migrations while three
-   exist. It now derives the expected count from `meta/_journal.json`.
+## Database and environment changes
 
-6. **Required Google security evidence was incomplete.** Added direct invalid-issuer coverage,
-   Google-session branch/team denial, duplicate provider-subject/provider constraints, invitation
-   audit assertions and real-database unlink/session-revocation/audit assertions.
-7. **Linux CI could not reach the OpenNext validation step after the Google amendment.** The
-   production web build now receives explicit non-production public OAuth IDs in Ubuntu CI; no
-   client secret is present, and a repository test locks the Linux Cloudflare/Docker steps in place.
-8. **OpenAPI hardcoded the default refresh-cookie name.** Swagger now reads the validated runtime
-   cookie name, with an integration assertion using a non-default name.
+- `0009_mean_domino.sql`: Phase 2 hierarchy schema and deterministic compatibility Department
+  backfill before `teams.department_id NOT NULL`.
+- `0010_phase2_organization_backfill.sql`: TEAM_MANAGER/permission mappings, role/job-title mapping,
+  department scopes and team-membership compatibility rows.
+- `0011_yielding_barracuda.sql`: preflight checks plus queue branch/team and previous-assignee tenant
+  integrity.
+- New backend-only Phase 3 variables: `LEAD_PHONE_LOOKUP_PEPPER` and optional
+  `LEAD_PUBLIC_RATE_LIMIT_WINDOW_SECONDS`. Phase 2 introduced no environment variable.
 
-## Last verified results
+## Final gate
 
-Run from the repository root on 2026-08-03 with Node.js 24.18.1 and pnpm 11.18.0 on Windows.
+`READY TO BEGIN PHASE 4`
 
-| Check                                                 | Result              | Actual evidence                                                                                                   |
-| ----------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                      | Pass                | All 11 workspace projects matched the single root lockfile                                                        |
-| `pnpm format:check`                                   | Pass                | All matched files use the configured Prettier style                                                               |
-| `pnpm db:check`                                       | Pass                | Drizzle migration journal and snapshots are valid                                                                 |
-| `pnpm lint`                                           | Pass                | 8 workspace lint tasks                                                                                            |
-| `pnpm type-check`                                     | Pass                | 13 strict TypeScript tasks                                                                                        |
-| `pnpm test`                                           | Pass                | 256 tests: API 56 unit + 21 integration, web 58, mobile 70, config 24, contracts 13, database 12, design tokens 2 |
-| `pnpm test:integration`                               | Pass                | 34 tests: API/real-store 21 and migrated-database 13                                                              |
-| Focused authentication and Google suite               | Pass                | 40 tests across service, provider, linking, HTTP and migrated-store behavior                                      |
-| Focused tenant and authorization suite                | Pass                | 18 tests across policy, guard and HTTP session/scope behavior                                                     |
-| `pnpm --filter @gdm/mobile exec expo install --check` | Pass                | Expo dependency validation reports dependencies are up to date                                                    |
-| `pnpm build`                                          | Pass                | 8 tasks: NestJS, Next.js, shared packages, Android 4.6 MB and iOS 4.4 MB production exports                       |
-| `pnpm build:web:cloudflare`                           | Environment failure | Next compile/type/static generation pass; OpenNext bundle symlink fails with Windows `EPERM`                      |
-| Hosted Ubuntu CI and Docker build                     | Not run             | Workflow and non-production public-ID wiring are repository-tested; external execution evidence is still required |
-
-## Database migrations
-
-Four reviewed migrations exist and all apply cleanly in the PGlite integration run:
-
-- `0000_neat_shadowcat.sql` — Phase 0 platform tables (unchanged)
-- `0001_gifted_bloodscream.sql` — Phase 1 identity/tenancy: 17 tables, 15 enums, 32 foreign keys,
-  40 indexes, plus canonical role/permission/mapping seed inserts
-- `0002_free_vulture.sql` — Phase 1 hardening: replaces the support-elevation revocation check and
-  adds two partial unique indexes (one unconsumed password-reset token per user, one unrevoked
-  support elevation per actor session), guarded by an explicit `DO $$` preflight that raises
-  `23514` rather than silently discarding security evidence
-- `0003_mighty_wonder_man.sql` — Google provider email/identity uniqueness, one-time external-auth
-  challenges and immutable identity-link/unlink/invitation audit event types, with duplicate/legacy
-  Google-row preflight checks
-
-## Scope and security review
-
-The Cloudflare Worker remains presentation-only; all authentication, session and authorization
-authority is in NestJS. The global `APP_GUARD` defaults to deny: a protected route without a
-`@RequirePermissions` policy returns 403 rather than allowing the request. Every 5xx
-`HttpException` is sanitized to `INTERNAL_ERROR` with empty details; provider outages retain only a
-sanitized `PROVIDER_UNAVAILABLE` envelope.
-
-The strict Google tests separately prove invalid issuer, invalid audience, expiry, unverified
-email, nonce mismatch, multi-audience `azp`, unknown key, provider outage, invitation-only
-activation, duplicate identities, controlled linking, final-method unlink denial, successful
-unlink audit/session revocation, CRM session creation and post-Google tenant/branch/team scope.
-
-Out-of-scope surface was found and is **not** wired in: `TotpService` and `MfaSecretProtector`
-exist with unit tests but have no module registration, no route, no database column, no
-`AUTH_MFA_*` configuration and no client handling, while `packages/contracts` publishes MFA login,
-enrollment and verification schemas. MFA is not a Phase 1 acceptance criterion. It is recorded in
-KNOWN_ISSUES.md and ADR-0015 and must be either completed or removed by its owning phase.
-
-Password reset is architecturally complete but delivery is an explicitly labelled unavailable
-adapter (`UnavailablePasswordResetDelivery`), which never logs or retains tokens.
+The confirmed disposable development PostgreSQL database ran the complete canonical chain and
+controlled two-tenant fixtures. Linux Cloudflare packaging, PRD page-image rendering, provider
+credentials and device/compliance validation remain release-only items. Phase 4 itself may begin
+with its required development adapter and `tel:` fallback without a live provider credential; its
+prompt already defines the provider-neutral, authoritative-webhook and consent/recording boundaries.
+No Phase 4 code was implemented.

@@ -17,10 +17,12 @@ import { AuthorizationPolicy } from './authorization-policy.js';
 import {
   BRANCH_PARAMETER_KEY,
   CLIENT_CONTEXT_REQUIRED_KEY,
+  CLIENT_MODULE_REQUIRED_KEY,
   PUBLIC_ROUTE_KEY,
   REQUIRED_PERMISSIONS_KEY,
   TEAM_PARAMETER_KEY,
 } from './authorization.decorators.js';
+import { ClientModuleAccessService, type ClientModule } from './client-module-access.service.js';
 
 function bearerToken(request: Request): string | undefined {
   const header = request.headers.authorization;
@@ -80,6 +82,7 @@ export class AuthenticationGuard implements CanActivate {
     @Inject(AccessTokenService) private readonly tokens: AccessTokenService,
     @Inject(AUTH_STORE) private readonly store: AuthStore,
     @Inject(AuthorizationPolicy) private readonly policy: AuthorizationPolicy,
+    @Inject(ClientModuleAccessService) private readonly modules: ClientModuleAccessService,
   ) {}
 
   async canActivate(executionContext: ExecutionContext): Promise<boolean> {
@@ -165,6 +168,21 @@ export class AuthenticationGuard implements CanActivate {
         message: 'An active client membership or support elevation is required.',
         retryable: false,
       });
+    }
+
+    const requiredModule = this.reflector.getAllAndOverride<ClientModule>(
+      CLIENT_MODULE_REQUIRED_KEY,
+      [executionContext.getHandler(), executionContext.getClass()],
+    );
+    if (requiredModule) {
+      if (!authorization.clientOrganizationId)
+        throw new ForbiddenException({
+          code: 'SUPPORT_ELEVATION_REQUIRED',
+          details: [],
+          message: 'An active client context is required.',
+          retryable: false,
+        });
+      await this.modules.assertEnabled(authorization.clientOrganizationId, requiredModule);
     }
 
     const branchParameter = this.reflector.getAllAndOverride<string>(BRANCH_PARAMETER_KEY, [

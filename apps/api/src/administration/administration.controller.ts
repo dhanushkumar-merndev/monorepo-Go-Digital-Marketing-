@@ -14,32 +14,44 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  assignTeamMemberRequestSchema,
   createBranchRequestSchema,
   createClientRequestSchema,
+  createDepartmentRequestSchema,
   createTeamRequestSchema,
+  endTeamMembershipRequestSchema,
   inviteUserRequestSchema,
+  replaceTeamManagerRequestSchema,
   setAgencyDefaultsRequestSchema,
   setClientSettingsRequestSchema,
   setClientStatusRequestSchema,
   setMembershipStatusRequestSchema,
   setModuleFlagRequestSchema,
+  setReportingManagerRequestSchema,
   setWorkingHoursRequestSchema,
   updateBranchRequestSchema,
   updateClientRequestSchema,
+  updateDepartmentRequestSchema,
   updateMembershipRequestSchema,
   updateTeamRequestSchema,
+  type AssignTeamMemberRequest,
   type CreateBranchRequest,
   type CreateClientRequest,
+  type CreateDepartmentRequest,
   type CreateTeamRequest,
+  type EndTeamMembershipRequest,
   type InviteUserRequest,
+  type ReplaceTeamManagerRequest,
   type SetAgencyDefaultsRequest,
   type SetClientSettingsRequest,
   type SetClientStatusRequest,
   type SetMembershipStatusRequest,
   type SetModuleFlagRequest,
+  type SetReportingManagerRequest,
   type SetWorkingHoursRequest,
   type UpdateBranchRequest,
   type UpdateClientRequest,
+  type UpdateDepartmentRequest,
   type UpdateMembershipRequest,
   type UpdateTeamRequest,
 } from '@gdm/contracts';
@@ -104,6 +116,14 @@ export class AdministrationController {
   ) {
     return this.administration.updateClient(context, body);
   }
+  @Get('client-profile')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions('organization.settings.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Read the active client dealership profile' })
+  async clientProfile(@CurrentAuthorization() context: AuthorizationContext) {
+    return this.administration.clientProfile(context);
+  }
 
   @Post('branches')
   @RequirePermissions('organization.branches.manage')
@@ -136,6 +156,40 @@ export class AdministrationController {
     @Body(new ZodSchemaValidationPipe(setWorkingHoursRequestSchema)) body: SetWorkingHoursRequest,
   ) {
     return this.administration.setWorkingHours(context, branchId, body);
+  }
+  @Get('branches/:branchId/working-hours')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions('organization.settings.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Read the current weekly branch working hours' })
+  async getWorkingHours(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('branchId', new ParseUUIDPipe()) branchId: string,
+  ) {
+    return this.administration.workingHours(context, branchId);
+  }
+  @Post('departments')
+  @RequirePermissions('organization.departments.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Create a department under an active-client branch' })
+  async createDepartment(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Body(new ZodSchemaValidationPipe(createDepartmentRequestSchema))
+    body: CreateDepartmentRequest,
+  ) {
+    return this.administration.createDepartment(context, body);
+  }
+  @Put('departments/:departmentId')
+  @RequirePermissions('organization.departments.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Update a department without rewriting its history' })
+  async updateDepartment(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('departmentId', new ParseUUIDPipe()) departmentId: string,
+    @Body(new ZodSchemaValidationPipe(updateDepartmentRequestSchema))
+    body: UpdateDepartmentRequest,
+  ) {
+    return this.administration.updateDepartment(context, departmentId, body);
   }
   @Post('teams')
   @RequirePermissions('organization.teams.manage')
@@ -193,6 +247,73 @@ export class AdministrationController {
     body: SetMembershipStatusRequest,
   ) {
     return this.administration.setMembershipStatus(context, membershipId, body);
+  }
+  @Get('memberships/:membershipId')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions('organization.users.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Read a tenant membership before changing its role or scopes' })
+  async membership(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('membershipId', new ParseUUIDPipe()) membershipId: string,
+  ) {
+    return this.administration.membership(context, membershipId);
+  }
+
+  @Get('hierarchy')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions('organization.hierarchy.read')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Read departments, team membership, managers and reporting lines' })
+  async hierarchy(@CurrentAuthorization() context: AuthorizationContext) {
+    return this.administration.hierarchy(context);
+  }
+  @Post('teams/:teamId/members')
+  @RequirePermissions('organization.hierarchy.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Assign an active client membership to a team' })
+  async assignTeamMember(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('teamId', new ParseUUIDPipe()) teamId: string,
+    @Body(new ZodSchemaValidationPipe(assignTeamMemberRequestSchema)) body: AssignTeamMemberRequest,
+  ) {
+    return this.administration.assignTeamMember(context, teamId, body);
+  }
+  @Patch('team-memberships/:teamMembershipId/end')
+  @RequirePermissions('organization.hierarchy.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'End a team membership while preserving its history' })
+  async endTeamMembership(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('teamMembershipId', new ParseUUIDPipe()) teamMembershipId: string,
+    @Body(new ZodSchemaValidationPipe(endTeamMembershipRequestSchema))
+    body: EndTeamMembershipRequest,
+  ) {
+    return this.administration.endTeamMembership(context, teamMembershipId, body);
+  }
+  @Put('teams/:teamId/manager')
+  @RequirePermissions('organization.hierarchy.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Replace a canonical Team Manager with append-only history' })
+  async replaceTeamManager(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('teamId', new ParseUUIDPipe()) teamId: string,
+    @Body(new ZodSchemaValidationPipe(replaceTeamManagerRequestSchema))
+    body: ReplaceTeamManagerRequest,
+  ) {
+    return this.administration.replaceTeamManager(context, teamId, body);
+  }
+  @Put('memberships/:membershipId/reporting-manager')
+  @RequirePermissions('organization.hierarchy.manage')
+  @RequireClientContext()
+  @ApiOperation({ summary: 'Replace or clear a reporting manager with cycle validation' })
+  async setReportingManager(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('membershipId', new ParseUUIDPipe()) membershipId: string,
+    @Body(new ZodSchemaValidationPipe(setReportingManagerRequestSchema))
+    body: SetReportingManagerRequest,
+  ) {
+    return this.administration.setReportingManager(context, membershipId, body);
   }
 
   @Get('settings')

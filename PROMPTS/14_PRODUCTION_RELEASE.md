@@ -30,6 +30,10 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Harden the complete product and prepare a controlled one-dealership pilot.
 
+The release gate must confirm Phase 1 → Phase 2 → Phase 3 dependency consistency, additive migration
+execution, compatibility-department review, provider approvals and human-approval controls for AI
+or social publishing before pilot sign-off.
+
 ## Security work
 
 Tenant/authorization review, OWASP API checks, CSRF/XSS, rate limits, brute-force protection, token revocation, secret rotation, signed URLs, upload validation, malware-scan adapter, audit integrity, support controls, export protection, backup/restore drill, lost-device revocation and dependency/container scanning.

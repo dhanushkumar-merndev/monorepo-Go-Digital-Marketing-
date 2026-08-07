@@ -30,6 +30,9 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 
 Implement role-specific operational reporting using authoritative KPI definitions.
 
+Report over canonical Phase 2 organization/hierarchy and Phase 3+ domain records. Reporting scope
+must match live tenant/branch/department/team authorization, including Team Manager assignments.
+
 ## Dashboards
 
 Agency Admin: client status, active users, integration health, usage and webhook failures.
