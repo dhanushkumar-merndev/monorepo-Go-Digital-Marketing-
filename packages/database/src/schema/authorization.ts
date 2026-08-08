@@ -87,13 +87,34 @@ export const PERMISSION_CODES = [
   'messaging.failures.manage',
   'messaging.media.read',
   'messaging.media.upload',
+  'test_rides.read',
+  'test_rides.schedule',
+  'test_rides.assign',
+  'test_rides.execute',
+  'test_rides.location.write',
+  'test_rides.active_map.read',
+  'test_rides.cancel',
+  'inventory.catalogue.read',
+  'inventory.catalogue.manage',
+  'inventory.units.read',
+  'inventory.units.sensitive.read',
+  'inventory.units.manage',
+  'inventory.reservations.manage',
+  'inventory.allocations.manage',
+  'inventory.allocations.reallocate',
+  'inventory.transfers.manage',
+  'inventory.corrections.manage',
 ] as const;
 
 // Retained only so Drizzle recognizes the pre-Phase-4 PostgreSQL enum while the
 // migration converts permissions.code to varchar. New permission codes must not
 // be added to this legacy enum.
 const legacyPermissionCodes = PERMISSION_CODES.filter(
-  (code) => !code.startsWith('telephony.') && !code.startsWith('messaging.'),
+  (code) =>
+    !code.startsWith('telephony.') &&
+    !code.startsWith('messaging.') &&
+    !code.startsWith('test_rides.') &&
+    !code.startsWith('inventory.'),
 ) as unknown as [string, ...string[]];
 
 export const canonicalRoleCodeEnum = pgEnum('canonical_role_code', CANONICAL_ROLE_CODES);

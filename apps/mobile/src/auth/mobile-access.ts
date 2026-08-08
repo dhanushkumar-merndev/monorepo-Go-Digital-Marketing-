@@ -1,6 +1,6 @@
 import { isMobileRoleCode, type MobilePrincipal, type MobileRoleCode } from './auth-types';
 
-export type MobileRoute = 'home' | 'profile';
+export type MobileRoute = 'home' | 'profile' | 'test-rides';
 
 export interface MobileRolePresentation {
   accent: string;
@@ -18,13 +18,13 @@ const rolePresentation: Record<MobileRoleCode, MobileRolePresentation> = {
   SALESPERSON: {
     accent: 'Sales workspace',
     landingDescription:
-      'Your authenticated sales workspace is ready. Assigned lead operations are introduced in a later phase.',
+      'Work assigned Leads, customer conversations and test-ride requests within your live scope.',
     roleLabel: 'Salesperson',
   },
   TEST_RIDE_EXECUTIVE: {
     accent: 'Test ride workspace',
     landingDescription:
-      'Your authenticated test ride workspace is ready. Ride operations are introduced in a later phase.',
+      'Open assigned rides, acknowledge location disclosure, track only the active job and submit completion evidence.',
     roleLabel: 'Test Ride Executive',
   },
 };
@@ -41,5 +41,10 @@ export function canAccessMobileRoute(
     return false;
   }
 
-  return route === 'home' || route === 'profile';
+  return (
+    route === 'home' ||
+    route === 'profile' ||
+    (route === 'test-rides' &&
+      (principal.roleCode === 'SALESPERSON' || principal.roleCode === 'TEST_RIDE_EXECUTIVE'))
+  );
 }

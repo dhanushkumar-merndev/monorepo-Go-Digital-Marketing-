@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { HttpAuthTransport, currentDeviceSessionMetadata } from '../api/auth-transport';
 import { mobileApiBaseUrl } from '../api/mobile-environment';
+import { stopTestRideLocationTracking } from '../platform/test-ride-location';
 import { SecureStoreCredentialVault } from './credential-vault';
 import { mobileGoogleAuthConfiguration } from './google-auth-environment';
 import type { LoginInput, LogoutResult } from './auth-types';
@@ -55,6 +56,7 @@ function createAuthManager(queryCache: ReturnType<typeof useQueryClient>): Mobil
     device: currentDeviceSessionMetadata(),
     ...(googleIdentity ? { googleIdentity } : {}),
     queryCache,
+    stopActiveTestRideTracking: stopTestRideLocationTracking,
     transport: new HttpAuthTransport(baseUrl),
     vault: new SecureStoreCredentialVault(),
   });

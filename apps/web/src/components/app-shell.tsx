@@ -23,6 +23,8 @@ import {
   Settings2,
   PhoneCall,
   MessagesSquare,
+  MapPinned,
+  Warehouse,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -50,6 +52,18 @@ const navigation = [
     icon: MessagesSquare,
     label: 'Inbox',
     permission: 'messaging.conversations.read',
+  },
+  {
+    href: '/test-rides',
+    icon: MapPinned,
+    label: 'Test rides',
+    permission: 'test_rides.read',
+  },
+  {
+    href: '/inventory',
+    icon: Warehouse,
+    label: 'Inventory',
+    permission: 'inventory.units.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {

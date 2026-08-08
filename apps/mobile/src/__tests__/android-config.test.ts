@@ -2,8 +2,6 @@ import appConfig from '../../app.json';
 
 const restrictedPermissions = [
   'android.permission.ACCESS_BACKGROUND_LOCATION',
-  'android.permission.ACCESS_COARSE_LOCATION',
-  'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.BIND_ACCESSIBILITY_SERVICE',
   'android.permission.READ_CALL_LOG',
   'android.permission.READ_CONTACTS',
@@ -18,14 +16,34 @@ const restrictedPermissions = [
 ] as const;
 
 describe('Android application configuration', () => {
-  it('blocks sensitive permissions outside the Phase 0 scope', () => {
+  it('allows only foreground job-bound location and keeps background/restricted access blocked', () => {
     const android = appConfig.expo.android;
 
-    expect(android.permissions).toEqual(['android.permission.POST_NOTIFICATIONS']);
+    expect(android.permissions).toEqual([
+      'android.permission.ACCESS_COARSE_LOCATION',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_LOCATION',
+      'android.permission.POST_NOTIFICATIONS',
+    ]);
     expect(android.blockedPermissions).toEqual(expect.arrayContaining(restrictedPermissions));
     for (const permission of restrictedPermissions) {
       expect(android.permissions).not.toContain(permission);
     }
+  });
+
+  it('configures a visible foreground location service without background permission', () => {
+    const location = appConfig.expo.plugins.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location',
+    );
+
+    expect(location).toEqual([
+      'expo-location',
+      expect.objectContaining({
+        isAndroidBackgroundLocationEnabled: false,
+        isAndroidForegroundServiceEnabled: true,
+      }),
+    ]);
   });
 
   it('targets Android API 36 through prebuild', () => {

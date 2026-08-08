@@ -53,14 +53,26 @@ export function MobileShell({ children, title }: MobileShellProps) {
             variant={pathname.startsWith('/inbox') ? 'primary' : 'secondary'}
           />
         ) : null}
-        <Button
-          accessibilityRole="tab"
-          accessibilityState={{ selected: pathname.startsWith('/leads') }}
-          className="flex-1"
-          label="Leads"
-          onPress={() => router.replace('/(app)/leads')}
-          variant={pathname.startsWith('/leads') ? 'primary' : 'secondary'}
-        />
+        {principal?.permissions.includes('leads.read') ? (
+          <Button
+            accessibilityRole="tab"
+            accessibilityState={{ selected: pathname.startsWith('/leads') }}
+            className="flex-1"
+            label="Leads"
+            onPress={() => router.replace('/(app)/leads')}
+            variant={pathname.startsWith('/leads') ? 'primary' : 'secondary'}
+          />
+        ) : null}
+        {principal?.permissions.includes('test_rides.read') ? (
+          <Button
+            accessibilityRole="tab"
+            accessibilityState={{ selected: pathname.startsWith('/test-rides') }}
+            className="flex-1"
+            label="Rides"
+            onPress={() => router.replace('/(app)/test-rides')}
+            variant={pathname.startsWith('/test-rides') ? 'primary' : 'secondary'}
+          />
+        ) : null}
         <Button
           accessibilityRole="tab"
           accessibilityState={{ selected: pathname === '/profile' }}

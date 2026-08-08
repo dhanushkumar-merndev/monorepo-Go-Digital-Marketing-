@@ -7,8 +7,10 @@ import {
   isExpiredSessionFailure,
 } from '../api/api-error';
 import type { AuthTransport } from '../api/auth-transport';
+import { resetAppState } from '../store/app-store';
 import { setAuthState } from '../store/auth-store';
 import { resetMobileInboxUiState } from '../store/inbox-ui.store';
+import { resetMobileTestRidesUiState } from '../store/test-rides-ui.store';
 import type { CredentialVault } from './credential-vault';
 import { GoogleIdentityError, type GoogleIdentityClient } from './google-identity-client';
 import {
@@ -20,6 +22,12 @@ import {
   type MobileSession,
 } from './auth-types';
 
+function resetFeatureUiState(): void {
+  resetAppState();
+  resetMobileInboxUiState();
+  resetMobileTestRidesUiState();
+}
+
 export interface QueryCacheController {
   clear(): void;
 }
@@ -29,6 +37,7 @@ export interface MobileAuthManagerDependencies {
   googleIdentity?: GoogleIdentityClient;
   now?: () => number;
   queryCache: QueryCacheController;
+  stopActiveTestRideTracking?: () => Promise<void>;
   transport: AuthTransport;
   vault: CredentialVault;
 }
@@ -296,7 +305,7 @@ export class MobileAuthManager {
     }
 
     if (!session) {
-      resetMobileInboxUiState();
+      resetFeatureUiState();
       setAuthState({ principal: null, status: 'unauthenticated' });
       return;
     }
@@ -384,8 +393,9 @@ export class MobileAuthManager {
       previousPrincipal.membershipId !== session.principal.membershipId ||
       previousPrincipal.userId !== session.principal.userId
     ) {
+      await this.stopActiveTestRideTracking();
       this.dependencies.queryCache.clear();
-      resetMobileInboxUiState();
+      resetFeatureUiState();
     }
     this.currentSession = session;
     setAuthState({ principal: session.principal, status: 'authenticated' });
@@ -456,12 +466,21 @@ export class MobileAuthManager {
 
   private async clearLocalSession(): Promise<void> {
     this.currentSession = null;
+    await this.stopActiveTestRideTracking();
     this.dependencies.queryCache.clear();
-    resetMobileInboxUiState();
+    resetFeatureUiState();
     try {
       await this.dependencies.vault.clear();
     } catch {
       // Runtime access is still removed. A revoked/invalid credential cannot authorize requests.
+    }
+  }
+
+  private async stopActiveTestRideTracking(): Promise<void> {
+    try {
+      await this.dependencies.stopActiveTestRideTracking?.();
+    } catch {
+      // Auth and tenant cleanup still fail closed; the native timeout remains a second stop boundary.
     }
   }
 

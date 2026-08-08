@@ -53,6 +53,14 @@ services:
         sync: false
       - key: GOOGLE_AUTH_CHALLENGE_TTL_SECONDS
         value: '300'
+      - key: TEST_RIDE_OTP_PEPPER
+        sync: false
+      - key: TEST_RIDE_ACTIVE_TIMEOUT_MINUTES
+        value: '180'
+      - key: TEST_RIDE_LOCATION_RETENTION_DAYS
+        value: '30'
+      - key: TEST_RIDE_LOCATION_STALE_SECONDS
+        value: '120'
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_POOL_MAX

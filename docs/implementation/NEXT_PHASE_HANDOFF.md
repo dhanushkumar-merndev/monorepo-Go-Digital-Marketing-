@@ -2,134 +2,118 @@
 
 ## Completed phase
 
-Phase 5 — Unified Inbox and WhatsApp platform foundation. Local code and automated validation are
-complete; live Meta/provider, device and hosted-release validation remain external prerequisites.
+Phase 7 - Vehicle Inventory and Allocation. Implementation and strict local audit passed on
+2026-08-09. The complete 24-entry journal was applied to the user-confirmed test database; no seed
+or production deployment was performed.
 
 ## Modules created or materially updated
 
-| Module                                                     | Actual responsibility                                                                                                                                      |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/messaging`                         | Conversation, message, template, assignment, connection and media contracts.                                                                               |
-| `packages/config/src/messaging.ts`                         | Backend-only credential, signature, service-window, media, retry and retention validation.                                                                 |
-| `packages/database/src/schema/messaging.ts`                | Tenant-owned messaging domain, append-only history, consent/suppression and durable outbox.                                                                |
-| `apps/api/src/messaging`                                   | Official-provider ports, development/WhatsApp Cloud adapters, scoped commands, signed webhooks, async processing, retry/DLQ, activation and private media. |
-| `apps/api/src/leads/leads.service.ts`                      | Provider Lead entry and message/note activity in the canonical Lead timeline.                                                                              |
-| `apps/web/src/features/messaging`                          | Unified inbox, customer context, composer, templates, assignments, integrations and failure recovery.                                                      |
-| `apps/mobile/src/screens/*conversation*`                   | Assigned-conversation list/detail, send modes, media and failed-send recovery.                                                                             |
-| `apps/web/src/features/messaging/inbox-ui.store.ts`        | Non-persisted web composer/customer-panel workflow state; URL remains authoritative for conversation selection and filters.                                |
-| `apps/mobile/src/store/inbox-ui.store.ts`                  | Separate non-persisted mobile composer workflow state; SQLite remains authoritative for durable replay.                                                    |
-| `DESIGN.md`                                                | Canonical client-state decision rules and one-inbox/channel-provider architecture contract.                                                                |
-| `apps/mobile/src/data/messaging-outbox.ts`                 | Tenant-bound offline text/template commands using the existing SQLite replay boundary.                                                                     |
-| `apps/api/src/background`, `apps/api/src/worker.module.ts` | Registers `messaging.webhook.process` on the shared BullMQ worker while PostgreSQL remains durable truth.                                                  |
+| Module                                          | Actual responsibility                                                                                                                                                                               |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/inventory`              | Exact stock states and Zod request/response contracts for catalogue, units, reservations, allocations, reallocation and transfers.                                                                  |
+| `packages/database/src/schema/inventory.ts`     | Tenant-owned physical-stock authority, identity constraints, append-only evidence and idempotency receipts.                                                                                         |
+| `packages/database/src/schema/test-rides.ts`    | Nullable canonical inventory-unit links that preserve historical ride branch/reference data across later transfers.                                                                                 |
+| `apps/api/src/inventory`                        | Tenant/branch authorization, stock intake, late receipt identifiers, row-locked reservation/allocation/reallocation/transfer workflows, automatic expiry, audit/outbox evidence and OpenAPI routes. |
+| `apps/api/src/test-rides/test-rides.service.ts` | Requires a canonical branch-scoped Demo unit when Inventory is enabled; legacy behavior remains only for tenants without that module.                                                               |
+| `apps/web/src/features/inventory`               | Query-backed catalogue, stock/import, reservation/allocation/transfer/demo/expected/aging workspace and unit detail commands.                                                                       |
+| Inventory web Zustand/URL state                 | Non-persisted form/density state only; view/search/unit selection belongs to the URL and resets with the common feature-store reset.                                                                |
+| `packages/database/src/seed.ts`                 | Alpha Inventory module, least-privilege mappings and one deterministic demo unit linked additively to the Phase 6 fixture.                                                                          |
 
 ## Database migrations
 
-| Migration                       | Purpose                                                                          | Execution / rollback                                                                     |
-| ------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `0014_bouncy_pete_wisdom.sql`   | Phase 5 enums, tables, tenant integrity, indexes, permissions and role mappings. | Forward-only; preserve messages, consent, audit and outbox evidence.                     |
-| `0015_slimy_lenny_balinger.sql` | Stronger tenant-aware queue, Team, membership and actor foreign keys.            | Preflight referenced organization records; restore recovery point or compensate forward. |
-| `0016_steady_may_parker.sql`    | Canonical outbound request fingerprint for idempotency mismatch protection.      | Additive nullable column; do not edit after apply.                                       |
+| Migration                  | Purpose                                                                                                                                                                       | Execution / rollback                                                                                        |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `0021_free_lightspeed.sql` | Catalogue, physical units, status history, reservations, allocations, transfers/events, receipts, permissions, transition/immutability triggers and nullable Test Ride links. | Forward-only. Preserve stock/history/audit/outbox evidence; restore a recovery point or compensate forward. |
+| `0022_bitter_preak.sql`    | Explicit initial branch-link compatibility preflight and temporary exact tuple constraint.                                                                                    | Fails closed on ambiguity; never remaps a ride, unit or event.                                              |
+| `0023_fast_vivisector.sql` | Final tenant/unit Test Ride FK, allowing physical branch transfer while ride branch remains a historical snapshot.                                                            | Forward-only. Do not rewrite historical ride branches to follow current stock location.                     |
 
-Apply the 17-entry journal once with a migration worker before the API/worker rollout. The canonical
-PGlite chain passes. This session did not mutate an unknown shared or production database.
-The post-Phase-5 architecture amendment has **DATABASE MIGRATION: NONE**.
+The final schema passes 17 migration integrity tests. On the development/test Supabase target,
+`pnpm db:migrate` succeeded and verification returned 24 journal entries, `inventory_units`, and 10
+inventory permissions. No seed ran.
 
 ## Routes and API contracts
 
-All protected routes are below `/v1/messaging` and require client context, the `INBOX` module and the
-listed messaging permission:
+All routes are under `/v1/inventory`, require an active client context, the `INVENTORY` module and
+route-specific permissions:
 
-- connections: `GET /connections`, `PUT /connections/development`,
-  `PUT /connections/whatsapp-cloud`, `POST /connections/:id/activate`, `GET /health`
-- templates: `GET /templates`, `POST /connections/:id/templates/sync`
-- inbox: `GET /conversations`, `GET /conversations/:id`, `POST /conversations/:id/messages`,
-  `POST /conversations/:id/read`, `POST /conversations/:id/notes`,
-  `POST /conversations/:id/assignment`
-- failures: `GET /failures`, `POST /messages/:id/retry`, `POST /webhook-events/reconcile`
-- media: `POST /media/uploads`, `POST /media/:id/complete`, `GET /media/:id/access`
-- public provider callback: `GET|POST /v1/messaging/webhooks/:provider/:connectionKey`; GET verifies
-  the callback and POST verifies the official signature before durable acceptance.
+- catalogue and stock: `GET/POST /catalogue`, `GET/POST /units`, `POST /units/import`,
+  `GET /units/:unitId`, `POST /units/:unitId/transition`
+- reservations: `POST /units/:unitId/reservations`, `POST /reservations/:id/extend`,
+  `POST /reservations/:id/release`, `POST /reservations/reconcile`
+- allocations: `POST /units/:unitId/allocations`, `POST /allocations/:id/release`,
+  `POST /allocations/:id/reallocate`
+- transfers: `POST /units/:unitId/transfers`, `POST /transfers/:id/complete`,
+  `POST /transfers/:id/cancel`
 
-Free-form policy, approved-template status, opt-in/suppression, tenant/scope access and idempotency are
-backend rules. Client disabled states are explanatory UI only.
+Every mutation requires `Idempotency-Key`. Optimistic versions, PostgreSQL row locks, partial unique
+indexes and immutable evidence are authoritative; client status or tenant IDs are never trusted.
 
 ## Environment variables
 
-Backend only; never expose these to web/mobile:
-
-- `MESSAGING_DEVELOPMENT_WEBHOOK_SECRET` (32+ characters)
-- `MESSAGING_CREDENTIAL_ENCRYPTION_KEY` (32 bytes, base64; required before Cloud credentials)
-- `MESSAGING_CREDENTIAL_KEY_ID`
-- `MESSAGING_MEDIA_MAX_BYTES`, `MESSAGING_MEDIA_URL_TTL_SECONDS`,
-  `MESSAGING_MEDIA_RETENTION_DAYS`
-- `MESSAGING_OUTBOUND_MAX_ATTEMPTS`, `MESSAGING_SERVICE_WINDOW_HOURS`
-- `MESSAGING_WEBHOOK_RAW_RETENTION_HOURS`
+Phase 7 adds none. Inventory has no provider credential and exposes no secret/client variable.
+Existing database settings are used by the API and migration worker. Do not add payment-provider
+credentials as part of Phase 7.
 
 ## Verified commands and results
 
-| Command                          | Result on 2026-08-08                                                             |
-| -------------------------------- | -------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | Pass; final frozen install reported the workspace up to date.                    |
-| `pnpm format:check`              | Pass.                                                                            |
-| `pnpm lint`                      | Pass; all workspace lint tasks.                                                  |
-| `pnpm type-check`                | Pass; 13/13 tasks.                                                               |
-| `pnpm test`                      | Pass; 289 tests, plus final affected mobile rerun 75/75.                         |
-| `pnpm test:integration`          | Pass; API 31/31 and database migration 15/15.                                    |
-| `pnpm db:check`                  | Pass; 17-entry journal.                                                          |
-| `pnpm build`                     | Pass; API, web, Android, iOS and shared packages; affected mobile exports rerun. |
+| Command                          | Result on 2026-08-09                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass; 11-workspace install up to date.                                                    |
+| `pnpm format:check`              | Pass.                                                                                     |
+| `pnpm lint`                      | Pass; 8 applicable tasks, zero warnings.                                                  |
+| `pnpm type-check`                | Pass; 13/13 tasks.                                                                        |
+| `pnpm test`                      | Pass; 13/13 tasks, API 61 unit + 38 integration, mobile 82, web 68 and all package tests. |
+| `pnpm test:integration`          | Pass; API 38/38 and database migrations 17/17.                                            |
+| `pnpm db:check`                  | Pass; 24-entry journal.                                                                   |
+| `pnpm build`                     | Pass; API, shared packages, 20 web routes and Android/iOS Expo exports.                   |
+| `pnpm db:migrate`                | Pass on user-confirmed test DB; 24 entries/table/10 permissions verified; no seed.        |
 
 ## Seed accounts and data
 
-- Existing Phase 0–4 seed accounts remain unchanged.
-- Alpha has `LEADS`, `TELEPHONY` and `INBOX`; Beta has `LEADS` only.
-- Alpha messaging connection ID `23000000-0000-4000-8000-000000000001` uses provider
-  `DEVELOPMENT`, business phone `+912040001111` and callback path
-  `/v1/messaging/webhooks/DEVELOPMENT/development-messaging-20000000-0000-4000-8000-000000000001`.
-- Templates `lead_follow_up_update` (UTILITY) and `dealership_offer` (MARKETING) are approved
-  development fixtures. They are not proof of Meta approval.
+- Existing credentials remain unchanged.
+- Alpha enables `LEADS`, `TELEPHONY`, `INBOX`, `TEST_RIDES` and `INVENTORY`; Beta keeps only its
+  previously enabled modules.
+- Alpha's deterministic demo unit uses reference `DEMO-EV-ZX-01` and links to the existing Phase 6
+  ride/booking without changing their reference or event history.
+- This session did not run `pnpm db:seed` against the test database.
 
 ## Known limitations and deferred work
 
-- No live WABA/provider credentials or legal consent/retention approval were supplied. Cloud
-  connections remain pending until callback verification, health and explicit activation.
-- WhatsApp Cloud media upload/download is deliberately unavailable pending provider activation and
-  reviewed retention; private development media remains functional.
-- Offline mobile queues text/templates only. Media requires connectivity, and a cold restart still
-  needs the API to reload the assigned-conversation cache.
-- SQLite outbox payloads are OS-protected but not application-layer encrypted; do not queue documents
-  or unnecessary sensitive content.
-- No configured object scanner, physical-device smoke, live status/template-sync test, hosted staging
-  smoke or Linux OpenNext packaging evidence exists yet.
-- Current Linux recheck found no WSL distribution/kernel, an unavailable Podman WSL socket and no
-  Docker CLI. Exact result: `CLOUDFLARE LINUX PACKAGING EXTERNAL VALIDATION REMAINS`.
-- SMS, email, Instagram Direct and Facebook Messenger are not Phase 5 functionality. Phase 13 may
-  add official adapters, but they must extend the canonical Conversation/Message inbox rather than
-  introduce parallel inbox products.
+- Phase 8 Booking, price, payment, finance, insurance, invoice, document and readiness entities do
+  not exist. Phase 7 allocation therefore retains an opaque booking reference and explicit
+  readiness assertion only.
+- Reservation expiry runs every 60 seconds while an API process is available and can also be invoked
+  idempotently through the reconciliation route. Hosted availability/monitoring remains operational
+  release work.
+- No manufacturer/DMS feed was selected; expected arrivals and imports are operator-supplied,
+  validated inventory commands.
+- Hosted staging, Linux OpenNext and authenticated browser visual QA remain external.
+- Existing Phase 4-6 provider/device/compliance limitations remain in `KNOWN_ISSUES.md`.
 
-## Exact prerequisites and recommendations for Phase 6
+## Exact prerequisites and recommendations for Phase 8
 
-1. Preserve canonical Contact/Lead IDs and all three owners. A test-ride process owner must not replace
-   the relationship owner or conversation owner.
-2. Keep conversations/messages append-only and link future test-ride notifications through the
-   provider-neutral messaging interface only after committed test-ride state.
-3. Use an outbox/idempotency key for booking confirmations, reminders and reschedules so provider
-   failure cannot roll back a committed appointment.
-4. Apply migrations `0014`–`0016` once and verify the Alpha/Beta module flags before adding Phase 6
-   flags or routes.
-5. Retain backend branch/team/assignment authorization and default deny. Do not trust a client-sent
-   tenant, owner or test-ride status.
-6. Keep `DESIGN.md` mandatory for Phase 6 web/mobile screens and include loading, empty, error,
-   disabled, conflict and success states.
-7. Apply the `DESIGN.md` client-state decision rule: API/TanStack Query for server truth, URL for
-   deep links, React state for isolated controls, feature-scoped Zustand for shared transient
-   workflow, and SQLite/outbox for durable mobile replay. Reset stores on every auth/context change.
-8. Do not expand Phase 6 into live WhatsApp activation, inventory, delivery or AI modules without the
-   relevant phase authorization and external prerequisites.
+1. Consume canonical Phase 3 `lead_id`/`contact_id` and Phase 7 `inventory_unit_id`; do not create a
+   parallel customer, VIN or stock-status model.
+2. Replace/resolve an opaque allocation booking reference only through an explicit compatibility
+   migration. Detect missing or ambiguous matches, preserve allocation IDs/history, and never
+   silently relink a VIN.
+3. Keep quotation, discount, payment proof, verified payment, finance approval/disbursement,
+   invoice, insurance, documents and readiness as separate tenant-owned records; do not expand the
+   Lead or Inventory status enum with financial states.
+4. Treat CRM payments as append-only status evidence, not an accounting ledger or money processor.
+   Corrections must reverse/append, verified balance must not become negative, and Inventory roles
+   must not gain payment authority.
+5. Make document objects private with validated metadata, short-lived signed access, download audit
+   and immutable version/verification events. Uploaded proof is not verified payment.
+6. Delivery readiness must be server-derived from configured mandatory conditions and the current
+   canonical allocation; Billing must never replace the VIN silently.
+7. Keep API/TanStack Query authoritative, financial/customer/document data out of persisted Zustand,
+   URL state deep-linkable, and all transient stores on the established reset boundary.
+8. Re-run the full 24-entry baseline plus Phase 8 migrations, cross-tenant/permission tests and all
+   production builds before declaring Phase 8 complete.
 
 ## Gate
 
-`PHASE 5 CODE COMPLETE — EXTERNAL VALIDATION REMAINS`
+`PHASE 7 COMPLETE - TEST DATABASE MIGRATED; NO SEED OR PRODUCTION DEPLOYMENT`
 
-`READY TO BEGIN PHASE 6`
-
-`NEXT: RUN PROMPTS/06_TEST_RIDES.md`
+`PHASE 8 NOT STARTED`

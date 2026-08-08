@@ -16,6 +16,7 @@ import { parseJson } from './assigned-leads-screen';
 
 interface MobileLeadDetail {
   lead: {
+    branch_id: string;
     id: string;
     contact_name: string;
     phone_e164: string;
@@ -166,6 +167,16 @@ export function MobileLeadDetailScreen() {
           </AppText>
         </View>
       </Card>
+      {principal?.permissions.includes('test_rides.schedule') ? (
+        <ScheduleTestRideCard
+          branchId={lead.branch_id}
+          connectivity={connectivity}
+          leadId={lead.id}
+          onMessage={setMessage}
+          request={request}
+          vehicleInterest={lead.vehicle_interest}
+        />
+      ) : null}
       <Card>
         <View className="gap-3">
           <AppText accessibilityRole="header" variant="heading">
@@ -368,5 +379,94 @@ export function MobileLeadDetailScreen() {
         </View>
       </Card>
     </MobileShell>
+  );
+}
+
+function ScheduleTestRideCard({
+  branchId,
+  connectivity,
+  leadId,
+  onMessage,
+  request,
+  vehicleInterest,
+}: {
+  branchId: string;
+  connectivity: 'offline' | 'online' | 'unknown';
+  leadId: string;
+  onMessage(message: string): void;
+  request(path: string, init?: RequestInit): Promise<Response>;
+  vehicleInterest: string;
+}) {
+  const [vehicleModel, setVehicleModel] = useState(vehicleInterest);
+  const [vehicleReference, setVehicleReference] = useState('');
+  const [location, setLocation] = useState('');
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [notes, setNotes] = useState('');
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (connectivity !== 'online')
+        throw new Error('Scheduling needs a connection so vehicle availability is checked now.');
+      const response = await request('/test-rides', {
+        body: JSON.stringify({
+          branch_id: branchId,
+          customer_location: location,
+          demo_vehicle_reference: vehicleReference,
+          lead_id: leadId,
+          notes: notes || null,
+          otp_code: null,
+          scheduled_end_at: new Date(endAt).toISOString(),
+          scheduled_start_at: new Date(startAt).toISOString(),
+          vehicle_model: vehicleModel,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': randomUUID(),
+        },
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error(`Test-ride request rejected (${String(response.status)}).`);
+    },
+    onError: (caught) =>
+      onMessage(caught instanceof Error ? caught.message : 'Unable to schedule the test ride.'),
+    onSuccess: () => onMessage('Test-ride request created. A manager can book and assign it.'),
+  });
+  const valid = vehicleModel && vehicleReference && location && startAt && endAt;
+  return (
+    <Card>
+      <View className="gap-3">
+        <AppText accessibilityRole="header" variant="heading">
+          Schedule test ride
+        </AppText>
+        <TextField label="Vehicle model" onChangeText={setVehicleModel} value={vehicleModel} />
+        <TextField
+          label="Demo vehicle reference"
+          onChangeText={setVehicleReference}
+          value={vehicleReference}
+        />
+        <TextField label="Customer location" onChangeText={setLocation} value={location} />
+        <TextField
+          description="ISO date/time with offset"
+          label="Start"
+          onChangeText={setStartAt}
+          placeholder="2026-08-09T10:00:00+05:30"
+          value={startAt}
+        />
+        <TextField
+          description="ISO date/time with offset"
+          label="End"
+          onChangeText={setEndAt}
+          placeholder="2026-08-09T11:00:00+05:30"
+          value={endAt}
+        />
+        <TextField label="Customer notes" multiline onChangeText={setNotes} value={notes} />
+        <Button
+          disabled={!valid || connectivity !== 'online' || mutation.isPending}
+          label="Create ride request"
+          loading={mutation.isPending}
+          onPress={() => mutation.mutate()}
+        />
+      </View>
+    </Card>
   );
 }

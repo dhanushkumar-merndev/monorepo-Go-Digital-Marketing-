@@ -25,8 +25,8 @@ import type {
   SessionDevice,
   StartSupportElevationInput,
 } from './auth-types';
+import { resetFeatureUiState } from './feature-ui-reset';
 import { loginPath, safeReturnPath } from './safe-return-path';
-import { resetInboxUiState } from '../messaging/inbox-ui.store';
 
 export type AuthStatus = 'anonymous' | 'authenticated' | 'error' | 'expired' | 'loading';
 
@@ -83,7 +83,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       setError(null);
       setStatus('expired');
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
 
       if (typeof window === 'undefined') {
         return;
@@ -114,7 +114,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     if (!restored) {
       setSession(null);
       setStatus('anonymous');
-      resetInboxUiState();
+      resetFeatureUiState();
       return;
     }
 
@@ -130,7 +130,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       if (caught instanceof ApiClientError && caught.status === 401) {
         setSession(null);
         setStatus('anonymous');
-        resetInboxUiState();
+        resetFeatureUiState();
         return;
       }
       setError(toApiClientError(caught));
@@ -153,7 +153,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       setSession(authenticatedSession);
       setStatus('authenticated');
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       router.replace(safeReturnPath(returnTo));
     },
     [client, queryClient, router],
@@ -180,7 +180,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       setError(null);
       setStatus('expired');
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       router.replace('/session-expired');
     }
     return result;
@@ -194,7 +194,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       setError(null);
       setStatus('anonymous');
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       router.replace('/login');
     }
   }, [client, queryClient, router]);
@@ -207,7 +207,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       setError(null);
       setStatus('anonymous');
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       router.replace('/login');
     }
   }, [client, queryClient, router]);
@@ -222,7 +222,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     async (membershipId: string) => {
       const switched = await client.switchMembership(membershipId);
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       setSession(switched);
     },
     [client, queryClient],
@@ -232,7 +232,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     async (input: StartSupportElevationInput) => {
       const elevated = await client.startSupportElevation(input);
       queryClient.clear();
-      resetInboxUiState();
+      resetFeatureUiState();
       setSession(elevated);
     },
     [client, queryClient],
@@ -241,7 +241,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   const endSupportElevation = useCallback(async () => {
     const restored = await client.endSupportElevation();
     queryClient.clear();
-    resetInboxUiState();
+    resetFeatureUiState();
     setSession(restored);
   }, [client, queryClient]);
 

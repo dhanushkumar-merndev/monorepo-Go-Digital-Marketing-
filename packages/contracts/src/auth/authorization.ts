@@ -69,6 +69,23 @@ export const PERMISSION_CODES = [
   'messaging.failures.manage',
   'messaging.media.read',
   'messaging.media.upload',
+  'test_rides.read',
+  'test_rides.schedule',
+  'test_rides.assign',
+  'test_rides.execute',
+  'test_rides.location.write',
+  'test_rides.active_map.read',
+  'test_rides.cancel',
+  'inventory.catalogue.read',
+  'inventory.catalogue.manage',
+  'inventory.units.read',
+  'inventory.units.sensitive.read',
+  'inventory.units.manage',
+  'inventory.reservations.manage',
+  'inventory.allocations.manage',
+  'inventory.allocations.reallocate',
+  'inventory.transfers.manage',
+  'inventory.corrections.manage',
 ] as const;
 
 export const canonicalRoleCodeSchema = z.enum(CANONICAL_ROLE_CODES);

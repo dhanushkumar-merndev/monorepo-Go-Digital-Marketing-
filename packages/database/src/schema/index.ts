@@ -63,3 +63,5 @@ export { users, userStatusEnum } from './users.js';
 export * from './leads.js';
 export * from './telephony.js';
 export * from './messaging.js';
+export * from './test-rides.js';
+export * from './inventory.js';

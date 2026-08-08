@@ -1,12 +1,8 @@
-import { useAppStore } from '../store/app-store';
+import { resetAppState, useAppStore } from '../store/app-store';
 
 describe('app store', () => {
   beforeEach(() => {
-    useAppStore.setState({
-      connectivity: 'unknown',
-      notificationPermission: 'unknown',
-      previewState: 'loading',
-    });
+    resetAppState();
   });
 
   it('keeps connectivity and preview state independently', () => {
@@ -17,6 +13,20 @@ describe('app store', () => {
       connectivity: 'offline',
       notificationPermission: 'unknown',
       previewState: 'success',
+    });
+  });
+
+  it('resets all transient foundation state when the auth context changes', () => {
+    useAppStore.getState().setConnectivity('online');
+    useAppStore.getState().setNotificationPermission('granted');
+    useAppStore.getState().setPreviewState('success');
+
+    resetAppState();
+
+    expect(useAppStore.getState()).toMatchObject({
+      connectivity: 'unknown',
+      notificationPermission: 'unknown',
+      previewState: 'loading',
     });
   });
 });

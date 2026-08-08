@@ -202,6 +202,9 @@ describe('API foundation (HTTP integration)', () => {
       undefined,
     );
     assert.ok(documentResponse.body.paths['/v1/branches/{branchId}']);
+    assert.ok(documentResponse.body.paths['/v1/inventory/units']);
+    assert.ok(documentResponse.body.paths['/v1/inventory/units/{unitId}/allocations']);
+    assert.ok(documentResponse.body.paths['/v1/inventory/units/{unitId}/transfers']);
     assert.match(uiResponse.text, /id="swagger-ui"/u);
   });
 });

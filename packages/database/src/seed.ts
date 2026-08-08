@@ -19,7 +19,16 @@ import {
   clientIntegrationReadiness,
   clientModuleFlags,
   departments,
+  demoVehicleBookings,
+  contacts,
   leadSettings,
+  leadOpportunities,
+  inventoryBrands,
+  inventoryColours,
+  inventoryModels,
+  inventoryUnitStatusHistory,
+  inventoryUnits,
+  inventoryVariants,
   membershipBranchScopes,
   membershipDepartmentScopes,
   membershipTeamScopes,
@@ -35,6 +44,8 @@ import {
   teamMemberships,
   teams,
   telephonyProviderConnections,
+  testRideEvents,
+  testRideJobs,
   users,
 } from './schema/index.js';
 
@@ -65,6 +76,17 @@ const ALPHA_PUNE_TEAM_ID = '22000000-0000-4000-8000-000000000001';
 const ALPHA_MUMBAI_TEAM_ID = '22000000-0000-4000-8000-000000000002';
 const BETA_NASHIK_TEAM_ID = '22000000-0000-4000-8000-000000000003';
 const ALPHA_MESSAGING_CONNECTION_ID = '23000000-0000-4000-8000-000000000001';
+const ALPHA_TEST_RIDE_CONTACT_ID = '25000000-0000-4000-8000-000000000001';
+const ALPHA_TEST_RIDE_LEAD_ID = '26000000-0000-4000-8000-000000000001';
+const ALPHA_TEST_RIDE_JOB_ID = '27000000-0000-4000-8000-000000000001';
+const ALPHA_TEST_RIDE_EVENT_ID = '28000000-0000-4000-8000-000000000001';
+const ALPHA_TEST_RIDE_BOOKING_ID = '29000000-0000-4000-8000-000000000001';
+const ALPHA_INVENTORY_BRAND_ID = '2a000000-0000-4000-8000-000000000001';
+const ALPHA_INVENTORY_MODEL_ID = '2b000000-0000-4000-8000-000000000001';
+const ALPHA_INVENTORY_VARIANT_ID = '2c000000-0000-4000-8000-000000000001';
+const ALPHA_INVENTORY_COLOUR_ID = '2d000000-0000-4000-8000-000000000001';
+const ALPHA_DEMO_INVENTORY_UNIT_ID = '2e000000-0000-4000-8000-000000000001';
+const ALPHA_DEMO_INVENTORY_HISTORY_ID = '2f000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -227,7 +249,62 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'messaging.failures.manage': 'Inspect and retry failed or dead-letter messages.',
   'messaging.media.read': 'Request scoped private message media access.',
   'messaging.media.upload': 'Upload private outbound message media.',
+  'test_rides.read': 'Read test rides within tenant, branch, team and assignment scope.',
+  'test_rides.schedule': 'Schedule, book and confirm test rides for scoped Leads.',
+  'test_rides.assign': 'Assign or reassign an eligible Test Ride Executive.',
+  'test_rides.execute': 'Start and finish only an assigned test-ride job.',
+  'test_rides.location.write': 'Submit location only during an explicitly active assigned ride.',
+  'test_rides.active_map.read': 'Read ACTIVE rides and their stale-aware current location.',
+  'test_rides.cancel': 'Cancel a scoped test ride with a mandatory reason.',
+  'inventory.catalogue.read': 'Read the tenant vehicle catalogue.',
+  'inventory.catalogue.manage': 'Create tenant vehicle catalogue records.',
+  'inventory.units.read': 'Read branch-scoped physical stock with masked identifiers.',
+  'inventory.units.sensitive.read': 'Read full VIN, chassis and engine identifiers.',
+  'inventory.units.manage': 'Create, receive and manage physical inventory units.',
+  'inventory.reservations.manage': 'Create, extend, expire and release inventory reservations.',
+  'inventory.allocations.manage': 'Allocate and release a physical unit for a booking.',
+  'inventory.allocations.reallocate': 'Approve reasoned VIN reallocation between physical units.',
+  'inventory.transfers.manage': 'Start and finish immutable branch transfers.',
+  'inventory.corrections.manage': 'Perform controlled blocked, cancelled or removed corrections.',
 };
+
+const inventoryReadPermissions = [
+  'inventory.catalogue.read',
+  'inventory.units.read',
+] as const satisfies readonly PermissionCode[];
+const inventoryOperatorPermissions = [
+  ...inventoryReadPermissions,
+  'inventory.catalogue.manage',
+  'inventory.units.sensitive.read',
+  'inventory.units.manage',
+  'inventory.reservations.manage',
+  'inventory.allocations.manage',
+  'inventory.transfers.manage',
+] as const satisfies readonly PermissionCode[];
+const inventoryManagerPermissions = [
+  ...inventoryOperatorPermissions,
+  'inventory.allocations.reallocate',
+  'inventory.corrections.manage',
+] as const satisfies readonly PermissionCode[];
+
+const testRideManagerPermissions = [
+  'test_rides.read',
+  'test_rides.schedule',
+  'test_rides.assign',
+  'test_rides.active_map.read',
+  'test_rides.cancel',
+] as const satisfies readonly PermissionCode[];
+const testRideSalesPermissions = [
+  'test_rides.read',
+  'test_rides.schedule',
+  'test_rides.cancel',
+] as const satisfies readonly PermissionCode[];
+const testRideExecutivePermissions = [
+  'test_rides.read',
+  'test_rides.execute',
+  'test_rides.location.write',
+  'test_rides.cancel',
+] as const satisfies readonly PermissionCode[];
 
 const leadManagerPermissions = [
   'leads.read',
@@ -340,6 +417,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadManagerPermissions,
     ...telephonyManagerPermissions,
     ...messagingManagerPermissions,
+    ...testRideManagerPermissions,
+    ...inventoryManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -360,6 +439,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadManagerPermissions,
     ...telephonyManagerPermissions,
     ...messagingManagerPermissions,
+    ...testRideManagerPermissions,
+    ...inventoryManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -373,6 +454,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadManagerPermissions,
     ...telephonyManagerPermissions,
     ...messagingManagerPermissions,
+    ...testRideManagerPermissions,
+    ...inventoryManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -384,6 +467,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadManagerPermissions,
     ...telephonyManagerPermissions,
     ...messagingManagerPermissions,
+    ...testRideManagerPermissions,
+    ...inventoryReadPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -399,10 +484,25 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadAgentPermissions,
     ...telephonyAgentPermissions,
     ...messagingAgentPermissions,
+    ...testRideSalesPermissions,
+    ...inventoryReadPermissions,
   ],
-  TEST_RIDE_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
-  INVENTORY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
-  BILLING_DOCUMENTATION_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
+  TEST_RIDE_EXECUTIVE: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...testRideExecutivePermissions,
+    ...inventoryReadPermissions,
+  ],
+  INVENTORY_EXECUTIVE: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...inventoryOperatorPermissions,
+  ],
+  BILLING_DOCUMENTATION_EXECUTIVE: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...inventoryReadPermissions,
+  ],
   DELIVERY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   RC_REGISTRATION_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   TEAM_MANAGER: [
@@ -413,6 +513,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadManagerPermissions,
     ...telephonyTeamManagerPermissions,
     ...messagingTeamManagerPermissions,
+    ...testRideManagerPermissions,
+    ...inventoryReadPermissions,
   ],
 };
 
@@ -897,7 +999,10 @@ async function seed(): Promise<void> {
           const enabled =
             module === 'LEADS' ||
             (clientOrganizationId === ALPHA_CLIENT_ID &&
-              (module === 'TELEPHONY' || module === 'INBOX'));
+              (module === 'TELEPHONY' ||
+                module === 'INBOX' ||
+                module === 'TEST_RIDES' ||
+                module === 'INVENTORY'));
           await transaction
             .insert(clientModuleFlags)
             .values({
@@ -1322,6 +1427,212 @@ async function seed(): Promise<void> {
           target: publicLeadForms.clientFormKey,
           set: { active: true, assignmentQueueId: alphaQueueId, updatedAt: SEED_DATE },
         });
+      await transaction
+        .insert(inventoryBrands)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          code: 'GDM-EV',
+          createdAt: SEED_DATE,
+          id: ALPHA_INVENTORY_BRAND_ID,
+          name: 'Go Digital Electric',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: inventoryBrands.id,
+          set: { active: true, name: 'Go Digital Electric', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(inventoryModels)
+        .values({
+          brandId: ALPHA_INVENTORY_BRAND_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          code: 'EV-ZX',
+          createdAt: SEED_DATE,
+          id: ALPHA_INVENTORY_MODEL_ID,
+          name: 'EV ZX',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: inventoryModels.id,
+          set: { active: true, name: 'EV ZX', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(inventoryVariants)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          code: 'EV-ZX-LR',
+          createdAt: SEED_DATE,
+          fuelPowertrain: 'BATTERY_ELECTRIC',
+          id: ALPHA_INVENTORY_VARIANT_ID,
+          modelId: ALPHA_INVENTORY_MODEL_ID,
+          modelYear: 2026,
+          name: 'Long Range',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: inventoryVariants.id,
+          set: { active: true, name: 'Long Range', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(inventoryColours)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          code: 'ARCTIC-WHITE',
+          createdAt: SEED_DATE,
+          id: ALPHA_INVENTORY_COLOUR_ID,
+          name: 'Arctic White',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: inventoryColours.id,
+          set: { active: true, name: 'Arctic White', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(inventoryUnits)
+        .values({
+          acquisitionReference: 'DEMO-FLEET-2026-01',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          chassisNumber: 'GDMZXDEMOCHASSIS01',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          colourId: ALPHA_INVENTORY_COLOUR_ID,
+          conditionNotes: 'Development-only canonical demo unit.',
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000008',
+          createdByUserId: '50000000-0000-4000-8000-000000000008',
+          currentOdometerKm: 120,
+          engineNumber: 'GDMZXDEMOMOTOR01',
+          id: ALPHA_DEMO_INVENTORY_UNIT_ID,
+          ownershipType: 'DEALER_OWNED',
+          receivedAt: SEED_DATE,
+          status: 'DEMO',
+          unitReference: 'DEMO-EV-ZX-01',
+          updatedAt: SEED_DATE,
+          variantId: ALPHA_INVENTORY_VARIANT_ID,
+          vin: 'GDMZXDEMO00000001',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(inventoryUnitStatusHistory)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000008',
+          actorUserId: '50000000-0000-4000-8000-000000000008',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          eventType: 'UNIT_CREATED',
+          evidence: { development_fixture: true },
+          id: ALPHA_DEMO_INVENTORY_HISTORY_ID,
+          inventoryUnitId: ALPHA_DEMO_INVENTORY_UNIT_ID,
+          reason: 'Development seed canonical demo.',
+          toStatus: 'DEMO',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(contacts)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          displayName: 'Ananya Test Ride Customer',
+          id: ALPHA_TEST_RIDE_CONTACT_ID,
+          primaryEmailNormalized: 'ananya.customer@seed.godigital.test',
+          primaryPhoneE164: '+919999000090',
+          primaryPhoneLookupHash: createHash('sha256').update('+919999000090').digest('hex'),
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: contacts.id,
+          set: { displayName: 'Ananya Test Ride Customer', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(leadOpportunities)
+        .values({
+          assignmentQueueId: alphaQueueId,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          capturedAt: SEED_DATE,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          currentProcessOwnerId: '50000000-0000-4000-8000-000000000006',
+          currentProcessOwnerMembershipId: '60000000-0000-4000-8000-000000000006',
+          entryMethod: 'MANUAL',
+          id: ALPHA_TEST_RIDE_LEAD_ID,
+          relationshipOwnerId: '50000000-0000-4000-8000-000000000006',
+          relationshipOwnerMembershipId: '60000000-0000-4000-8000-000000000006',
+          slaDueAt: new Date('2026-08-01T00:15:00.000Z'),
+          slaState: 'MET',
+          slaWarningAt: new Date('2026-08-01T00:10:00.000Z'),
+          source: 'WALK_IN',
+          status: 'TEST_RIDE_BOOKED',
+          updatedAt: SEED_DATE,
+          vehicleInterest: 'Demo EV ZX',
+        })
+        .onConflictDoUpdate({
+          target: leadOpportunities.id,
+          set: { status: 'TEST_RIDE_BOOKED', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(testRideJobs)
+        .values({
+          assignedAt: SEED_DATE,
+          assignedBy: '50000000-0000-4000-8000-000000000004',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          confirmedAt: SEED_DATE,
+          confirmationChannel: 'CALL',
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdBy: '50000000-0000-4000-8000-000000000006',
+          customerLocation: 'Baner, Pune',
+          demoVehicleReference: 'DEMO-EV-ZX-01',
+          executiveMembershipId: '60000000-0000-4000-8000-000000000007',
+          executiveUserId: '50000000-0000-4000-8000-000000000007',
+          id: ALPHA_TEST_RIDE_JOB_ID,
+          inventoryUnitId: ALPHA_DEMO_INVENTORY_UNIT_ID,
+          leadId: ALPHA_TEST_RIDE_LEAD_ID,
+          notes: 'Development fixture ready for the executive start flow.',
+          scheduledEndAt: new Date('2026-08-09T06:30:00.000Z'),
+          scheduledStartAt: new Date('2026-08-09T05:30:00.000Z'),
+          status: 'EXECUTIVE_ASSIGNED',
+          teamId: ALPHA_PUNE_TEAM_ID,
+          updatedAt: SEED_DATE,
+          vehicleModel: 'Demo EV ZX',
+        })
+        .onConflictDoUpdate({
+          target: testRideJobs.id,
+          set: { inventoryUnitId: ALPHA_DEMO_INVENTORY_UNIT_ID, updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(demoVehicleBookings)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          demoVehicleReference: 'DEMO-EV-ZX-01',
+          id: ALPHA_TEST_RIDE_BOOKING_ID,
+          inventoryUnitId: ALPHA_DEMO_INVENTORY_UNIT_ID,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          scheduledEndAt: new Date('2026-08-09T06:30:00.000Z'),
+          scheduledStartAt: new Date('2026-08-09T05:30:00.000Z'),
+          status: 'HELD',
+          testRideJobId: ALPHA_TEST_RIDE_JOB_ID,
+        })
+        .onConflictDoUpdate({
+          target: demoVehicleBookings.id,
+          set: { inventoryUnitId: ALPHA_DEMO_INVENTORY_UNIT_ID },
+        });
+      await transaction
+        .insert(testRideEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000004',
+          actorUserId: '50000000-0000-4000-8000-000000000004',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          eventType: 'RIDE_ASSIGNED',
+          evidence: { development_fixture: true },
+          fromStatus: 'CUSTOMER_CONFIRMED',
+          id: ALPHA_TEST_RIDE_EVENT_ID,
+          reason: 'Development seed assignment.',
+          testRideJobId: ALPHA_TEST_RIDE_JOB_ID,
+          toStatus: 'EXECUTIVE_ASSIGNED',
+        })
+        .onConflictDoNothing();
       await transaction
         .insert(telephonyProviderConnections)
         .values({

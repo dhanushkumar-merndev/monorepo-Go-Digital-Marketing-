@@ -17,3 +17,8 @@ export {
   parseMessagingEnvironment,
   type MessagingEnvironment,
 } from './messaging.js';
+export {
+  parseTestRideEnvironment,
+  testRideEnvironmentSchema,
+  type TestRideEnvironment,
+} from './test-rides.js';

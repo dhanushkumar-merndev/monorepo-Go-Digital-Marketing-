@@ -1,0 +1,1 @@
+ALTER TABLE "test_ride_command_receipts" ALTER COLUMN "test_ride_job_id" DROP NOT NULL;

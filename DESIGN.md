@@ -52,16 +52,17 @@ Maintain semantic HTML, labels, visible focus, keyboard navigation, table semant
 
 ## Reference analysis matrix
 
-| Reference family                                                      | Role / phase      | Reusable pattern                                              | Go Digital treatment                                                        |
-| --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Telecaller, consultant and manager dashboards                         | Current Phase 3–4 | Attention-led KPIs, work queues, compact trends               | Use only API-backed operational facts; no fabricated charts or metrics.     |
-| Lead list, follow-up and call-monitor screens                         | Current Phase 3–4 | Filter toolbar, strong identity column, status scanning       | Shared accessible data-list pattern with assignment scope preserved.        |
-| Customer 360 and activity screens                                     | Current Phase 3–4 | Entity header, focused actions, chronological activity        | Canonical Contact/Lead and three-owner model remain unchanged.              |
-| Telephony and recording screens                                       | Current Phase 4   | Call timeline, outcome queue, provenance                      | Private, consent-gated recording UX; provider/debug detail stays secondary. |
-| Client, user, branch, team and permission screens                     | Current Phase 2   | Administration workspace and hierarchy scanning               | Reuse current tenant-scoped controls; do not invent RBAC inheritance.       |
-| Mobile home, lead list, customer and call screens                     | Current Phase 3–4 | Compact work queue, action-first detail, mobile call summary  | Existing Expo flow with safe `tel:` and provider-call boundaries.           |
-| Unified Inbox and official WhatsApp                                   | Current Phase 5   | Three-pane inbox, chronological messages and customer context | One channel-neutral CRM inbox; only official WhatsApp is active in Phase 5. |
-| Test drive, inventory, booking, delivery, RTO, reports, AI and social | Future phases     | Layout inspiration only                                       | Not implemented by this refresh.                                            |
+| Reference family                                  | Role / phase      | Reusable pattern                                              | Go Digital treatment                                                          |
+| ------------------------------------------------- | ----------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Telecaller, consultant and manager dashboards     | Current Phase 3–4 | Attention-led KPIs, work queues, compact trends               | Use only API-backed operational facts; no fabricated charts or metrics.       |
+| Lead list, follow-up and call-monitor screens     | Current Phase 3–4 | Filter toolbar, strong identity column, status scanning       | Shared accessible data-list pattern with assignment scope preserved.          |
+| Customer 360 and activity screens                 | Current Phase 3–4 | Entity header, focused actions, chronological activity        | Canonical Contact/Lead and three-owner model remain unchanged.                |
+| Telephony and recording screens                   | Current Phase 4   | Call timeline, outcome queue, provenance                      | Private, consent-gated recording UX; provider/debug detail stays secondary.   |
+| Client, user, branch, team and permission screens | Current Phase 2   | Administration workspace and hierarchy scanning               | Reuse current tenant-scoped controls; do not invent RBAC inheritance.         |
+| Mobile home, lead list, customer and call screens | Current Phase 3–4 | Compact work queue, action-first detail, mobile call summary  | Existing Expo flow with safe `tel:` and provider-call boundaries.             |
+| Unified Inbox and official WhatsApp               | Current Phase 5   | Three-pane inbox, chronological messages and customer context | One channel-neutral CRM inbox; only official WhatsApp is active in Phase 5.   |
+| Test ride and physical inventory                  | Current Phase 6–7 | Active-job operations, dense stock lists and evidence history | API-backed jobs/stock only; physical units never become Lead lifecycle state. |
+| Booking, delivery, RTO, reports, AI and social    | Future phases     | Layout inspiration only                                       | Not implemented by this phase.                                                |
 
 # Client State Management
 
@@ -151,6 +152,15 @@ approved channels remain future work. A future adapter must reuse the canonical 
 Message, Contact/Lead context, Conversation Owner, authorization and inbox UI where the official API
 permits it. Unsupported channels must be labelled deferred and must not be reported as connected or
 implemented.
+
+## Vehicle inventory client-state contract
+
+Inventory stock, VIN/chassis/engine identity, reservations, allocations, transfer state and
+optimistic versions remain API/TanStack Query data. The web inventory Zustand store is
+non-persisted and owns only form visibility and table density. Shareable inventory view/search and
+physical-unit identifiers remain in URL routes. Full identifiers, booking references and history
+must never be persisted in the store or browser storage, and the store resets with every existing
+authentication, tenant, membership and support-context teardown boundary.
 
 ## Future-phase contract
 

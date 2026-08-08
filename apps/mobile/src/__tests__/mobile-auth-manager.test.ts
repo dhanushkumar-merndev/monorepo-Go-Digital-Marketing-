@@ -2,8 +2,10 @@ import { ApiResponseError, NetworkRequestError } from '../api/api-error';
 import { MobileAuthManager } from '../auth/mobile-auth-manager';
 import type { GoogleIdentityClient } from '../auth/google-identity-client';
 import type { MobileSession } from '../auth/auth-types';
+import { useAppStore } from '../store/app-store';
 import { initialAuthState, setAuthState, useAuthStore } from '../store/auth-store';
 import { useMobileInboxUiStore } from '../store/inbox-ui.store';
+import { useTestRidesUiStore } from '../store/test-rides-ui.store';
 import {
   FakeAuthTransport,
   MemoryCredentialVault,
@@ -15,10 +17,17 @@ const device = { deviceName: 'Android app', platform: 'android' } as const;
 
 function managerFixture(session: MobileSession | null = sessionFixture()) {
   const queryCache = { clear: jest.fn() };
+  const stopActiveTestRideTracking = jest.fn().mockResolvedValue(undefined);
   const transport = new FakeAuthTransport();
   const vault = new MemoryCredentialVault(session);
-  const manager = new MobileAuthManager({ device, queryCache, transport, vault });
-  return { manager, queryCache, transport, vault };
+  const manager = new MobileAuthManager({
+    device,
+    queryCache,
+    stopActiveTestRideTracking,
+    transport,
+    vault,
+  });
+  return { manager, queryCache, stopActiveTestRideTracking, transport, vault };
 }
 
 function googleManagerFixture() {
@@ -212,6 +221,48 @@ describe('MobileAuthManager', () => {
     );
   });
 
+  it('clears all workflow stores before rendering a refreshed membership context', async () => {
+    const { manager, queryCache, stopActiveTestRideTracking, transport } = managerFixture();
+    await manager.bootstrap();
+    useAppStore.getState().setPreviewState('success');
+    useMobileInboxUiStore.getState().prepareComposer('tenant-a-conversation');
+    useMobileInboxUiStore.getState().setDraftText('Tenant A draft');
+    useTestRidesUiStore.getState().setDisclosureRideId('tenant-a-ride');
+    queryCache.clear.mockClear();
+    stopActiveTestRideTracking.mockClear();
+
+    const switched = sessionFixture({
+      accessToken: 'access-token-two',
+      refreshToken: 'refresh-token-two',
+    });
+    switched.principal = {
+      ...switched.principal,
+      clientOrganizationId: 'client-2',
+      membershipId: 'membership-2',
+    };
+    transport.authorizedRequest.mockResolvedValueOnce(
+      jsonResponse(401, {
+        error: {
+          code: 'SESSION_EXPIRED',
+          correlation_id: 'context-switch',
+          details: [],
+          message: 'Expired',
+          retryable: false,
+        },
+      }),
+    );
+    transport.refresh.mockResolvedValueOnce(switched);
+
+    await manager.request('/profile');
+
+    expect(queryCache.clear).toHaveBeenCalledTimes(1);
+    expect(stopActiveTestRideTracking).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().previewState).toBe('loading');
+    expect(useMobileInboxUiStore.getState().draftText).toBe('');
+    expect(useTestRidesUiStore.getState().disclosureRideId).toBeNull();
+    expect(useAuthStore.getState().principal?.clientOrganizationId).toBe('client-2');
+  });
+
   it('preserves the vault on a refresh network failure but clears revoked sessions', async () => {
     const expired = sessionFixture({
       accessTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
@@ -238,7 +289,7 @@ describe('MobileAuthManager', () => {
   });
 
   it('does not refresh a request whose session was explicitly revoked', async () => {
-    const { manager, queryCache, transport, vault } = managerFixture();
+    const { manager, queryCache, stopActiveTestRideTracking, transport, vault } = managerFixture();
     await manager.bootstrap();
     queryCache.clear.mockClear();
     transport.authorizedRequest.mockResolvedValueOnce(
@@ -260,6 +311,7 @@ describe('MobileAuthManager', () => {
     expect(transport.refresh).not.toHaveBeenCalled();
     expect(vault.clear).toHaveBeenCalled();
     expect(queryCache.clear).toHaveBeenCalledTimes(1);
+    expect(stopActiveTestRideTracking).toHaveBeenCalled();
     expect(useAuthStore.getState().status).toBe('session-expired');
   });
 
@@ -311,6 +363,11 @@ describe('MobileAuthManager', () => {
     await manager.bootstrap();
     useMobileInboxUiStore.getState().prepareComposer('conversation-before-logout');
     useMobileInboxUiStore.getState().setDraftText('Customer draft must not survive logout.');
+    useTestRidesUiStore.getState().setDisclosureRideId('ride-before-logout');
+    useTestRidesUiStore.getState().setFilter('UPCOMING');
+    useAppStore.getState().setConnectivity('online');
+    useAppStore.getState().setNotificationPermission('granted');
+    useAppStore.getState().setPreviewState('success');
     queryCache.clear.mockClear();
     transport.logout.mockRejectedValueOnce(new NetworkRequestError());
 
@@ -322,6 +379,15 @@ describe('MobileAuthManager', () => {
     expect(useMobileInboxUiStore.getState()).toMatchObject({
       composerConversationId: null,
       draftText: '',
+    });
+    expect(useTestRidesUiStore.getState()).toMatchObject({
+      disclosureRideId: null,
+      filter: 'TODAY',
+    });
+    expect(useAppStore.getState()).toMatchObject({
+      connectivity: 'unknown',
+      notificationPermission: 'unknown',
+      previewState: 'loading',
     });
   });
 

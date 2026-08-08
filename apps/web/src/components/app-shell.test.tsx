@@ -48,4 +48,17 @@ describe('AppShell permission-aware navigation', () => {
     expect(screen.getByRole('button', { name: 'Start support access' })).toBeInTheDocument();
     expect(screen.getAllByText('Agency Admin').length).toBeGreaterThan(0);
   });
+
+  it('shows inventory only with the inventory read permission', () => {
+    render(
+      <AuthContext.Provider
+        value={testAuthContext({
+          session: testAuthSession('INVENTORY_EXECUTIVE', ['inventory.units.read']),
+        })}
+      >
+        <AppShell>Inventory content</AppShell>
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByRole('link', { name: 'Inventory' })).toBeInTheDocument();
+  });
 });

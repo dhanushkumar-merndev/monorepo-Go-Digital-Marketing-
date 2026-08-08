@@ -15,6 +15,8 @@ import { ObservabilityModule } from './observability/observability.module.js';
 import { createPinoHttpOptions } from './observability/pino-options.js';
 import { TelephonyModule } from './telephony/telephony.module.js';
 import { MessagingModule } from './messaging/messaging.module.js';
+import { TestRidesModule } from './test-rides/test-rides.module.js';
+import { InventoryModule } from './inventory/inventory.module.js';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { MessagingModule } from './messaging/messaging.module.js';
     LeadsModule,
     TelephonyModule,
     MessagingModule,
+    TestRidesModule,
+    InventoryModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

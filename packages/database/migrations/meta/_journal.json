@@ -120,6 +120,55 @@
       "when": 1786207263095,
       "tag": "0016_steady_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786212260758,
+      "tag": "0017_safe_mindworm",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786213608762,
+      "tag": "0018_many_red_wolf",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786214356609,
+      "tag": "0019_mean_bulldozer",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786215289628,
+      "tag": "0020_windy_magus",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786216470575,
+      "tag": "0021_free_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786217623983,
+      "tag": "0022_bitter_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786218262846,
+      "tag": "0023_fast_vivisector",
+      "breakpoints": true
     }
   ]
 }

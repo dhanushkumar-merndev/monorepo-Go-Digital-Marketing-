@@ -11,11 +11,15 @@
       "package": "in.godigitalmarketing.automobilecrm",
       "versionCode": 1,
       "allowBackup": false,
-      "permissions": ["android.permission.POST_NOTIFICATIONS"],
-      "blockedPermissions": [
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
+      "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.BIND_ACCESSIBILITY_SERVICE",
         "android.permission.READ_CALL_LOG",
         "android.permission.READ_CONTACTS",
@@ -58,6 +62,14 @@
         {
           "color": "#175cd3",
           "defaultChannel": "work-updates"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": true,
+          "locationWhenInUsePermission": "Allow Go Digital CRM to use location only while you explicitly run an assigned test ride."
         }
       ],
       [

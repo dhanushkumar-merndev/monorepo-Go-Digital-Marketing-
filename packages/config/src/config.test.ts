@@ -4,6 +4,7 @@ import { parseApiEnvironment } from './api.js';
 import { parseAuthEnvironment } from './auth.js';
 import { parseMobileEnvironment } from './mobile.js';
 import { parseMessagingEnvironment } from './messaging.js';
+import { parseTestRideEnvironment } from './test-rides.js';
 import { parseWebEnvironment } from './web.js';
 
 const validServerEnvironment = {
@@ -15,6 +16,26 @@ const validServerEnvironment = {
 const googleWebClientId = '123456789-webclient.apps.googleusercontent.com';
 
 describe('environment validation', () => {
+  it('bounds Phase 6 tracking settings and requires a hosted OTP pepper', () => {
+    expect(
+      parseTestRideEnvironment({
+        NODE_ENV: 'production',
+        TEST_RIDE_ACTIVE_TIMEOUT_MINUTES: '240',
+        TEST_RIDE_LOCATION_RETENTION_DAYS: '14',
+        TEST_RIDE_LOCATION_STALE_SECONDS: '180',
+        TEST_RIDE_OTP_PEPPER: 'hosted-test-ride-otp-pepper-at-least-32-characters',
+      }),
+    ).toMatchObject({
+      activeTimeoutMinutes: 240,
+      locationRetentionDays: 14,
+      locationStaleSeconds: 180,
+    });
+    expect(() => parseTestRideEnvironment({ NODE_ENV: 'production' })).toThrow(
+      /TEST_RIDE_OTP_PEPPER/u,
+    );
+    expect(() => parseTestRideEnvironment({ TEST_RIDE_LOCATION_STALE_SECONDS: '30' })).toThrow();
+  });
+
   it('validates the backend-only Phase 5 credential key and disables fixtures in production', () => {
     const key = Buffer.alloc(32, 7).toString('base64');
     expect(

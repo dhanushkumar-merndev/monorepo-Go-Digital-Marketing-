@@ -9,6 +9,12 @@ describe('mobile role and route policy', () => {
     expect(mobileRolePresentation(roleCode)).not.toBeNull();
   });
 
+  it('allows test-ride routes only for the two mobile roles with Phase 6 capability', () => {
+    expect(canAccessMobileRoute({ roleCode: 'TEST_RIDE_EXECUTIVE' }, 'test-rides')).toBe(true);
+    expect(canAccessMobileRoute({ roleCode: 'SALESPERSON' }, 'test-rides')).toBe(true);
+    expect(canAccessMobileRoute({ roleCode: 'DELIVERY_EXECUTIVE' }, 'test-rides')).toBe(false);
+  });
+
   it.each(officeRoleCodes)(
     'denies office/admin role %s from every mobile app route',
     (roleCode) => {

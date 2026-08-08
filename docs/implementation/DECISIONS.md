@@ -1,5 +1,109 @@
 # Architecture Decisions
 
+## ADR-0044 - Test Ride inventory links preserve the ride snapshot across stock transfers
+
+- **Date:** 2026-08-09
+- **Decision:** Add nullable canonical `inventory_unit_id` links to Phase 6 jobs/bookings by exact
+  tenant, branch and legacy demo reference when the physical unit is created. Preserve the original
+  demo reference and ride branch as point-in-time evidence. The durable foreign key is tenant/unit,
+  not current branch/unit, so a later authorized stock transfer changes only the unit's current
+  branch and never rewrites historical ride records.
+- **Reason:** Requiring the unit's current branch to equal every historical ride branch would make a
+  legitimate transfer fail after the unit had served a ride. Tenant/unit integrity prevents
+  cross-tenant linkage while the existing ride branch preserves historical attribution.
+- **Alternatives considered:** Rewriting ride branches on transfer, dropping the canonical link,
+  guessing ambiguous legacy references and retaining a tenant/branch/unit FK were rejected because
+  they either corrupt history or prevent valid physical movement.
+- **Status:** Accepted; migrations `0022`-`0023` and a transfer regression test pass.
+- **Affected modules:** Test Ride and Inventory schemas/services, migrations `0021`-`0023`, Phase 7
+  integration tests and migration documentation.
+
+## ADR-0043 - Inventory commands combine row locks, versions, unique indexes and receipts
+
+- **Date:** 2026-08-09
+- **Decision:** Serialize reservation, allocation, reallocation and transfer commands on the
+  physical-unit row, require the expected version and idempotency key, and retain a PostgreSQL
+  request fingerprint/response receipt. Partial unique indexes independently prohibit more than one
+  active reservation or allocation per unit and more than one active allocation per booking
+  reference. Status/transfer history is append-only and meaningful changes emit audit/outbox
+  evidence in the same transaction.
+- **Reason:** Client checks alone cannot prevent simultaneous VIN allocation or safe offline/request
+  replay. Layered database and service controls provide deterministic conflict handling without
+  losing the first committed business result.
+- **Alternatives considered:** In-memory locks, optimistic UI state, Redis-only locking and retrying
+  with a new key were rejected because they fail across processes or can duplicate business state.
+- **Status:** Accepted and covered by concurrent migrated-PGlite integration tests.
+- **Affected modules:** Inventory contracts/schema/service, `inventory_command_receipts`, migrations
+  and Phase 7 integration tests.
+
+## ADR-0042 - Phase 7 owns physical stock, not commercial or Lead lifecycle state
+
+- **Date:** 2026-08-09
+- **Decision:** Make Inventory the canonical authority for catalogue, VIN/chassis/engine identity,
+  branch location, reservation, allocation, demo designation, transfer and physical-unit status.
+  Keep Phase 3 Lead status unchanged and keep payment/billing authority out of Inventory. Until
+  Phase 8 creates canonical Booking/readiness records, allocation stores a tenant-owned opaque
+  booking reference plus an explicit readiness assertion.
+- **Reason:** Physical stock, customer sales lifecycle and financial verification have different
+  permissions, correction rules and histories. Combining them would let inventory edits mutate
+  customer/payment state and would prematurely implement Phase 8.
+- **Alternatives considered:** Adding VIN states to Lead, allowing Billing to edit a unit, or creating
+  partial Phase 8 booking/payment tables were rejected as unsafe scope expansion.
+- **Status:** Accepted.
+- **Affected modules:** Inventory schema/API/web, Lead lifecycle, Test Ride canonical-unit link,
+  permission mappings and Phase 8 handoff.
+
+## ADR-0041 - Location samples must match the exact tracking-session identity
+
+- **Date:** 2026-08-09
+- **Decision:** Enforce a composite database relationship from each location sample's tenant,
+  session, test-ride job and executive user to the same four fields on its active-location session.
+  Before adding the constraint, migration `0020_windy_magus.sql` explicitly detects inconsistent
+  existing tuples and aborts; it never guesses a correction, changes an ID or rewrites history.
+- **Reason:** Separate tenant-scoped foreign keys prevented cross-tenant rows but could not prevent a
+  same-tenant sample from being associated with the wrong ride or executive through direct or faulty
+  writes. The API already writes a consistent tuple, so the database should preserve that invariant.
+- **Alternatives considered:** Trusting service code alone, deleting ambiguous samples, or silently
+  remapping them to the session's job were rejected because location evidence requires fail-closed,
+  history-preserving migration behavior.
+- **Status:** Accepted; the complete 21-migration chain and direct invalid/valid tuple tests pass.
+- **Affected modules:** `packages/database/src/schema/test-rides.ts`, migration `0020_windy_magus.sql`
+  and the database migration integration suite.
+
+## ADR-0040 - Offline test-ride completion replays through one server receipt
+
+- **Date:** 2026-08-08
+- **Decision:** Keep test-ride jobs and lifecycle server-authoritative. Mobile may retain only
+  temporary tenant-bound location samples and allowed terminal commands in SQLite. Replay location
+  samples before the terminal command, reuse one stable idempotency key for every command attempt,
+  and atomically persist the request fingerprint, response snapshot, lifecycle change, audit and
+  outbox evidence in PostgreSQL. Conflicting key reuse fails closed.
+- **Reason:** An offline executive must be able to stop local tracking and record completion without
+  duplicate completion, lost evidence or a client-authored final state when connectivity returns.
+- **Alternatives considered:** Persisting the whole ride in Zustand, generating a new key per retry,
+  replaying completion before queued locations and treating HTTP timeout as success were rejected.
+- **Status:** Accepted and covered by mobile replay plus migrated-PGlite service integration tests.
+- **Affected modules:** mobile SQLite/outbox and test-ride screens, `test_ride_command_receipts`,
+  TestRidesService terminal commands and Phase 6 integration tests.
+
+## ADR-0039 - Active location is an explicit ride session, not employee tracking
+
+- **Date:** 2026-08-08
+- **Decision:** Create a server location session only when the exact assigned executive explicitly
+  starts an `EXECUTIVE_ASSIGNED` ride after disclosure and checklist/optional OTP validation. Accept
+  samples only while that tenant/job/user session is ACTIVE and unexpired. Stop it transactionally on
+  complete/cancel/no-show/manual stop, locally on auth/context teardown or permission failure, and by
+  configured timeout. Android uses a location-type foreground service and ongoing notification with
+  foreground/while-in-use permission; background-location permission remains prohibited.
+- **Reason:** Managers need current active-job visibility, not employee history. Server ownership,
+  timestamp/accuracy/stale projection, bounded retention and explicit stop boundaries enforce the
+  privacy requirement even when a client is stale or unauthorized.
+- **Alternatives considered:** Always-on background tracking, manager-started tracking, a persisted
+  Zustand coordinate store and accepting samples based only on a client status were rejected.
+- **Status:** Accepted; signed physical-device behavior remains external release evidence.
+- **Affected modules:** Phase 6 contracts/config/schema/API, Android/Expo configuration, mobile
+  location task, auth reset boundaries, web active monitor and migrations `0017`-`0018`.
+
 ## ADR-0038 - Zustand is the canonical shared transient client workflow layer
 
 - **Date:** 2026-08-08
@@ -13,7 +117,9 @@
   leaking mutable Next.js state between requests or weakening offline/idempotency boundaries.
 - **Alternatives considered:** A giant persisted application store, one shared mutable web/mobile
   store and moving every `useState` or query result into Zustand were rejected.
-- **Status:** Accepted and covered by web/mobile inbox-store reset tests. Database migration: none.
+- **Status:** Accepted and covered by web/mobile all-store reset and stale-context replacement tests.
+  The 2026-08-09 audit added the mobile foundation store to the same reset boundary. Database
+  migration: none.
 - **Affected modules:** `DESIGN.md`, web/mobile authentication boundaries and Phase 5 inbox UI stores;
   Phase 6-14 prompts.
 

@@ -160,7 +160,9 @@ export function FoundationScreen() {
       />
 
       <AppText className="text-center" style={styles.footer} tone="muted" variant="caption">
-        No call log, SMS, contacts, accessibility or location permissions are requested.
+        No call log, SMS, contacts, accessibility or background-location permission is requested.
+        Foreground location is requested only when an assigned executive explicitly starts a test
+        ride.
       </AppText>
     </Screen>
   );

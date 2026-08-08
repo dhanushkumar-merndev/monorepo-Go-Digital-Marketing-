@@ -167,6 +167,28 @@ before rollout. These migrations contain messaging, consent and audit evidence; 
 restoring the pre-migration recovery point or shipping a reviewed forward compensating migration.
 Do not delete conversation/message history or edit an already-applied migration.
 
+## Phase 7 inventory migrations
+
+`0021_free_lightspeed.sql` creates the tenant-owned catalogue, physical units, reservation,
+allocation, transfer/event, status-history and idempotency-receipt tables. It adds nullable canonical
+unit links to the existing Phase 6 test-ride job/booking rows while preserving their original demo
+reference snapshots. Partial unique indexes enforce one active reservation/allocation per physical
+unit and one active unit per booking reference. Database triggers make transfer/status history
+append-only, allow only one terminal transfer event and reject unsafe unit-state transitions,
+including every ordinary transition out of `DELIVERED`.
+
+`0022_bitter_preak.sql` performs an explicit initial-link branch-consistency preflight and briefly
+strengthens those nullable links to the initial tenant/branch/unit tuple. `0023_fast_vivisector.sql`
+then restores the durable foreign key to tenant/unit because a physical unit may transfer branches
+after a historical ride. The ride and demo-booking branch columns remain immutable point-in-time
+snapshots; the canonical unit ID and original demo reference are preserved. This sequence never
+guesses a mapping, rewrites an ID or changes ride/event history.
+
+Apply all three forward-only migrations before enabling the Inventory module. Rollback means
+restoring the reviewed pre-Phase-7 recovery point or shipping a forward compensating migration that
+retains stock, ride, allocation, transfer, audit and outbox evidence; do not delete inventory history
+or edit Drizzle metadata.
+
 ## Post-Phase-5 architecture amendment
 
 **DATABASE MIGRATION: NONE.** The 2026-08-08 Unified Inbox/client-state amendment changes provider

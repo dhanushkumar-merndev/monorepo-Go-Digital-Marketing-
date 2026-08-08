@@ -1,108 +1,84 @@
 # Phase Status
 
-- **Current phase:** Phase 5 — Unified Inbox and WhatsApp platform foundation.
-- **Current status:** **Phase 5 code complete; external validation remains.**
-- **Completed phases:** Phase 0 foundation, Phase 1 authentication/tenancy, Phase 2 organization
-  recovery, Phase 3 Lead CRM, Phase 4 telephony, Phase 5 unified messaging (local code and automated
-  validation).
-- **Next phase:** Phase 6 — Test Rides. Preserve Phase 5 records and do not activate a live provider
-  until the prerequisites below are supplied.
-- **Last updated:** 2026-08-08
+- **Current phase:** Phase 7 - Vehicle Inventory and Allocation.
+- **Current status:** **Phase 7 implementation and strict local completion audit passed.** The
+  complete migration journal was also applied to the user-confirmed test database.
+- **Completed phases:** Phase 0 foundation, Phase 1 authentication/tenancy, Phase 2 organization,
+  Phase 3 Lead CRM, Phase 4 telephony, Phase 6 test rides, and Phase 7 inventory. Phase 5's unified
+  inbox passes its automated acceptance criteria but live-provider activation remains gated by the
+  reliability issue in `KNOWN_ISSUES.md`.
+- **Next phase:** Not started. Phase 8 - Booking, Billing, Payments, Finance and Documents may begin
+  only with the prerequisites in `NEXT_PHASE_HANDOFF.md`.
+- **Last updated:** 2026-08-09
 
-## Phase 5 acceptance-criterion checklist
+## Phase 7 acceptance-criterion checklist
 
-- [x] Conversations, participants, messages, media, templates, status history, assignments,
-      connections, webhook receipts, outbound outbox, opt-ins and suppressions are tenant-owned and
-      protected by composite tenant foreign keys and backend scope checks.
-- [x] Free-form sends are backend-blocked outside the configured customer-service window; templates
-      must be provider-approved and have a current category opt-in. Active all/marketing
-      suppressions are enforced server-side.
-- [x] Signed provider events are durably accepted before BullMQ processing. The PostgreSQL receipt
-      remains recoverable if Redis is unavailable; failed receipts can be reconciled and are moved
-      to dead letter after the configured attempts.
-- [x] Tenant/provider/external-event and tenant/provider-message uniqueness prevent duplicate
-      webhooks from creating duplicate messages. Outbound retries reuse the same message/outbox
-      record, and conflicting reuse of an idempotency key is rejected by request fingerprint.
-- [x] `conversation_owner_id` remains independent from relationship and current-process ownership.
-      Assignment changes only the conversation owner and append-only assignment history.
-- [x] Timeline ordering is deterministic by provider occurrence, provider sequence, local receipt and
-      UUID tie-breaker; Message status history remains append-only.
-- [x] Official WhatsApp Cloud boundaries support encrypted tenant access token/app secret/verify
-      token, WABA and phone-number IDs, one callback path for verification/events, explicit health
-      activation, template synchronization, quality/limit placeholders and embedded-onboarding state.
-- [x] An unknown Click-to-WhatsApp sender creates a canonical provider Lead only on the first signed
-      inbound message carrying verified referral evidence. Unknown non-referral senders fail closed.
-- [x] Web provides a responsive inbox/list/detail/customer panel, internal notes, free-form/template
-      composer, private media upload, owner/queue assignment, connection status/activation, template
-      catalogue and failure recovery with loading, empty, error, disabled and success states.
-- [x] Mobile provides assigned conversations, deterministic detail, free-form/template state,
-      online media upload, delivery status, tenant-bound SQLite offline text/template queue and
-      failed-send recovery. Personal WhatsApp QR/Web automation and restricted Android permissions
-      are absent.
-- [x] Web and mobile use separate feature-scoped, non-persisted Zustand stores for shared transient
-      inbox/composer workflow. Conversations, messages, unread totals, templates and provider state
-      remain API/TanStack Query state; web selection/filters are URL state and durable mobile replay
-      remains SQLite-owned.
-- [x] Inbox stores reset on logout, account/membership/tenant switch, support-elevation changes and
-      revoked/expired/disabled authentication paths. Store tests prove conversation/draft reset and
-      no secret-bearing fields.
-- [x] WhatsApp webhook payloads are bound to the configured WABA and phone-number identity after
-      signature verification; credential rotation returns the connection to `NOT_VERIFIED`.
-- [x] Template variables match the approved numbered placeholders exactly, outbound jobs are claimed
-      atomically, delayed retries remain recoverable in PostgreSQL, and late/stale provider statuses
-      project deterministically from append-only history.
+- [x] Canonical tenant-owned brands, models, variants, colours and physical units support Expected,
+      Available, Reserved, Allocated, Demo, In Transfer, Delivered, Blocked, Cancelled and Removed.
+- [x] VIN, chassis, engine and unit-reference uniqueness is database-enforced per tenant. Expected
+      stock can receive late identifiers atomically before becoming Available.
+- [x] Concurrent allocation uses a row lock, optimistic version and partial unique indexes; the
+      integration race produces exactly one active allocation.
+- [x] Reservations require a future expiry, can be extended/released with retained evidence, and are
+      released safely by a 60-second server monitor or the idempotent reconciliation route.
+- [x] Transfer headers and events are immutable. Completion changes the physical unit branch while
+      retaining the historical Phase 6 Test Ride branch, demo reference, IDs and events.
+- [x] Demo sale conversion, delivery, cancellation, removal and VIN reallocation require explicit
+      permission and reason/evidence. Delivered has no ordinary transition back to Available.
+- [x] Every protected route derives tenant from the authenticated context, requires the `INVENTORY`
+      module and route permission, and enforces branch scope before reads or writes.
+- [x] Inventory/Billing separation is preserved: Phase 7 has no payment mutation surface, Billing is
+      read-only, and allocation accepts only an opaque booking reference plus readiness assertion.
+- [x] Mutating API commands require idempotency keys and atomically retain command receipt, status
+      history, audit and outbox evidence.
+- [x] Web catalogue, stock/detail, creation/import, reservations, allocation/reallocation, transfer,
+      demo, expected-arrival and aging views are functional with loading, empty, error and success
+      states.
+- [x] API/TanStack Query owns stock records and versions; URL routes own shareable view/search/unit
+      state. The non-persisted Inventory Zustand store owns only form visibility/table density and
+      resets on all established auth, tenant, membership and support-context boundaries.
 
 ## Partial or external requirements
 
-- [ ] No live tenant WABA, phone-number ID, access token, app secret, verify token, approved template
-      catalogue, consent policy or messaging limits were supplied. Cloud connections therefore remain
-      `PENDING_APPROVAL` until webhook verification, provider health and explicit activation succeed.
-- [ ] WhatsApp Cloud media upload/download activation requires approved provider credentials and a
-      reviewed Meta media-retention flow. Development/private-object media works, but the Cloud
-      adapter deliberately fails closed for media rather than pretending to send it.
-- [ ] A malware/media-content scanner and approved retention/deletion schedule are not configured;
-      all objects remain private and short-lived signed access is audited.
-- [ ] Physical-device offline/replay/media smoke, live Meta webhook/status/template sync and hosted
-      Cloudflare/Render/Supabase/Upstash/Tigris validation have not run.
-- [ ] Cloudflare/OpenNext packaging still requires the documented Linux/CI/WSL rerun after the
-      Windows symlink limitation.
+- [ ] Hosted Cloudflare/Render/Supabase/Upstash/Tigris smoke, Linux OpenNext packaging and browser
+      visual regression remain external release checks. The ordinary Next.js and Expo production
+      builds passed locally.
+- [ ] The migration journal was applied only to the user-confirmed development/test Supabase target;
+      no production migration or seed was run.
+- [ ] Phase 8 canonical Booking/readiness records do not exist yet. Phase 7 deliberately retains an
+      opaque booking reference and does not invent financial or delivery-readiness state.
+- [ ] Phase 5's aged-`PROCESSING` provider-success/process-crash ambiguity remains open and continues
+      to block live WhatsApp activation; it does not affect Phase 7 inventory correctness.
 
-## Last verified results (2026-08-08)
+## Last verified results (2026-08-09)
 
-| Command                          | Result | Actual evidence                                                                                              |
-| -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| `pnpm install --frozen-lockfile` | Pass   | Final frozen install reported the 11-workspace lockfile and installation up to date.                         |
-| `pnpm format:check`              | Pass   | Repository formatting check passed after Phase 5 formatting.                                                 |
-| `pnpm lint`                      | Pass   | All workspace lint tasks passed.                                                                             |
-| `pnpm type-check`                | Pass   | 13/13 strict workspace TypeScript tasks passed.                                                              |
-| `pnpm test`                      | Pass   | 289 tests passed; after the final mobile read/reset edit, `@gdm/mobile` was rerun at 75/75.                  |
-| `pnpm test:integration`          | Pass   | API migrated-PGlite 31/31 and database migration 15/15 passed.                                               |
-| `pnpm db:check`                  | Pass   | Drizzle accepted the 17-entry journal through `0016_steady_may_parker.sql`.                                  |
-| `pnpm build`                     | Pass   | API, 15-route Next web, Android/iOS Expo and shared builds passed; final affected mobile exports were rerun. |
-
-The migrated PGlite chain and seed/unit coverage are current. No production database, WABA, provider,
-message, object-storage or external deployment state was changed.
+| Command                          | Result | Actual evidence                                                                                                               |
+| -------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass   | 11-workspace install was already up to date.                                                                                  |
+| `pnpm format:check`              | Pass   | All matched repository files passed Prettier.                                                                                 |
+| `pnpm lint`                      | Pass   | 8 applicable workspace lint tasks passed with zero warnings.                                                                  |
+| `pnpm type-check`                | Pass   | 13/13 strict TypeScript tasks passed.                                                                                         |
+| `pnpm test`                      | Pass   | 13/13 tasks; API unit 61/61, API integration 38/38, mobile 82/82, web 68/68, contracts 30/30 and other packages passed.       |
+| `pnpm test:integration`          | Pass   | API migrated-PGlite 38/38 and database migration 17/17 passed.                                                                |
+| `pnpm db:check`                  | Pass   | Drizzle accepted the 24-entry journal through `0023_fast_vivisector.sql`.                                                     |
+| `pnpm build`                     | Pass   | API, shared packages, 20 web routes including inventory list/detail, and Android/iOS Expo exports passed.                     |
+| `pnpm db:migrate`                | Pass   | User-confirmed test target recorded 24 migrations; `inventory_units` and 10 inventory permissions were verified. No seed ran. |
 
 ## Database and environment changes
 
-- `0014_bouncy_pete_wisdom.sql` creates the Phase 5 domain and permissions.
-- `0015_slimy_lenny_balinger.sql` adds stronger queue, Team, membership and actor foreign keys.
-- `0016_steady_may_parker.sql` adds outbound request fingerprints for safe idempotency reuse.
-- Backend-only `MESSAGING_*` variables cover development signatures, AES-256-GCM credential
-  protection, media limits/URL TTL/retention days, retry attempts, service-window hours and
-  raw-webhook retention.
-- The post-Phase-5 architecture amendment has `DATABASE MIGRATION: NONE`; the journal remains at 17
-  entries through `0016_steady_may_parker.sql`.
-- Alpha development seed enables `INBOX`, creates one official-messaging fixture connection and two
-  approved templates. Beta remains disabled to preserve module-flag evidence.
+- `0021_free_lightspeed.sql` adds the catalogue, physical units, reservation/allocation, immutable
+  transfer/status history and command-receipt domain, permissions and nullable Phase 6 links.
+- `0022_bitter_preak.sql` preflights exact initial Test Ride branch/unit consistency without guessing
+  or rewriting existing history.
+- `0023_fast_vivisector.sql` restores the durable Test Ride reference to tenant/unit so later physical
+  transfers do not invalidate immutable ride-branch snapshots.
+- No Phase 7 provider secret or client environment variable was added. `.env.example` records that
+  inventory concurrency and expiry are PostgreSQL/NestJS concerns.
+- Alpha seed enables `INVENTORY` and defines one deterministic canonical demo unit linked to
+  `DEMO-EV-ZX-01`; the user-authorized migration run did not execute the seed.
 
 ## Final gate
 
-`PHASE 5 CODE COMPLETE — EXTERNAL VALIDATION REMAINS`
+`PHASE 7 COMPLETE - MANDATORY TESTS, BUILDS AND TEST-DATABASE MIGRATION PASSED`
 
-`READY TO BEGIN PHASE 6`
-
-`CLOUDFLARE LINUX PACKAGING EXTERNAL VALIDATION REMAINS`
-
-Do not represent the development adapter as a live WhatsApp provider or enable personal WhatsApp
-Web/QR automation.
+`PHASE 8 NOT STARTED`

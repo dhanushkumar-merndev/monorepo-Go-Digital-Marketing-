@@ -589,83 +589,110 @@ export class LeadsService {
     const row = await this.readLead(cid, leadId);
     if (!row || !this.canAccess(context, row.lead, row.queueTeamId, row.queueDepartmentId))
       throw notFound('Lead not found.');
-    const [history, notes, assignments, followUps, tasks, duplicates, calls, conversations] =
-      await Promise.all([
-        this.connection.db
-          .select()
-          .from(schema.leadStatusHistory)
-          .where(
-            and(
-              eq(schema.leadStatusHistory.clientOrganizationId, cid),
-              eq(schema.leadStatusHistory.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.leadStatusHistory.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.leadNotes)
-          .where(
-            and(
-              eq(schema.leadNotes.clientOrganizationId, cid),
-              eq(schema.leadNotes.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.leadNotes.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.leadAssignments)
-          .where(
-            and(
-              eq(schema.leadAssignments.clientOrganizationId, cid),
-              eq(schema.leadAssignments.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.leadAssignments.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.leadFollowUps)
-          .where(
-            and(
-              eq(schema.leadFollowUps.clientOrganizationId, cid),
-              eq(schema.leadFollowUps.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.leadFollowUps.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.leadTasks)
-          .where(
-            and(
-              eq(schema.leadTasks.clientOrganizationId, cid),
-              eq(schema.leadTasks.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.leadTasks.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.duplicateCandidates)
-          .where(
-            and(
-              eq(schema.duplicateCandidates.clientOrganizationId, cid),
-              eq(schema.duplicateCandidates.leadId, leadId),
-            ),
-          )
-          .orderBy(desc(schema.duplicateCandidates.createdAt)),
-        this.connection.db
-          .select()
-          .from(schema.calls)
-          .where(and(eq(schema.calls.clientOrganizationId, cid), eq(schema.calls.leadId, leadId)))
-          .orderBy(desc(schema.calls.createdAt)),
-        this.connection.db
-          .select({ id: schema.conversations.id })
-          .from(schema.conversations)
-          .where(
-            and(
-              eq(schema.conversations.clientOrganizationId, cid),
-              eq(schema.conversations.leadId, leadId),
-            ),
+    const [
+      history,
+      notes,
+      assignments,
+      followUps,
+      tasks,
+      duplicates,
+      calls,
+      conversations,
+      testRideTimeline,
+    ] = await Promise.all([
+      this.connection.db
+        .select()
+        .from(schema.leadStatusHistory)
+        .where(
+          and(
+            eq(schema.leadStatusHistory.clientOrganizationId, cid),
+            eq(schema.leadStatusHistory.leadId, leadId),
           ),
-      ]);
+        )
+        .orderBy(desc(schema.leadStatusHistory.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.leadNotes)
+        .where(
+          and(eq(schema.leadNotes.clientOrganizationId, cid), eq(schema.leadNotes.leadId, leadId)),
+        )
+        .orderBy(desc(schema.leadNotes.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.leadAssignments)
+        .where(
+          and(
+            eq(schema.leadAssignments.clientOrganizationId, cid),
+            eq(schema.leadAssignments.leadId, leadId),
+          ),
+        )
+        .orderBy(desc(schema.leadAssignments.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.leadFollowUps)
+        .where(
+          and(
+            eq(schema.leadFollowUps.clientOrganizationId, cid),
+            eq(schema.leadFollowUps.leadId, leadId),
+          ),
+        )
+        .orderBy(desc(schema.leadFollowUps.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.leadTasks)
+        .where(
+          and(eq(schema.leadTasks.clientOrganizationId, cid), eq(schema.leadTasks.leadId, leadId)),
+        )
+        .orderBy(desc(schema.leadTasks.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.duplicateCandidates)
+        .where(
+          and(
+            eq(schema.duplicateCandidates.clientOrganizationId, cid),
+            eq(schema.duplicateCandidates.leadId, leadId),
+          ),
+        )
+        .orderBy(desc(schema.duplicateCandidates.createdAt)),
+      this.connection.db
+        .select()
+        .from(schema.calls)
+        .where(and(eq(schema.calls.clientOrganizationId, cid), eq(schema.calls.leadId, leadId)))
+        .orderBy(desc(schema.calls.createdAt)),
+      this.connection.db
+        .select({ id: schema.conversations.id })
+        .from(schema.conversations)
+        .where(
+          and(
+            eq(schema.conversations.clientOrganizationId, cid),
+            eq(schema.conversations.leadId, leadId),
+          ),
+        ),
+      this.connection.db
+        .select({
+          actorUserId: schema.testRideEvents.actorUserId,
+          createdAt: schema.testRideEvents.createdAt,
+          eventType: schema.testRideEvents.eventType,
+          id: schema.testRideEvents.id,
+          reason: schema.testRideEvents.reason,
+          status: schema.testRideEvents.toStatus,
+        })
+        .from(schema.testRideEvents)
+        .innerJoin(
+          schema.testRideJobs,
+          and(
+            eq(schema.testRideJobs.clientOrganizationId, cid),
+            eq(schema.testRideJobs.id, schema.testRideEvents.testRideJobId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.testRideEvents.clientOrganizationId, cid),
+            eq(schema.testRideJobs.leadId, leadId),
+          ),
+        )
+        .orderBy(desc(schema.testRideEvents.createdAt), desc(schema.testRideEvents.id)),
+    ]);
     const recordings =
       calls.length === 0
         ? []
@@ -807,6 +834,14 @@ export class LeadsService {
               ? 'Internal conversation note'
               : `${item.direction === 'INBOUND' ? 'Inbound' : 'Outbound'} ${item.contentType.toLowerCase()} message`,
           type: 'MESSAGE',
+        })),
+        ...testRideTimeline.map((item) => ({
+          actor_id: item.actorUserId,
+          detail: item.reason,
+          id: item.id,
+          occurred_at: item.createdAt.toISOString(),
+          title: `Test ride ${item.status?.replaceAll('_', ' ').toLowerCase() ?? item.eventType.replaceAll('_', ' ').toLowerCase()}`,
+          type: 'TEST_RIDE',
         })),
       ].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)),
     };

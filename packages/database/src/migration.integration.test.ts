@@ -21,6 +21,7 @@ const tenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446761';
 const otherTenantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446762';
 const branchId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446711';
 const otherBranchId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446712';
+const sameTenantBranchId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446713';
 const departmentId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446731';
 const otherDepartmentId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446732';
 const teamId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446721';
@@ -40,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
+describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -153,7 +154,10 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
           'message_templates', 'conversations', 'conversation_participants',
           'messages', 'message_media', 'message_status_history',
           'conversation_assignments', 'message_outbound_outbox',
-          'messaging_opt_in_records', 'messaging_suppressions'
+          'messaging_opt_in_records', 'messaging_suppressions',
+          'test_ride_allocation_locks', 'test_ride_command_receipts',
+          'test_ride_demo_vehicle_bookings', 'test_ride_events', 'test_ride_jobs',
+          'test_ride_location_samples', 'test_ride_location_sessions'
         )
       order by table_name
     `);
@@ -205,6 +209,13 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
       'teams',
       'telephony_provider_connections',
       'telephony_reconciliations',
+      'test_ride_allocation_locks',
+      'test_ride_command_receipts',
+      'test_ride_demo_vehicle_bookings',
+      'test_ride_events',
+      'test_ride_jobs',
+      'test_ride_location_samples',
+      'test_ride_location_sessions',
       'users',
       'webhook_events',
     ]);
@@ -260,7 +271,7 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(53);
+    expect(permissionCount.rows[0]?.count).toBe(70);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -279,6 +290,9 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
         'telephony.connections.manage',
         'telephony.recordings.read',
         'telephony.recordings.upload',
+        'inventory.allocations.reallocate',
+        'inventory.corrections.manage',
+        'inventory.units.sensitive.read',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
@@ -331,6 +345,121 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
     expect(roleFamilies.get('SALESPERSON')?.permissions.has('telephony.recordings.upload')).toBe(
       true,
     );
+    expect(roleFamilies.get('MANAGER')?.permissions.has('test_rides.active_map.read')).toBe(true);
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('test_rides.schedule')).toBe(true);
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('test_rides.execute')).toBe(false);
+    expect(roleFamilies.get('TEST_RIDE_EXECUTIVE')?.permissions.has('test_rides.execute')).toBe(
+      true,
+    );
+    expect(
+      roleFamilies.get('TEST_RIDE_EXECUTIVE')?.permissions.has('test_rides.location.write'),
+    ).toBe(true);
+    expect(roleFamilies.get('TEST_RIDE_EXECUTIVE')?.permissions.has('test_rides.assign')).toBe(
+      false,
+    );
+    expect(
+      roleFamilies.get('INVENTORY_EXECUTIVE')?.permissions.has('inventory.allocations.manage'),
+    ).toBe(true);
+    expect(
+      roleFamilies.get('INVENTORY_EXECUTIVE')?.permissions.has('inventory.allocations.reallocate'),
+    ).toBe(false);
+    expect(
+      roleFamilies
+        .get('BILLING_DOCUMENTATION_EXECUTIVE')
+        ?.permissions.has('inventory.allocations.manage'),
+    ).toBe(false);
+    expect(roleFamilies.get('MANAGER')?.permissions.has('inventory.corrections.manage')).toBe(true);
+  });
+
+  it('keeps Phase 6 jobs tenant-consistent and binds each location sample to its session identity', async () => {
+    const contactId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446901';
+    const leadId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446902';
+    const firstRideId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446903';
+    const secondRideId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446904';
+    const sessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446905';
+    await client.exec(`
+      insert into contacts (
+        id, client_organization_id, display_name, primary_phone_e164,
+        primary_phone_lookup_hash
+      ) values (
+        '${contactId}', '${tenantId}', 'Test Ride Customer', '+919876543211', repeat('e', 64)
+      );
+      insert into lead_opportunities (
+        id, client_organization_id, contact_id, branch_id, source, entry_method,
+        vehicle_interest, status, sla_due_at, sla_warning_at
+      ) values (
+        '${leadId}', '${tenantId}', '${contactId}', '${branchId}', 'WEBSITE', 'MANUAL',
+        'Model T', 'ACCEPTED', now() + interval '15 minutes', now() + interval '10 minutes'
+      );
+      insert into test_ride_jobs (
+        id, client_organization_id, lead_id, contact_id, branch_id, vehicle_model,
+        demo_vehicle_reference, customer_location, scheduled_start_at, scheduled_end_at,
+        status, executive_user_id, executive_membership_id, created_by
+      ) values
+        (
+          '${firstRideId}', '${tenantId}', '${leadId}', '${contactId}', '${branchId}',
+          'Model T', 'DEMO-T-1', 'Customer address', now(), now() + interval '1 hour',
+          'ACTIVE', '${clientUserId}', '${clientMembershipId}', '${clientUserId}'
+        ),
+        (
+          '${secondRideId}', '${tenantId}', '${leadId}', '${contactId}', '${branchId}',
+          'Model T', 'DEMO-T-2', 'Customer address', now() + interval '2 hours',
+          now() + interval '3 hours', 'ACTIVE', '${clientUserId}', '${clientMembershipId}',
+          '${clientUserId}'
+        );
+      insert into test_ride_location_sessions (
+        id, client_organization_id, test_ride_job_id, executive_user_id,
+        executive_membership_id, started_at, expires_at
+      ) values (
+        '${sessionId}', '${tenantId}', '${firstRideId}', '${clientUserId}',
+        '${clientMembershipId}', now(), now() + interval '3 hours'
+      );
+    `);
+
+    await expect(
+      client.exec(`
+        insert into test_ride_command_receipts (
+          client_organization_id, test_ride_job_id, idempotency_key, command_type,
+          request_fingerprint, response_snapshot
+        ) values (
+          '${tenantId}', null, 'migration-create-receipt', 'CREATE', repeat('f', 64), '{}'::jsonb
+        )
+      `),
+    ).resolves.toBeDefined();
+    await expect(
+      client.exec(`
+        insert into test_ride_jobs (
+          client_organization_id, lead_id, contact_id, branch_id, vehicle_model,
+          demo_vehicle_reference, customer_location, scheduled_start_at, scheduled_end_at,
+          created_by
+        ) values (
+          '${otherTenantId}', '${leadId}', '${contactId}', '${otherBranchId}', 'Model T',
+          'CROSS-TENANT', 'Invalid address', now(), now() + interval '1 hour', '${clientUserId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into test_ride_location_samples (
+          client_organization_id, test_ride_job_id, location_session_id, executive_user_id,
+          latitude, longitude, accuracy_meters, captured_at, expires_at, idempotency_key
+        ) values (
+          '${tenantId}', '${secondRideId}', '${sessionId}', '${clientUserId}',
+          12.9716, 77.5946, 25, now(), now() + interval '30 days', 'wrong-session-ride'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into test_ride_location_samples (
+          client_organization_id, test_ride_job_id, location_session_id, executive_user_id,
+          latitude, longitude, accuracy_meters, captured_at, expires_at, idempotency_key
+        ) values (
+          '${tenantId}', '${firstRideId}', '${sessionId}', '${clientUserId}',
+          12.9716, 77.5946, 25, now(), now() + interval '30 days', 'valid-session-ride'
+        )
+      `),
+    ).resolves.toBeDefined();
   });
 
   it('keeps call evidence tenant-scoped and enforces completed-call outcome requirements', async () => {
@@ -826,5 +955,93 @@ describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
     await expect(client.exec(`delete from audit_events where id = '${auditId}'`)).rejects.toThrow(
       /immutable/u,
     );
+  });
+
+  it('enforces inventory identity, tenant links, terminal state and immutable transfer history', async () => {
+    const brandId = '90000000-0000-4000-8000-000000000001';
+    const modelId = '90000000-0000-4000-8000-000000000002';
+    const variantId = '90000000-0000-4000-8000-000000000003';
+    const colourId = '90000000-0000-4000-8000-000000000004';
+    const unitId = '90000000-0000-4000-8000-000000000005';
+    const historyId = '90000000-0000-4000-8000-000000000006';
+    const transferId = '90000000-0000-4000-8000-000000000007';
+    await client.exec(`
+      insert into branches (id, client_organization_id, code, name)
+      values ('${sameTenantBranchId}', '${tenantId}', 'A_SECOND', 'Tenant A Second');
+      insert into inventory_brands (id, client_organization_id, code, name)
+      values ('${brandId}', '${tenantId}', 'TEST', 'Test Brand');
+      insert into inventory_models (id, client_organization_id, brand_id, code, name)
+      values ('${modelId}', '${tenantId}', '${brandId}', 'MODEL', 'Test Model');
+      insert into inventory_variants (
+        id, client_organization_id, model_id, code, name, fuel_powertrain, model_year
+      ) values (
+        '${variantId}', '${tenantId}', '${modelId}', 'VARIANT', 'Test Variant', 'PETROL', 2026
+      );
+      insert into inventory_colours (id, client_organization_id, code, name)
+      values ('${colourId}', '${tenantId}', 'WHITE', 'White');
+      insert into inventory_units (
+        id, client_organization_id, branch_id, variant_id, colour_id, unit_reference,
+        vin, chassis_number, engine_number, status, ownership_type,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${unitId}', '${tenantId}', '${branchId}', '${variantId}', '${colourId}', 'UNIT-1',
+        'TESTVIN000000001', 'TESTCHASSIS001', 'TESTENGINE001', 'AVAILABLE', 'DEALER_OWNED',
+        '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into inventory_unit_status_history (
+        id, client_organization_id, inventory_unit_id, to_status, event_type,
+        actor_user_id, actor_membership_id
+      ) values (
+        '${historyId}', '${tenantId}', '${unitId}', 'AVAILABLE', 'UNIT_CREATED',
+        '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into inventory_transfers (
+        id, client_organization_id, inventory_unit_id, from_branch_id, to_branch_id,
+        prior_status, reference, reason, initiated_by_user_id, initiated_by_membership_id
+      ) values (
+        '${transferId}', '${tenantId}', '${unitId}', '${branchId}', '${sameTenantBranchId}',
+        'AVAILABLE', 'TRANSFER-1', 'Test transfer history', '${clientUserId}', '${clientMembershipId}'
+      );
+    `);
+
+    await expect(
+      client.exec(`
+        insert into inventory_units (
+          client_organization_id, branch_id, variant_id, colour_id, unit_reference,
+          vin, chassis_number, status, ownership_type, created_by_user_id, created_by_membership_id
+        ) values (
+          '${tenantId}', '${branchId}', '${variantId}', '${colourId}', 'UNIT-2',
+          'TESTVIN000000001', 'TESTCHASSIS002', 'AVAILABLE', 'DEALER_OWNED',
+          '${clientUserId}', '${clientMembershipId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into inventory_units (
+          client_organization_id, branch_id, variant_id, colour_id, unit_reference,
+          status, ownership_type, created_by_user_id, created_by_membership_id
+        ) values (
+          '${tenantId}', '${otherBranchId}', '${variantId}', '${colourId}', 'CROSS-TENANT',
+          'EXPECTED', 'DEALER_OWNED', '${clientUserId}', '${clientMembershipId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(
+        `update inventory_unit_status_history set reason = 'rewrite' where id = '${historyId}'`,
+      ),
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      client.exec(`update inventory_transfers set reason = 'rewrite' where id = '${transferId}'`),
+    ).rejects.toThrow(/append-only/u);
+
+    await client.exec(`
+      update inventory_units set status = 'ALLOCATED' where id = '${unitId}';
+      update inventory_units set status = 'DELIVERED' where id = '${unitId}';
+    `);
+    await expect(
+      client.exec(`update inventory_units set status = 'AVAILABLE' where id = '${unitId}'`),
+    ).rejects.toThrow(/invalid inventory transition/u);
   });
 });

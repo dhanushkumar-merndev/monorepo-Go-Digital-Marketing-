@@ -9,8 +9,9 @@ the lead-management foundation, and provider-neutral calling. Leads include publ
 tenant-scoped contact deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation,
 web operations and an offline-aware salesperson mobile flow. Calling adds canonical Lead/Contact call
 history, outcome requirements, idempotent provider webhooks, reconciliation and private,
-consent-aware recording references. Inventory, booking, delivery, registration and post-sale remain
-deferred to their approved phases.
+consent-aware recording references. Phase 7 adds canonical physical inventory, reservation,
+allocation, transfer and demo-stock controls. Booking, payment, delivery, registration and post-sale
+remain deferred to their approved phases.
 
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
@@ -130,6 +131,31 @@ mobile use separate, non-persisted Zustand inbox stores for transient composer/p
 API/TanStack Query remains server truth and the inbox stores reset when authentication or tenant
 context changes. Mobile text/template sends use the tenant-bound SQLite outbox when offline; media
 upload requires connectivity.
+
+Phase 6 adds test-ride scheduling, confirmation, assignment, execution, lifecycle evidence and
+active-job location tracking. Configure the backend-only `TEST_RIDE_*` values in `.env.example`;
+`TEST_RIDE_OTP_PEPPER` must be an independent 32+ character secret in staging and production. The
+Android client requests only foreground/while-in-use location and starts its location foreground
+service after the assigned executive acknowledges the disclosure and explicitly starts the ride.
+It does not request background-location permission. The ongoing notification remains visible while
+tracking, and local location samples expire from SQLite if they cannot be replayed. Terminal mobile
+commands use stable idempotency keys and the server command-receipt transaction for exactly-once
+replay. The development seed enables `TEST_RIDES` only for Alpha and includes one assigned ride for
+`test.ride@seed.godigital.test`; the development adapter never represents employee off-duty
+tracking. A physical Android-device foreground-service/permission validation remains required
+before release distribution.
+
+Phase 7 adds the tenant-owned vehicle catalogue and physical stock authority at `/v1/inventory`.
+VIN/chassis/engine identities are normalized and unique inside a tenant, list responses mask them
+unless the role has sensitive-stock access, and branch scope is checked in the backend. Reservation,
+allocation, VIN reallocation and transfer commands require an `Idempotency-Key`, expected unit
+version and reason/evidence. PostgreSQL row locks plus partial unique indexes prevent concurrent
+double allocation; transfer and status history are append-only, and a delivered unit cannot return
+to available through an ordinary edit. Existing Phase 6 demo references remain historical snapshots
+and are linked additively to a matching canonical unit. Alpha seed enables `INVENTORY` and maps
+`DEMO-EV-ZX-01` to its deterministic demo unit. Phase 7 introduces no provider credential or public
+client environment variable; reservation expiry is supplied by the validated command and released
+by the safe 60-second API monitor or the authorized idempotent reconciliation route.
 
 ## Repository layout
 
