@@ -3,6 +3,7 @@ import { MobileAuthManager } from '../auth/mobile-auth-manager';
 import type { GoogleIdentityClient } from '../auth/google-identity-client';
 import type { MobileSession } from '../auth/auth-types';
 import { initialAuthState, setAuthState, useAuthStore } from '../store/auth-store';
+import { useMobileInboxUiStore } from '../store/inbox-ui.store';
 import {
   FakeAuthTransport,
   MemoryCredentialVault,
@@ -308,6 +309,8 @@ describe('MobileAuthManager', () => {
   it('clears secure credentials and query data on logout even when remote revocation fails', async () => {
     const { manager, queryCache, transport, vault } = managerFixture();
     await manager.bootstrap();
+    useMobileInboxUiStore.getState().prepareComposer('conversation-before-logout');
+    useMobileInboxUiStore.getState().setDraftText('Customer draft must not survive logout.');
     queryCache.clear.mockClear();
     transport.logout.mockRejectedValueOnce(new NetworkRequestError());
 
@@ -316,6 +319,10 @@ describe('MobileAuthManager', () => {
     expect(vault.clear).toHaveBeenCalled();
     expect(queryCache.clear).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState()).toMatchObject({ principal: null, status: 'unauthenticated' });
+    expect(useMobileInboxUiStore.getState()).toMatchObject({
+      composerConversationId: null,
+      draftText: '',
+    });
   });
 
   it('does not let a Google SDK sign-out failure block CRM revocation or local cleanup', async () => {

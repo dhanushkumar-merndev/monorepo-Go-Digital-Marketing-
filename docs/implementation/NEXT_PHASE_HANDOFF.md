@@ -1,142 +1,135 @@
 # Next Phase Handoff
 
-## Completed work and gate status
+## Completed phase
 
-- **Recovered phase:** Phase 2 organization, hierarchy, role/scope and administration.
-- **Reconciled/audited phase:** Phase 3 Lead capture, lifecycle, assignment and SLA.
-- **Next phase:** Phase 4 telephony is not started. Its provider-neutral development work may begin
-  after the database gate or an explicit environment-only exception is accepted.
-- **Verified date/host:** 2026-08-07, Windows, Node.js 24.18.1, pnpm 11.18.0.
-- **Release qualifier:** Normal repository gates/builds and the local Cloudflare packaging result are
-  recorded in `PHASE_STATUS.md`; do not infer an unrecorded hosted/device/provider result.
+Phase 5 — Unified Inbox and WhatsApp platform foundation. Local code and automated validation are
+complete; live Meta/provider, device and hosted-release validation remain external prerequisites.
 
 ## Modules created or materially updated
 
-| Module                                                 | Actual repository contract                                                                                                                    |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/database/src/schema/organizations.ts`        | Canonical Department under tenant/branch; Team requires Department                                                                            |
-| `packages/database/src/schema/authorization.ts`        | TEAM_MANAGER, department scope/job title, effective team membership, Team Manager history and reporting lines                                 |
-| `packages/contracts/src/administration` and `src/auth` | Department/hierarchy commands and responses; department/job-title/managed-team authentication context                                         |
-| `apps/api/src/administration`                          | Tenant-safe Department/team/hierarchy commands, cycle validation, scoped management and immutable audit evidence                              |
-| `apps/api/src/auth` / `src/authorization`              | Live department scope and managed-team hydration/policy                                                                                       |
-| `apps/web/src/features/administration`                 | Department, Team Manager, team membership, reporting and department/job-title scope controls with data states                                 |
-| `apps/api/src/leads`                                   | Canonical team eligibility/Team Manager visibility, idempotent follow-up replay, expanded activity timeline and public endpoint HTTP coverage |
-| `apps/web/src/features/leads`                          | Functional duplicate resolution and idempotent follow-up command                                                                              |
-| `apps/mobile`                                          | Assigned Lead actions and tenant-scoped conflict-preserving outbox; real follow-up command instead of UI-only status metadata                 |
-| `docs/client-input`, PRD and `PROMPTS`                 | Recovery analysis, phase mapping, PRD Appendix F and reconciled Phase 2–14 dependency contracts                                               |
+| Module                                                     | Actual responsibility                                                                                                                                      |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/messaging`                         | Conversation, message, template, assignment, connection and media contracts.                                                                               |
+| `packages/config/src/messaging.ts`                         | Backend-only credential, signature, service-window, media, retry and retention validation.                                                                 |
+| `packages/database/src/schema/messaging.ts`                | Tenant-owned messaging domain, append-only history, consent/suppression and durable outbox.                                                                |
+| `apps/api/src/messaging`                                   | Official-provider ports, development/WhatsApp Cloud adapters, scoped commands, signed webhooks, async processing, retry/DLQ, activation and private media. |
+| `apps/api/src/leads/leads.service.ts`                      | Provider Lead entry and message/note activity in the canonical Lead timeline.                                                                              |
+| `apps/web/src/features/messaging`                          | Unified inbox, customer context, composer, templates, assignments, integrations and failure recovery.                                                      |
+| `apps/mobile/src/screens/*conversation*`                   | Assigned-conversation list/detail, send modes, media and failed-send recovery.                                                                             |
+| `apps/web/src/features/messaging/inbox-ui.store.ts`        | Non-persisted web composer/customer-panel workflow state; URL remains authoritative for conversation selection and filters.                                |
+| `apps/mobile/src/store/inbox-ui.store.ts`                  | Separate non-persisted mobile composer workflow state; SQLite remains authoritative for durable replay.                                                    |
+| `DESIGN.md`                                                | Canonical client-state decision rules and one-inbox/channel-provider architecture contract.                                                                |
+| `apps/mobile/src/data/messaging-outbox.ts`                 | Tenant-bound offline text/template commands using the existing SQLite replay boundary.                                                                     |
+| `apps/api/src/background`, `apps/api/src/worker.module.ts` | Registers `messaging.webhook.process` on the shared BullMQ worker while PostgreSQL remains durable truth.                                                  |
 
 ## Database migrations
 
-Apply in journal order; never rewrite or squash after a shared environment applies them.
+| Migration                       | Purpose                                                                          | Execution / rollback                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `0014_bouncy_pete_wisdom.sql`   | Phase 5 enums, tables, tenant integrity, indexes, permissions and role mappings. | Forward-only; preserve messages, consent, audit and outbox evidence.                     |
+| `0015_slimy_lenny_balinger.sql` | Stronger tenant-aware queue, Team, membership and actor foreign keys.            | Preflight referenced organization records; restore recovery point or compensate forward. |
+| `0016_steady_may_parker.sql`    | Canonical outbound request fingerprint for idempotency mismatch protection.      | Additive nullable column; do not edit after apply.                                       |
 
-| Migration                               | Purpose                                                                                                | Execution / rollback consideration                                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `0005_thin_wrecking_crew.sql`           | Phase 3 Lead/contact/consent/history/work/SLA/public-form tables                                       | Existing reviewed Phase 3 migration; destructive rollback is not approved after business data exists                                      |
-| `0006_third_tenebrous.sql`              | Lead permission enum values                                                                            | PostgreSQL enum removal is not an online rollback                                                                                         |
-| `0007_white_preak.sql`                  | Source metadata and corrected external-event uniqueness                                                | Rollback would discard source evidence                                                                                                    |
-| `0008_phase3_lead_permissions.sql`      | Lead permission rows and mappings                                                                      | Access changes require separate audit                                                                                                     |
-| `0009_mean_domino.sql`                  | Department/hierarchy schema; safe existing-Team backfill before `NOT NULL`                             | Creates one `RECOVERY_DEFAULT` department per existing branch; review/rename after apply; do not drop history tables                      |
-| `0010_phase2_organization_backfill.sql` | TEAM_MANAGER/permission rows, job titles, department scopes and team-membership compatibility evidence | Review team membership inferred from explicit selected team scope; enum values are intentionally used only after migration `0009` commits |
-| `0011_yielding_barracuda.sql`           | Queue branch/team and prior-assignee tenant integrity                                                  | Preflight aborts on inconsistent legacy data; investigate and repair explicitly, then retry                                               |
-
-PGlite applies all 12 journaled migrations and tests tenant/branch/department/team constraints. On
-2026-08-07, the user-confirmed disposable development PostgreSQL database advanced from canonical
-`0000` through `0011`, then seeded two tenants/13 `.test` users. A real staging PostgreSQL migration
-and compatibility review remain release prerequisites.
+Apply the 17-entry journal once with a migration worker before the API/worker rollout. The canonical
+PGlite chain passes. This session did not mutate an unknown shared or production database.
+The post-Phase-5 architecture amendment has **DATABASE MIGRATION: NONE**.
 
 ## Routes and API contracts
 
-All routes are under `/v1`.
+All protected routes are below `/v1/messaging` and require client context, the `INBOX` module and the
+listed messaging permission:
 
-### Phase 2
+- connections: `GET /connections`, `PUT /connections/development`,
+  `PUT /connections/whatsapp-cloud`, `POST /connections/:id/activate`, `GET /health`
+- templates: `GET /templates`, `POST /connections/:id/templates/sync`
+- inbox: `GET /conversations`, `GET /conversations/:id`, `POST /conversations/:id/messages`,
+  `POST /conversations/:id/read`, `POST /conversations/:id/notes`,
+  `POST /conversations/:id/assignment`
+- failures: `GET /failures`, `POST /messages/:id/retry`, `POST /webhook-events/reconcile`
+- media: `POST /media/uploads`, `POST /media/:id/complete`, `GET /media/:id/access`
+- public provider callback: `GET|POST /v1/messaging/webhooks/:provider/:connectionKey`; GET verifies
+  the callback and POST verifies the official signature before durable acceptance.
 
-- `POST/PUT /administration/departments[/:departmentId]`
-- `GET /administration/hierarchy`
-- `POST /administration/teams/:teamId/members`
-- `PATCH /administration/team-memberships/:teamMembershipId/end`
-- `PUT /administration/teams/:teamId/manager`
-- `PUT /administration/memberships/:membershipId/reporting-manager`
-- Existing client/branch/team/user/membership/working-hours/settings/flags/audit routes remain.
-
-### Phase 3
-
-- `POST /public/lead-forms/:clientFormKey` resolves tenant/branch/queue from the form, rate-limits,
-  validates consent/page evidence and uses bot/idempotency adapters.
-- `GET/POST /leads`, `GET /leads/:leadId`, lifecycle, assignment, note, follow-up, task,
-  duplicate-review and SLA routes remain backward-compatible.
-- `POST /leads/:leadId/follow-ups` now requires `Idempotency-Key`, matching safe mobile replay.
+Free-form policy, approved-template status, opt-in/suppression, tenant/scope access and idempotency are
+backend rules. Client disabled states are explanatory UI only.
 
 ## Environment variables
 
-No new environment variable was introduced by Phase 2 recovery.
+Backend only; never expose these to web/mobile:
 
-Phase 3 still requires backend-only `LEAD_PHONE_LOOKUP_PEPPER` and supports
-`LEAD_PUBLIC_RATE_LIMIT_WINDOW_SECONDS`. No provider credential is present. Bot-enabled public forms
-fail closed until a reviewed adapter is bound.
-
-## Seed accounts/data
-
-- `client.admin@seed.godigital.test` — CLIENT_ADMIN, job title CRM Admin.
-- `sales.manager@seed.godigital.test` — SALES_MANAGER / Showroom Manager.
-- `team.manager@seed.godigital.test` — TEAM_MANAGER with canonical Pune team assignment.
-- `telecaller@seed.godigital.test` — Telecaller and canonical team member.
-- `salesperson@seed.godigital.test` — SALESPERSON, job title Sales Consultant and canonical team
-  member.
-- Pune, Mumbai and Nashik seed branches have explicit departments; Alpha Pune retains the
-  `PUNE-INBOUND` queue and `alpha-pune-website` public form.
-
-Use only the documented development seed password. No real customer/provider data is committed.
-
-## Known limitations and deferred work
-
-- The two client requirement PDFs were reconciled against PRD Appendix F and the phase mapping; no
-  Phase 2/3 delta was found. The replacement PRD's structure/Appendix F was inspected, but its page
-  images still need an external LibreOffice or desktop-Word render check.
-- Compatibility Department labels and inferred team memberships require staging review.
-- Cloudflare/OpenNext Windows symlink packaging reproduced as an environment-only gate: Next.js
-  passed, then OpenNext failed creating `@next/env` with `EPERM`. No WSL distribution or Docker CLI
-  is available on this host; validate on Linux/WSL/CI.
-- Mobile outbox payload is OS-sandboxed but not application-layer encrypted; it contains no tokens.
-- Bot protection, password-reset delivery, live Google/native verification, hosted infrastructure,
-  physical-device validation and later provider integrations remain external/deferred.
-- No Phase 4+ business functionality was implemented.
+- `MESSAGING_DEVELOPMENT_WEBHOOK_SECRET` (32+ characters)
+- `MESSAGING_CREDENTIAL_ENCRYPTION_KEY` (32 bytes, base64; required before Cloud credentials)
+- `MESSAGING_CREDENTIAL_KEY_ID`
+- `MESSAGING_MEDIA_MAX_BYTES`, `MESSAGING_MEDIA_URL_TTL_SECONDS`,
+  `MESSAGING_MEDIA_RETENTION_DAYS`
+- `MESSAGING_OUTBOUND_MAX_ATTEMPTS`, `MESSAGING_SERVICE_WINDOW_HOURS`
+- `MESSAGING_WEBHOOK_RAW_RETENTION_HOURS`
 
 ## Verified commands and results
 
-| Command                                               | Result                                                                            |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                      | Pass; 11 workspace projects already current                                       |
-| `pnpm format:check`                                   | Pass after formatting the 31 files identified by the initial check                |
-| `pnpm lint`                                           | Pass; 8/8 tasks after removing two unused test bindings                           |
-| `pnpm type-check`                                     | Pass; 13/13 tasks                                                                 |
-| `pnpm test`                                           | Pass; 275 tests                                                                   |
-| `pnpm test:integration`                               | Pass; 43 tests (API 29, database migrations 14)                                   |
-| `pnpm db:check`                                       | Pass; all 12 journaled migrations/snapshots valid                                 |
-| `pnpm --filter @gdm/mobile exec expo install --check` | Pass; dependencies up to date                                                     |
-| `pnpm build`                                          | Pass; 8/8 API/web/mobile/shared tasks, including Android and iOS exports          |
-| `pnpm build:web:cloudflare`                           | Environment failure after successful Next build; OpenNext Windows symlink `EPERM` |
-| `wsl.exe -l -q`                                       | Unavailable; exit 1, no installed Linux distribution                              |
-| Linux container availability check                    | Unavailable; Podman/Docker absent and WSL has no installed distribution           |
+| Command                          | Result on 2026-08-08                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass; final frozen install reported the workspace up to date.                    |
+| `pnpm format:check`              | Pass.                                                                            |
+| `pnpm lint`                      | Pass; all workspace lint tasks.                                                  |
+| `pnpm type-check`                | Pass; 13/13 tasks.                                                               |
+| `pnpm test`                      | Pass; 289 tests, plus final affected mobile rerun 75/75.                         |
+| `pnpm test:integration`          | Pass; API 31/31 and database migration 15/15.                                    |
+| `pnpm db:check`                  | Pass; 17-entry journal.                                                          |
+| `pnpm build`                     | Pass; API, web, Android, iOS and shared packages; affected mobile exports rerun. |
 
-## Exact prerequisites for Phase 4
+## Seed accounts and data
 
-1. Retain passing final formatting, lint, strict TypeScript, unit, integration, migration and normal
-   production-build evidence from `PHASE_STATUS.md`.
-2. Apply migrations `0009`–`0011` to staging after backup; review/rename every
-   `RECOVERY_DEFAULT` department and confirm inferred active team memberships.
-3. Run two-tenant staging smoke tests for cross-tenant hierarchy denial, Team Manager replacement,
-   reporting-cycle denial, managed-team Lead visibility, idempotent public capture/follow-up replay,
-   inactive/non-team queue skip and assignment history.
-4. Render the replacement PRD on LibreOffice or desktop Word in CI and visually inspect the final
-   pages before publishing it. The client PDFs are already reconciled; do not re-open their scope
-   unless a new client amendment arrives.
-5. Validate Cloudflare packaging on Linux/WSL/CI and retain artifact evidence.
-6. Phase 4 may now begin. Implement the prompt's provider-neutral `TelephonyProvider`, development
-   adapter, authoritative generic webhook, reconciliation and fail-closed recording-access rules.
-   A live provider credential/selection is not required to start that work. Before a real provider
-   is enabled, document webhook signing, tenant credentials, recording/retention consent,
-   reconciliation and outage behavior.
-7. Keep Android call-log, SMS, contacts and accessibility permissions out of core scope. Do not use
-   SIM/mobile recording workarounds; provider-side recording requires legal/privacy approval.
-8. Phase 4 must attach Calls to canonical Phase 3 Lead/Contact/activity and use Phase 2 user/team
-   scope. It must not create another customer, team or manager model.
+- Existing Phase 0–4 seed accounts remain unchanged.
+- Alpha has `LEADS`, `TELEPHONY` and `INBOX`; Beta has `LEADS` only.
+- Alpha messaging connection ID `23000000-0000-4000-8000-000000000001` uses provider
+  `DEVELOPMENT`, business phone `+912040001111` and callback path
+  `/v1/messaging/webhooks/DEVELOPMENT/development-messaging-20000000-0000-4000-8000-000000000001`.
+- Templates `lead_follow_up_update` (UTILITY) and `dealership_offer` (MARKETING) are approved
+  development fixtures. They are not proof of Meta approval.
+
+## Known limitations and deferred work
+
+- No live WABA/provider credentials or legal consent/retention approval were supplied. Cloud
+  connections remain pending until callback verification, health and explicit activation.
+- WhatsApp Cloud media upload/download is deliberately unavailable pending provider activation and
+  reviewed retention; private development media remains functional.
+- Offline mobile queues text/templates only. Media requires connectivity, and a cold restart still
+  needs the API to reload the assigned-conversation cache.
+- SQLite outbox payloads are OS-protected but not application-layer encrypted; do not queue documents
+  or unnecessary sensitive content.
+- No configured object scanner, physical-device smoke, live status/template-sync test, hosted staging
+  smoke or Linux OpenNext packaging evidence exists yet.
+- Current Linux recheck found no WSL distribution/kernel, an unavailable Podman WSL socket and no
+  Docker CLI. Exact result: `CLOUDFLARE LINUX PACKAGING EXTERNAL VALIDATION REMAINS`.
+- SMS, email, Instagram Direct and Facebook Messenger are not Phase 5 functionality. Phase 13 may
+  add official adapters, but they must extend the canonical Conversation/Message inbox rather than
+  introduce parallel inbox products.
+
+## Exact prerequisites and recommendations for Phase 6
+
+1. Preserve canonical Contact/Lead IDs and all three owners. A test-ride process owner must not replace
+   the relationship owner or conversation owner.
+2. Keep conversations/messages append-only and link future test-ride notifications through the
+   provider-neutral messaging interface only after committed test-ride state.
+3. Use an outbox/idempotency key for booking confirmations, reminders and reschedules so provider
+   failure cannot roll back a committed appointment.
+4. Apply migrations `0014`–`0016` once and verify the Alpha/Beta module flags before adding Phase 6
+   flags or routes.
+5. Retain backend branch/team/assignment authorization and default deny. Do not trust a client-sent
+   tenant, owner or test-ride status.
+6. Keep `DESIGN.md` mandatory for Phase 6 web/mobile screens and include loading, empty, error,
+   disabled, conflict and success states.
+7. Apply the `DESIGN.md` client-state decision rule: API/TanStack Query for server truth, URL for
+   deep links, React state for isolated controls, feature-scoped Zustand for shared transient
+   workflow, and SQLite/outbox for durable mobile replay. Reset stores on every auth/context change.
+8. Do not expand Phase 6 into live WhatsApp activation, inventory, delivery or AI modules without the
+   relevant phase authorization and external prerequisites.
+
+## Gate
+
+`PHASE 5 CODE COMPLETE — EXTERNAL VALIDATION REMAINS`
+
+`READY TO BEGIN PHASE 6`
+
+`NEXT: RUN PROMPTS/06_TEST_RIDES.md`

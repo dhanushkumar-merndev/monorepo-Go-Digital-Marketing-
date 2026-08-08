@@ -1,6 +1,8 @@
 export * from './auth/index.js';
 export * from './administration/index.js';
 export * from './leads/index.js';
+export * from './telephony/index.js';
+export * from './messaging/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

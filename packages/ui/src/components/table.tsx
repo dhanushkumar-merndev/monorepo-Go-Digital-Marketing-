@@ -31,7 +31,10 @@ function TableBody({ className, ...props }: ComponentProps<'tbody'>) {
 function TableRow({ className, ...props }: ComponentProps<'tr'>) {
   return (
     <tr
-      className={cn('border-border hover:bg-muted/50 border-b transition-colors', className)}
+      className={cn(
+        'border-border/80 hover:bg-muted/55 focus-within:bg-muted/55 border-b transition-colors',
+        className,
+      )}
       data-slot="table-row"
       {...props}
     />
@@ -42,7 +45,7 @@ function TableHead({ className, ...props }: ComponentProps<'th'>) {
   return (
     <th
       className={cn(
-        'text-muted-foreground h-11 px-4 text-left align-middle text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
+        'text-muted-foreground bg-muted/35 h-11 px-4 text-left align-middle text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
         className,
       )}
       data-slot="table-head"
@@ -54,7 +57,7 @@ function TableHead({ className, ...props }: ComponentProps<'th'>) {
 function TableCell({ className, ...props }: ComponentProps<'td'>) {
   return (
     <td
-      className={cn('px-4 py-3 align-middle whitespace-nowrap', className)}
+      className={cn('px-4 py-3.5 align-middle whitespace-nowrap', className)}
       data-slot="table-cell"
       {...props}
     />

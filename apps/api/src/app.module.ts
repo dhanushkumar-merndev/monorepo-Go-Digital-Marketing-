@@ -13,6 +13,8 @@ import { RedisInfrastructureModule } from './infrastructure/redis/redis.module.j
 import { StorageInfrastructureModule } from './infrastructure/storage/storage.module.js';
 import { ObservabilityModule } from './observability/observability.module.js';
 import { createPinoHttpOptions } from './observability/pino-options.js';
+import { TelephonyModule } from './telephony/telephony.module.js';
+import { MessagingModule } from './messaging/messaging.module.js';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { createPinoHttpOptions } from './observability/pino-options.js';
     ObservabilityModule,
     HealthModule,
     LeadsModule,
+    TelephonyModule,
+    MessagingModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

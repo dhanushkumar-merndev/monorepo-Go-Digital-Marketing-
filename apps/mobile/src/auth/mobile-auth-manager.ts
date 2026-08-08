@@ -8,6 +8,7 @@ import {
 } from '../api/api-error';
 import type { AuthTransport } from '../api/auth-transport';
 import { setAuthState } from '../store/auth-store';
+import { resetMobileInboxUiState } from '../store/inbox-ui.store';
 import type { CredentialVault } from './credential-vault';
 import { GoogleIdentityError, type GoogleIdentityClient } from './google-identity-client';
 import {
@@ -295,6 +296,7 @@ export class MobileAuthManager {
     }
 
     if (!session) {
+      resetMobileInboxUiState();
       setAuthState({ principal: null, status: 'unauthenticated' });
       return;
     }
@@ -374,8 +376,16 @@ export class MobileAuthManager {
       throw error;
     }
 
-    if (clearQueries) {
+    const previousPrincipal = this.currentSession?.principal;
+    if (
+      clearQueries ||
+      !previousPrincipal ||
+      previousPrincipal.clientOrganizationId !== session.principal.clientOrganizationId ||
+      previousPrincipal.membershipId !== session.principal.membershipId ||
+      previousPrincipal.userId !== session.principal.userId
+    ) {
       this.dependencies.queryCache.clear();
+      resetMobileInboxUiState();
     }
     this.currentSession = session;
     setAuthState({ principal: session.principal, status: 'authenticated' });
@@ -447,6 +457,7 @@ export class MobileAuthManager {
   private async clearLocalSession(): Promise<void> {
     this.currentSession = null;
     this.dependencies.queryCache.clear();
+    resetMobileInboxUiState();
     try {
       await this.dependencies.vault.clear();
     } catch {

@@ -3,12 +3,13 @@ You are working inside the existing Go Digital Automobile CRM repository.
 Read these before making changes:
 
 1. `Go_Digital_Automobile_CRM_10_on_10_Final_Technical_PRD_v4_0.docx`
-2. `AGENTS.md`
-3. `docs/implementation/PHASE_STATUS.md`
-4. `docs/implementation/DECISIONS.md`
-5. `docs/implementation/KNOWN_ISSUES.md`
-6. `docs/implementation/NEXT_PHASE_HANDOFF.md`
-7. Existing source code, migrations and tests related to this phase
+2. `DESIGN.md`
+3. `AGENTS.md`
+4. `docs/implementation/PHASE_STATUS.md`
+5. `docs/implementation/DECISIONS.md`
+6. `docs/implementation/KNOWN_ISSUES.md`
+7. `docs/implementation/NEXT_PHASE_HANDOFF.md`
+8. Existing source code, migrations and tests related to this phase
 
 Do not regenerate the entire project. Inspect the current implementation first and preserve working code and accepted architectural decisions.
 
@@ -25,6 +26,14 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 ---
 
 # PHASE 11 — POST-SALE REMINDERS AND CUSTOMER LIFECYCLE
+
+## Client-state rules
+
+Zustand may coordinate transient reminder-list filters, selection, composer presentation and local
+workflow panels. Reminder definitions, schedules, consent/suppression, dispatch attempts and status
+history remain authoritative in the API/TanStack Query layer. Use URL state for shareable filters,
+local state for isolated inputs, durable outbox storage for dispatch/offline commands, and reset
+transient stores on logout and every account, membership, tenant or support-context change.
 
 ## Objective
 

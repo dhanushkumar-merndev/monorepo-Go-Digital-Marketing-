@@ -24,8 +24,8 @@ export {
   membershipScopeModeEnum,
   membershipStatusEnum,
   membershipTeamScopes,
+  legacyPermissionCodeEnum,
   memberships,
-  permissionCodeEnum,
   permissions,
   roleApplicationEnum,
   rolePermissionMappings,
@@ -61,3 +61,5 @@ export {
 } from './platform.js';
 export { users, userStatusEnum } from './users.js';
 export * from './leads.js';
+export * from './telephony.js';
+export * from './messaging.js';

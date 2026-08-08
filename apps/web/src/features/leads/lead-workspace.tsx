@@ -36,6 +36,7 @@ import { LEAD_SOURCE_CODES, type LeadSource, type LeadStatus } from '@gdm/contra
 
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { useAuth } from '@/features/auth/auth-provider';
+import { PageHeader } from '@/components/page-header';
 
 export interface LeadSummary {
   id: string;
@@ -110,20 +111,19 @@ export function LeadWorkspace() {
   return (
     <PermissionGate permission="leads.read">
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Capture, qualify, assign and act before the SLA expires.
-            </p>
-          </div>
-          {canCreate ? (
-            <Button onClick={() => setShowCreate((value) => !value)}>
-              <Plus data-icon="inline-start" />
-              New lead
-            </Button>
-          ) : null}
-        </div>
+        <PageHeader
+          description="Capture, qualify, assign and act before the SLA expires. Results always respect your current tenant and operational scope."
+          eyebrow="Lead CRM"
+          title="All leads"
+          actions={
+            canCreate ? (
+              <Button onClick={() => setShowCreate((value) => !value)}>
+                <Plus data-icon="inline-start" />
+                New lead
+              </Button>
+            ) : null
+          }
+        />
 
         <div aria-label="Lead workspace views" className="flex flex-wrap gap-2" role="navigation">
           {views.map((item) => (
@@ -149,7 +149,7 @@ export function LeadWorkspace() {
         {view === 'DUPLICATES' ? (
           <DuplicateReview query={duplicates} />
         ) : (
-          <Card>
+          <Card className="gap-4">
             <CardHeader>
               <CardTitle>{views.find((item) => item.value === view)?.label}</CardTitle>
               <CardDescription>

@@ -3,12 +3,13 @@ You are working inside the existing Go Digital Automobile CRM repository.
 Read these before making changes:
 
 1. `Go_Digital_Automobile_CRM_10_on_10_Final_Technical_PRD_v4_0.docx`
-2. `AGENTS.md`
-3. `docs/implementation/PHASE_STATUS.md`
-4. `docs/implementation/DECISIONS.md`
-5. `docs/implementation/KNOWN_ISSUES.md`
-6. `docs/implementation/NEXT_PHASE_HANDOFF.md`
-7. Existing source code, migrations and tests related to this phase
+2. `DESIGN.md`
+3. `AGENTS.md`
+4. `docs/implementation/PHASE_STATUS.md`
+5. `docs/implementation/DECISIONS.md`
+6. `docs/implementation/KNOWN_ISSUES.md`
+7. `docs/implementation/NEXT_PHASE_HANDOFF.md`
+8. Existing source code, migrations and tests related to this phase
 
 Do not regenerate the entire project. Inspect the current implementation first and preserve working code and accepted architectural decisions.
 
@@ -25,6 +26,18 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 ---
 
 # PHASE 14 — SECURITY, QUALITY, DEPLOYMENT AND PILOT RELEASE
+
+## Client-state and provider-boundary audit
+
+Audit every Zustand store for focused ownership, selector-based subscriptions, reset coverage,
+sensitive payloads, persistence, SSR/hydration behavior, devtools exposure, duplicated server state
+and stale tenant/user/support context. Verify URL state and component-local state remain in their
+proper boundaries and that SQLite/outbox mechanisms—not Zustand—own durable mobile replay.
+
+Audit the Unified Inbox provider boundaries: canonical Conversation/Message/Contact/Lead/Owner
+records must remain channel-neutral, while credentials, webhooks, platform identifiers, templates,
+service windows, media references and channel policies stay in provider adapters. Confirm every
+enabled provider is official, tenant-bound, idempotent, rate-limited and secret-safe.
 
 ## Objective
 

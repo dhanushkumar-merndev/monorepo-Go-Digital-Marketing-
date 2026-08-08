@@ -20,7 +20,7 @@ export function MobileShell({ children, title }: MobileShellProps) {
 
   return (
     <Screen>
-      <View className="gap-2">
+      <View className="gap-2" style={styles.header}>
         <View className="flex-row flex-wrap items-center justify-between gap-2">
           <AppText accessibilityRole="header" variant="title">
             {title}
@@ -43,6 +43,16 @@ export function MobileShell({ children, title }: MobileShellProps) {
           onPress={() => router.replace('/(app)/home')}
           variant={pathname === '/home' ? 'primary' : 'secondary'}
         />
+        {principal?.permissions.includes('messaging.conversations.read') ? (
+          <Button
+            accessibilityRole="tab"
+            accessibilityState={{ selected: pathname.startsWith('/inbox') }}
+            className="flex-1"
+            label="Inbox"
+            onPress={() => router.replace('/(app)/inbox')}
+            variant={pathname.startsWith('/inbox') ? 'primary' : 'secondary'}
+          />
+        ) : null}
         <Button
           accessibilityRole="tab"
           accessibilityState={{ selected: pathname.startsWith('/leads') }}
@@ -67,9 +77,21 @@ export function MobileShell({ children, title }: MobileShellProps) {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    backgroundColor: nativeTheme.colors.card,
+    borderColor: nativeTheme.colors.border,
+    borderRadius: nativeTheme.radii.lg,
+    borderWidth: 1,
+    padding: nativeTheme.spacing[4],
+  },
   navigation: {
+    backgroundColor: nativeTheme.colors.card,
     borderBottomColor: nativeTheme.colors.border,
     borderBottomWidth: 1,
+    borderColor: nativeTheme.colors.border,
+    borderRadius: nativeTheme.radii.lg,
+    borderWidth: 1,
+    padding: nativeTheme.spacing[2],
     paddingBottom: nativeTheme.spacing[4],
   },
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "request_fingerprint" varchar(64);

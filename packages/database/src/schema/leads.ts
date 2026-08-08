@@ -180,6 +180,7 @@ export const consentRecords = pgTable(
       table.purpose,
       table.capturedAt,
     ),
+    unique('consent_records_client_id_unique').on(table.clientOrganizationId, table.id),
   ],
 );
 
@@ -589,6 +590,7 @@ export const leadFollowUps = pgTable(
       name: 'lead_follow_ups_owner_tenant_fk',
     }).onDelete('restrict'),
     index('lead_follow_ups_due_idx').on(table.clientOrganizationId, table.status, table.dueAt),
+    unique('lead_follow_ups_client_id_unique').on(table.clientOrganizationId, table.id),
   ],
 );
 

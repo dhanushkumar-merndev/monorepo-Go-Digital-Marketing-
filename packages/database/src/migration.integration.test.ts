@@ -40,7 +40,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
+describe('reviewed PostgreSQL migrations through Phase 5 messaging', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -146,7 +146,14 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
           'outbox_events', 'password_reset_tokens', 'permissions', 'refresh_sessions',
           'refresh_token_rotations', 'role_permission_mappings', 'roles',
           'reporting_lines', 'support_elevations', 'team_manager_assignments',
-          'team_memberships', 'teams', 'users', 'webhook_events'
+          'team_memberships', 'teams', 'users', 'webhook_events',
+          'calls', 'call_participants', 'call_events', 'call_recordings',
+          'call_outcomes', 'call_outcome_exceptions', 'telephony_provider_connections',
+          'telephony_reconciliations', 'messaging_provider_connections',
+          'message_templates', 'conversations', 'conversation_participants',
+          'messages', 'message_media', 'message_status_history',
+          'conversation_assignments', 'message_outbound_outbox',
+          'messaging_opt_in_records', 'messaging_suppressions'
         )
       order by table_name
     `);
@@ -160,13 +167,30 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
       'authentication_audit_events',
       'authentication_identities',
       'branches',
+      'call_events',
+      'call_outcome_exceptions',
+      'call_outcomes',
+      'call_participants',
+      'call_recordings',
+      'calls',
       'client_organizations',
+      'conversation_assignments',
+      'conversation_participants',
+      'conversations',
       'departments',
       'external_auth_challenges',
       'membership_branch_scopes',
       'membership_department_scopes',
       'membership_team_scopes',
       'memberships',
+      'message_media',
+      'message_outbound_outbox',
+      'message_status_history',
+      'message_templates',
+      'messages',
+      'messaging_opt_in_records',
+      'messaging_provider_connections',
+      'messaging_suppressions',
       'outbox_events',
       'password_reset_tokens',
       'permissions',
@@ -179,6 +203,8 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
       'team_manager_assignments',
       'team_memberships',
       'teams',
+      'telephony_provider_connections',
+      'telephony_reconciliations',
       'users',
       'webhook_events',
     ]);
@@ -234,7 +260,7 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(34);
+    expect(permissionCount.rows[0]?.count).toBe(53);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -247,6 +273,12 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
         'platform.support_elevation.manage',
         'leads.read',
         'leads.assign',
+        'messaging.connections.manage',
+        'messaging.conversations.read',
+        'messaging.messages.send',
+        'telephony.connections.manage',
+        'telephony.recordings.read',
+        'telephony.recordings.upload',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
@@ -292,6 +324,97 @@ describe('reviewed PostgreSQL migrations through the Phase 2 recovery', () => {
     expect(
       roleFamilies.get('SALES_MANAGER')?.permissions.has('organization.departments.manage'),
     ).toBe(false);
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('telephony.calls.start')).toBe(true);
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('telephony.recordings.read')).toBe(
+      false,
+    );
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('telephony.recordings.upload')).toBe(
+      true,
+    );
+  });
+
+  it('keeps call evidence tenant-scoped and enforces completed-call outcome requirements', async () => {
+    const contactId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446801';
+    const leadId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446802';
+    const connectionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446803';
+    const callId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446804';
+    await client.exec(`
+      insert into contacts (
+        id, client_organization_id, display_name, primary_phone_e164, primary_phone_lookup_hash
+      ) values (
+        '${contactId}', '${tenantId}', 'Telephony Customer', '+919876543210', repeat('a', 64)
+      );
+      insert into lead_opportunities (
+        id, client_organization_id, contact_id, branch_id, source, entry_method, vehicle_interest,
+        status, sla_due_at, sla_warning_at
+      ) values (
+        '${leadId}', '${tenantId}', '${contactId}', '${branchId}', 'WEBSITE', 'MANUAL', 'Model X',
+        'ACCEPTED', now() + interval '15 minutes', now() + interval '10 minutes'
+      );
+      insert into telephony_provider_connections (
+        id, client_organization_id, provider, connection_key, display_name, status
+      ) values (
+        '${connectionId}', '${tenantId}', 'DEVELOPMENT', 'migration-test-telephony', 'Migration test', 'ACTIVE'
+      );
+      insert into calls (
+        id, client_organization_id, lead_id, contact_id, connection_id, provider, provider_call_id,
+        origin, direction, status, outcome_requirement
+      ) values (
+        '${callId}', '${tenantId}', '${leadId}', '${contactId}', '${connectionId}', 'DEVELOPMENT',
+        'provider-call-1', 'PROVIDER', 'OUTBOUND', 'REQUESTED', 'NOT_REQUIRED'
+      );
+    `);
+    await expect(
+      client.exec(`
+        insert into calls (
+          client_organization_id, lead_id, contact_id, provider, origin, direction, status,
+          outcome_requirement
+        ) values (
+          '${tenantId}', '${leadId}', '${contactId}', 'DEVELOPMENT', 'PROVIDER', 'OUTBOUND',
+          'COMPLETED', 'NOT_REQUIRED'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into calls (
+          client_organization_id, lead_id, contact_id, provider, origin, direction, status,
+          outcome_requirement
+        ) values (
+          '${otherTenantId}', '${leadId}', '${contactId}', 'DEVELOPMENT', 'PROVIDER', 'OUTBOUND',
+          'REQUESTED', 'NOT_REQUIRED'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into call_events (
+          client_organization_id, call_id, provider, provider_event_id, event_type, occurred_at
+        ) values (
+          '${tenantId}', '${callId}', 'DEVELOPMENT', 'provider-event-1', 'CALL_STATUS_UPDATED', now()
+        ), (
+          '${tenantId}', '${callId}', 'DEVELOPMENT', 'provider-event-1', 'CALL_STATUS_UPDATED', now()
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into call_recordings (
+          client_organization_id, call_id, source, object_key, original_filename, mime_type,
+          size_bytes, uploaded_by_user_id, uploaded_by_membership_id
+        ) values (
+          '${tenantId}', '${callId}', 'MANUAL_UPLOAD', 'clients/test/recording', 'call.m4a',
+          'audio/x-m4a', 1024, '${clientUserId}', '${clientMembershipId}'
+        )
+      `),
+    ).resolves.toBeDefined();
+    await expect(
+      client.exec(`
+        insert into call_recordings (
+          client_organization_id, call_id, source, object_key
+        ) values ('${tenantId}', '${callId}', 'MANUAL_UPLOAD', 'clients/test/incomplete')
+      `),
+    ).rejects.toThrow();
   });
 
   it('enforces platform/client scope and tenant roots at the database boundary', async () => {

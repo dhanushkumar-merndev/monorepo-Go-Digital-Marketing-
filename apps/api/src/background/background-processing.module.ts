@@ -1,4 +1,4 @@
-import { Module, type DynamicModule } from '@nestjs/common';
+import { Global, Module, type DynamicModule } from '@nestjs/common';
 import { ApiConfigModule } from '../config/api-config.module.js';
 import { RedisInfrastructureModule } from '../infrastructure/redis/redis.module.js';
 import { BackgroundJobProcessorRegistry } from './background-job-processor.registry.js';
@@ -8,6 +8,7 @@ import {
 } from './background-processing.lifecycle.js';
 import type { BackgroundRuntimeRole } from './background-processing-mode.js';
 
+@Global()
 @Module({})
 export class BackgroundProcessingModule {
   static forApi(): DynamicModule {
@@ -30,7 +31,7 @@ export class BackgroundProcessingModule {
           useValue: role,
         },
       ],
-      exports: [BackgroundJobProcessorRegistry],
+      exports: [BackgroundJobProcessorRegistry, RedisInfrastructureModule],
     };
   }
 }

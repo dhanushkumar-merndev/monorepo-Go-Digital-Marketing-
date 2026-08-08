@@ -122,6 +122,23 @@ export class LeadsService {
     });
   }
 
+  async createProvider(input: {
+    body: CreateLeadRequest;
+    clientOrganizationId: string;
+    correlationId: string;
+    externalEventId: string;
+    provider: string;
+  }) {
+    return this.createLead({
+      body: input.body,
+      clientOrganizationId: input.clientOrganizationId,
+      correlationId: input.correlationId,
+      entryMethod: 'PROVIDER',
+      idempotencyKey: input.externalEventId,
+      provider: input.provider,
+    });
+  }
+
   async publicForm(formKey: string) {
     const [form] = await this.connection.db
       .select()
@@ -142,7 +159,7 @@ export class LeadsService {
     body: CreateLeadRequest;
     clientOrganizationId: string;
     correlationId: string;
-    entryMethod: 'MANUAL' | 'PUBLIC_FORM';
+    entryMethod: 'MANUAL' | 'PROVIDER' | 'PUBLIC_FORM';
     idempotencyKey: string;
     provider: string;
   }) {
@@ -572,62 +589,114 @@ export class LeadsService {
     const row = await this.readLead(cid, leadId);
     if (!row || !this.canAccess(context, row.lead, row.queueTeamId, row.queueDepartmentId))
       throw notFound('Lead not found.');
-    const [history, notes, assignments, followUps, tasks, duplicates] = await Promise.all([
-      this.connection.db
-        .select()
-        .from(schema.leadStatusHistory)
-        .where(
-          and(
-            eq(schema.leadStatusHistory.clientOrganizationId, cid),
-            eq(schema.leadStatusHistory.leadId, leadId),
+    const [history, notes, assignments, followUps, tasks, duplicates, calls, conversations] =
+      await Promise.all([
+        this.connection.db
+          .select()
+          .from(schema.leadStatusHistory)
+          .where(
+            and(
+              eq(schema.leadStatusHistory.clientOrganizationId, cid),
+              eq(schema.leadStatusHistory.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.leadStatusHistory.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.leadNotes)
+          .where(
+            and(
+              eq(schema.leadNotes.clientOrganizationId, cid),
+              eq(schema.leadNotes.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.leadNotes.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.leadAssignments)
+          .where(
+            and(
+              eq(schema.leadAssignments.clientOrganizationId, cid),
+              eq(schema.leadAssignments.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.leadAssignments.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.leadFollowUps)
+          .where(
+            and(
+              eq(schema.leadFollowUps.clientOrganizationId, cid),
+              eq(schema.leadFollowUps.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.leadFollowUps.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.leadTasks)
+          .where(
+            and(
+              eq(schema.leadTasks.clientOrganizationId, cid),
+              eq(schema.leadTasks.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.leadTasks.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.duplicateCandidates)
+          .where(
+            and(
+              eq(schema.duplicateCandidates.clientOrganizationId, cid),
+              eq(schema.duplicateCandidates.leadId, leadId),
+            ),
+          )
+          .orderBy(desc(schema.duplicateCandidates.createdAt)),
+        this.connection.db
+          .select()
+          .from(schema.calls)
+          .where(and(eq(schema.calls.clientOrganizationId, cid), eq(schema.calls.leadId, leadId)))
+          .orderBy(desc(schema.calls.createdAt)),
+        this.connection.db
+          .select({ id: schema.conversations.id })
+          .from(schema.conversations)
+          .where(
+            and(
+              eq(schema.conversations.clientOrganizationId, cid),
+              eq(schema.conversations.leadId, leadId),
+            ),
           ),
-        )
-        .orderBy(desc(schema.leadStatusHistory.createdAt)),
-      this.connection.db
-        .select()
-        .from(schema.leadNotes)
-        .where(
-          and(eq(schema.leadNotes.clientOrganizationId, cid), eq(schema.leadNotes.leadId, leadId)),
-        )
-        .orderBy(desc(schema.leadNotes.createdAt)),
-      this.connection.db
-        .select()
-        .from(schema.leadAssignments)
-        .where(
-          and(
-            eq(schema.leadAssignments.clientOrganizationId, cid),
-            eq(schema.leadAssignments.leadId, leadId),
-          ),
-        )
-        .orderBy(desc(schema.leadAssignments.createdAt)),
-      this.connection.db
-        .select()
-        .from(schema.leadFollowUps)
-        .where(
-          and(
-            eq(schema.leadFollowUps.clientOrganizationId, cid),
-            eq(schema.leadFollowUps.leadId, leadId),
-          ),
-        )
-        .orderBy(desc(schema.leadFollowUps.createdAt)),
-      this.connection.db
-        .select()
-        .from(schema.leadTasks)
-        .where(
-          and(eq(schema.leadTasks.clientOrganizationId, cid), eq(schema.leadTasks.leadId, leadId)),
-        )
-        .orderBy(desc(schema.leadTasks.createdAt)),
-      this.connection.db
-        .select()
-        .from(schema.duplicateCandidates)
-        .where(
-          and(
-            eq(schema.duplicateCandidates.clientOrganizationId, cid),
-            eq(schema.duplicateCandidates.leadId, leadId),
-          ),
-        )
-        .orderBy(desc(schema.duplicateCandidates.createdAt)),
-    ]);
+      ]);
+    const recordings =
+      calls.length === 0
+        ? []
+        : await this.connection.db
+            .select()
+            .from(schema.callRecordings)
+            .where(
+              and(
+                eq(schema.callRecordings.clientOrganizationId, cid),
+                inArray(
+                  schema.callRecordings.callId,
+                  calls.map((call) => call.id),
+                ),
+              ),
+            )
+            .orderBy(desc(schema.callRecordings.createdAt));
+    const messages =
+      conversations.length === 0
+        ? []
+        : await this.connection.db
+            .select()
+            .from(schema.messages)
+            .where(
+              and(
+                eq(schema.messages.clientOrganizationId, cid),
+                inArray(
+                  schema.messages.conversationId,
+                  conversations.map((conversation) => conversation.id),
+                ),
+              ),
+            );
     return {
       follow_ups: followUps,
       lead: {
@@ -699,6 +768,45 @@ export class LeadsService {
               ? 'Duplicate candidate detected'
               : `Duplicate review: ${item.status}`,
           type: 'DUPLICATE',
+        })),
+        ...calls.map((item) => ({
+          actor_id: item.initiatedByUserId,
+          detail:
+            item.origin === 'TEL_FALLBACK'
+              ? 'Device dialer fallback. Duration, answered state and recording are not asserted.'
+              : `Provider ${item.provider}; outcome requirement ${item.outcomeRequirement}.`,
+          id: item.id,
+          occurred_at: (item.endedAt ?? item.startedAt ?? item.createdAt).toISOString(),
+          title: `Call ${item.status.replaceAll('_', ' ')}`,
+          type: 'CALL',
+        })),
+        ...recordings.map((item) => ({
+          actor_id: item.uploadedByUserId,
+          detail:
+            item.source === 'MANUAL_UPLOAD'
+              ? `${item.availability.replaceAll('_', ' ')} manual upload${item.sizeBytes ? `; ${String(item.sizeBytes)} bytes` : ''}.`
+              : `${item.availability.replaceAll('_', ' ')} provider recording reference.`,
+          id: item.id,
+          occurred_at: (item.recordedAt ?? item.createdAt).toISOString(),
+          title:
+            item.source === 'MANUAL_UPLOAD'
+              ? 'Call recording uploaded'
+              : 'Provider call recording referenced',
+          type: 'CALL_RECORDING',
+        })),
+        ...messages.map((item) => ({
+          actor_id: item.senderUserId,
+          detail:
+            item.direction === 'INTERNAL'
+              ? item.bodyText
+              : `${item.contentType.replaceAll('_', ' ')} · ${item.status.replaceAll('_', ' ')}`,
+          id: item.id,
+          occurred_at: (item.providerOccurredAt ?? item.receivedAt).toISOString(),
+          title:
+            item.direction === 'INTERNAL'
+              ? 'Internal conversation note'
+              : `${item.direction === 'INBOUND' ? 'Inbound' : 'Outbound'} ${item.contentType.toLowerCase()} message`,
+          type: 'MESSAGE',
         })),
       ].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)),
     };

@@ -24,6 +24,8 @@ import {
   membershipDepartmentScopes,
   membershipTeamScopes,
   memberships,
+  messageTemplates,
+  messagingProviderConnections,
   permissions,
   publicLeadForms,
   rolePermissionMappings,
@@ -32,6 +34,7 @@ import {
   teamManagerAssignments,
   teamMemberships,
   teams,
+  telephonyProviderConnections,
   users,
 } from './schema/index.js';
 
@@ -61,6 +64,7 @@ const BETA_NASHIK_DEPARTMENT_ID = '21500000-0000-4000-8000-000000000003';
 const ALPHA_PUNE_TEAM_ID = '22000000-0000-4000-8000-000000000001';
 const ALPHA_MUMBAI_TEAM_ID = '22000000-0000-4000-8000-000000000002';
 const BETA_NASHIK_TEAM_ID = '22000000-0000-4000-8000-000000000003';
+const ALPHA_MESSAGING_CONNECTION_ID = '23000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -204,6 +208,25 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'leads.tasks.manage': 'Create and complete lead tasks.',
   'leads.duplicates.manage': 'Review tenant-scoped duplicate candidates.',
   'leads.sla.manage': 'Review and reconcile lead SLA timers and escalations.',
+  'telephony.calls.read': 'Read call history within tenant and lead assignment scope.',
+  'telephony.calls.start': 'Start a provider call or tel: fallback for a permitted lead.',
+  'telephony.outcomes.manage': 'Record a call outcome and callback follow-up.',
+  'telephony.outcomes.override': 'Approve a reasoned supervisor outcome exception.',
+  'telephony.recordings.read': 'Request a private recording URL after consent checks.',
+  'telephony.recordings.upload': 'Create a private manual recording upload for an authorized Lead.',
+  'telephony.connections.manage': 'Configure tenant telephony connections.',
+  'telephony.reconciliation.manage': 'Run idempotent provider reconciliation.',
+  'telephony.health.read': 'Read telephony provider and webhook health.',
+  'messaging.conversations.read': 'Read conversations within tenant and conversation-owner scope.',
+  'messaging.messages.send': 'Send policy-compliant free-form or approved-template messages.',
+  'messaging.notes.create': 'Append internal notes to scoped conversations.',
+  'messaging.assignments.manage': 'Assign conversation owners and queue teams with history.',
+  'messaging.templates.read': 'Read message templates and provider approval state.',
+  'messaging.templates.manage': 'Synchronize and manage tenant templates.',
+  'messaging.connections.manage': 'Configure encrypted official messaging connections.',
+  'messaging.failures.manage': 'Inspect and retry failed or dead-letter messages.',
+  'messaging.media.read': 'Request scoped private message media access.',
+  'messaging.media.upload': 'Upload private outbound message media.',
 };
 
 const leadManagerPermissions = [
@@ -223,6 +246,62 @@ const leadAgentPermissions = [
   'leads.followups.manage',
   'leads.notes.create',
   'leads.tasks.manage',
+] as const satisfies readonly PermissionCode[];
+const telephonyManagerPermissions = [
+  'telephony.calls.read',
+  'telephony.calls.start',
+  'telephony.outcomes.manage',
+  'telephony.outcomes.override',
+  'telephony.recordings.read',
+  'telephony.recordings.upload',
+  'telephony.connections.manage',
+  'telephony.reconciliation.manage',
+  'telephony.health.read',
+] as const satisfies readonly PermissionCode[];
+const telephonyTeamManagerPermissions = [
+  'telephony.calls.read',
+  'telephony.calls.start',
+  'telephony.outcomes.manage',
+  'telephony.recordings.read',
+  'telephony.recordings.upload',
+  'telephony.health.read',
+] as const satisfies readonly PermissionCode[];
+const telephonyAgentPermissions = [
+  'telephony.calls.read',
+  'telephony.calls.start',
+  'telephony.outcomes.manage',
+  'telephony.recordings.upload',
+] as const satisfies readonly PermissionCode[];
+const messagingManagerPermissions = [
+  'messaging.conversations.read',
+  'messaging.messages.send',
+  'messaging.notes.create',
+  'messaging.assignments.manage',
+  'messaging.templates.read',
+  'messaging.templates.manage',
+  'messaging.connections.manage',
+  'messaging.failures.manage',
+  'messaging.media.read',
+  'messaging.media.upload',
+] as const satisfies readonly PermissionCode[];
+const messagingTeamManagerPermissions = [
+  'messaging.conversations.read',
+  'messaging.messages.send',
+  'messaging.notes.create',
+  'messaging.assignments.manage',
+  'messaging.templates.read',
+  'messaging.failures.manage',
+  'messaging.media.read',
+  'messaging.media.upload',
+] as const satisfies readonly PermissionCode[];
+const messagingAgentPermissions = [
+  'messaging.conversations.read',
+  'messaging.messages.send',
+  'messaging.notes.create',
+  'messaging.templates.read',
+  'messaging.failures.manage',
+  'messaging.media.read',
+  'messaging.media.upload',
 ] as const satisfies readonly PermissionCode[];
 
 const accountPermissions = [
@@ -259,6 +338,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.settings.manage',
     'organization.audit.read',
     ...leadManagerPermissions,
+    ...telephonyManagerPermissions,
+    ...messagingManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -277,6 +358,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.settings.manage',
     'organization.audit.read',
     ...leadManagerPermissions,
+    ...telephonyManagerPermissions,
+    ...messagingManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -288,6 +371,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.hierarchy.read',
     'organization.hierarchy.manage',
     ...leadManagerPermissions,
+    ...telephonyManagerPermissions,
+    ...messagingManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -297,17 +382,23 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.hierarchy.read',
     'organization.hierarchy.manage',
     ...leadManagerPermissions,
+    ...telephonyManagerPermissions,
+    ...messagingManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     'leads.create',
     ...leadAgentPermissions,
+    ...telephonyAgentPermissions,
+    ...messagingAgentPermissions,
   ],
   SALESPERSON: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...leadAgentPermissions,
+    ...telephonyAgentPermissions,
+    ...messagingAgentPermissions,
   ],
   TEST_RIDE_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
   INVENTORY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
@@ -320,6 +411,8 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     'organization.users.read',
     'organization.hierarchy.read',
     ...leadManagerPermissions,
+    ...telephonyTeamManagerPermissions,
+    ...messagingTeamManagerPermissions,
   ],
 };
 
@@ -762,14 +855,14 @@ async function seed(): Promise<void> {
         .values({
           agencyId: AGENCY_ID,
           defaultTimezone: 'Asia/Kolkata',
-          defaultFeatureFlags: { LEADS: true },
+          defaultFeatureFlags: { INBOX: false, LEADS: true, TELEPHONY: false },
           updatedAt: SEED_DATE,
         })
         .onConflictDoUpdate({
           target: agencyDefaults.agencyId,
           set: {
             defaultTimezone: 'Asia/Kolkata',
-            defaultFeatureFlags: { LEADS: true },
+            defaultFeatureFlags: { INBOX: false, LEADS: true, TELEPHONY: false },
             updatedAt: SEED_DATE,
           },
         });
@@ -801,24 +894,24 @@ async function seed(): Promise<void> {
           'POST_SALE',
           'INTEGRATIONS',
         ]) {
+          const enabled =
+            module === 'LEADS' ||
+            (clientOrganizationId === ALPHA_CLIENT_ID &&
+              (module === 'TELEPHONY' || module === 'INBOX'));
           await transaction
             .insert(clientModuleFlags)
             .values({
               clientOrganizationId,
               module,
-              enabled: module === 'LEADS',
-              reason:
-                module === 'LEADS' ? 'Development seed default' : 'Not enabled in development seed',
+              enabled,
+              reason: enabled ? 'Development seed default' : 'Not enabled in development seed',
               updatedAt: SEED_DATE,
             })
             .onConflictDoUpdate({
               target: [clientModuleFlags.clientOrganizationId, clientModuleFlags.module],
               set: {
-                enabled: module === 'LEADS',
-                reason:
-                  module === 'LEADS'
-                    ? 'Development seed default'
-                    : 'Not enabled in development seed',
+                enabled,
+                reason: enabled ? 'Development seed default' : 'Not enabled in development seed',
                 updatedAt: SEED_DATE,
               },
             });
@@ -1229,6 +1322,102 @@ async function seed(): Promise<void> {
           target: publicLeadForms.clientFormKey,
           set: { active: true, assignmentQueueId: alphaQueueId, updatedAt: SEED_DATE },
         });
+      await transaction
+        .insert(telephonyProviderConnections)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          connectionKey: 'seed-alpha-development-telephony',
+          displayName: 'Alpha development telephony',
+          provider: 'DEVELOPMENT',
+          settings: { development_only: true },
+          status: 'ACTIVE',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: [
+            telephonyProviderConnections.clientOrganizationId,
+            telephonyProviderConnections.provider,
+          ],
+          set: {
+            displayName: 'Alpha development telephony',
+            settings: { development_only: true },
+            status: 'ACTIVE',
+            updatedAt: SEED_DATE,
+          },
+        });
+      await transaction
+        .insert(messagingProviderConnections)
+        .values({
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          businessPhoneE164: '+919999000001',
+          channel: 'WHATSAPP',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          connectionKey: 'seed-alpha-development-messaging',
+          defaultAssignmentQueueId: alphaQueueId,
+          displayName: 'Alpha development WhatsApp',
+          id: ALPHA_MESSAGING_CONNECTION_ID,
+          phoneNumberId: 'seed-alpha-development-phone',
+          provider: 'DEVELOPMENT',
+          settings: { development_only: true },
+          status: 'ACTIVE',
+          templateSyncStatus: 'SYNCED',
+          templateSyncedAt: SEED_DATE,
+          updatedAt: SEED_DATE,
+          webhookState: 'VERIFIED',
+        })
+        .onConflictDoUpdate({
+          target: messagingProviderConnections.id,
+          set: {
+            defaultAssignmentQueueId: alphaQueueId,
+            displayName: 'Alpha development WhatsApp',
+            status: 'ACTIVE',
+            templateSyncStatus: 'SYNCED',
+            templateSyncedAt: SEED_DATE,
+            updatedAt: SEED_DATE,
+            webhookState: 'VERIFIED',
+          },
+        });
+      for (const template of [
+        {
+          bodyText: 'Hello {{1}}, this is an update about your vehicle enquiry.',
+          category: 'UTILITY' as const,
+          id: '24000000-0000-4000-8000-000000000001',
+          name: 'lead_follow_up_update',
+        },
+        {
+          bodyText: 'Hello {{1}}, explore the latest offers from our dealership.',
+          category: 'MARKETING' as const,
+          id: '24000000-0000-4000-8000-000000000002',
+          name: 'dealership_offer',
+        },
+      ]) {
+        await transaction
+          .insert(messageTemplates)
+          .values({
+            bodyText: template.bodyText,
+            category: template.category,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            connectionId: ALPHA_MESSAGING_CONNECTION_ID,
+            externalTemplateId: `dev-${template.name}`,
+            id: template.id,
+            language: 'en',
+            lastSyncedAt: SEED_DATE,
+            name: template.name,
+            providerMetadata: { development_fixture: true },
+            status: 'APPROVED',
+            updatedAt: SEED_DATE,
+          })
+          .onConflictDoUpdate({
+            target: messageTemplates.id,
+            set: {
+              bodyText: template.bodyText,
+              category: template.category,
+              lastSyncedAt: SEED_DATE,
+              status: 'APPROVED',
+              updatedAt: SEED_DATE,
+            },
+          });
+      }
     });
   } finally {
     await connection.close();

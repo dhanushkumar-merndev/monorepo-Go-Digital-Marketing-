@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { BackgroundProcessingModule } from './background/background-processing.module.js';
 import { API_ENVIRONMENT, ApiConfigModule } from './config/api-config.module.js';
 import { createPinoHttpOptions } from './observability/pino-options.js';
+import { MessagingModule } from './messaging/messaging.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { createPinoHttpOptions } from './observability/pino-options.js';
       }),
     }),
     BackgroundProcessingModule.forStandaloneWorker(),
+    MessagingModule,
   ],
 })
 export class WorkerModule {}

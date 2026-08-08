@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseApiEnvironment } from './api.js';
 import { parseAuthEnvironment } from './auth.js';
 import { parseMobileEnvironment } from './mobile.js';
+import { parseMessagingEnvironment } from './messaging.js';
 import { parseWebEnvironment } from './web.js';
 
 const validServerEnvironment = {
@@ -14,6 +15,26 @@ const validServerEnvironment = {
 const googleWebClientId = '123456789-webclient.apps.googleusercontent.com';
 
 describe('environment validation', () => {
+  it('validates the backend-only Phase 5 credential key and disables fixtures in production', () => {
+    const key = Buffer.alloc(32, 7).toString('base64');
+    expect(
+      parseMessagingEnvironment({
+        MESSAGING_CREDENTIAL_ENCRYPTION_KEY: key,
+        NODE_ENV: 'production',
+      }),
+    ).toMatchObject({
+      credentialEncryptionKey: Buffer.alloc(32, 7),
+      developmentAdapterEnabled: false,
+      mediaRetentionDays: 365,
+      serviceWindowHours: 24,
+    });
+    expect(() =>
+      parseMessagingEnvironment({
+        MESSAGING_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(31).toString('base64'),
+      }),
+    ).toThrow(/exactly 32 bytes/u);
+  });
+
   it('parses API-only authentication settings without changing worker infrastructure config', () => {
     const environment = parseAuthEnvironment({
       NODE_ENV: 'test',

@@ -1,5 +1,75 @@
 # Architecture Decisions
 
+## ADR-0038 - Zustand is the canonical shared transient client workflow layer
+
+- **Date:** 2026-08-08
+- **Decision:** Use separate feature-scoped Zustand stores in Next.js and Expo when transient
+  UI/workflow state is shared across components. Keep PostgreSQL/API/TanStack Query authoritative for
+  server data, route/search parameters authoritative for deep-linkable state, React state for
+  component-local concerns, SecureStore/auth architecture for credentials and SQLite for the durable
+  mobile outbox. Stores are non-persistent by default and reset on logout, account/membership/tenant
+  change, support-context change and terminal session loss.
+- **Reason:** This supplies one predictable client-state rule without duplicating customer records,
+  leaking mutable Next.js state between requests or weakening offline/idempotency boundaries.
+- **Alternatives considered:** A giant persisted application store, one shared mutable web/mobile
+  store and moving every `useState` or query result into Zustand were rejected.
+- **Status:** Accepted and covered by web/mobile inbox-store reset tests. Database migration: none.
+- **Affected modules:** `DESIGN.md`, web/mobile authentication boundaries and Phase 5 inbox UI stores;
+  Phase 6-14 prompts.
+
+## ADR-0037 - Unified Inbox is channel-agnostic while Phase 5 activates official WhatsApp only
+
+- **Date:** 2026-08-08
+- **Decision:** Keep Conversation, Message, canonical Contact/Lead context, Conversation Owner,
+  authorization and inbox UI channel-neutral. Phase 5 activates only official WhatsApp Business
+  Platform messaging. Meta WABA/phone identity, signature/payload verification, approved-template and
+  service-window rules stay at the WhatsApp/provider boundary. Instagram/Facebook remain Phase 13
+  candidates; SMS/email and other approved channels remain future adapters to the same inbox.
+- **Reason:** The final post-Phase-5 amendment supersedes older coarse PRD/client mapping that placed
+  SMS/email adapters in Phase 5. One canonical inbox prevents duplicate customer models and false
+  implementation claims while preserving a safe adapter seam.
+- **Alternatives considered:** Disconnected per-channel inbox products, premature future adapters and
+  personal WhatsApp QR/Web automation were rejected.
+- **Status:** Accepted. Live Meta activation remains external and fail-closed.
+- **Affected modules:** Messaging contracts/schema/provider/service, web/mobile Unified Inbox,
+  `DESIGN.md`, traceability documents and Phase 5/13/14/99 prompts.
+
+## ADR-0032 - Telephony permission codes use a typed varchar, not a mutable PostgreSQL enum
+
+- **Date:** 2026-08-07
+- **Decision:** Keep the TypeScript permission-code union authoritative, but store
+  `permissions.code` as `varchar(100)` with its existing unique constraint. Migration `0012` changes
+  the legacy enum-backed column before adding Phase 4 permission records.
+- **Reason:** PostgreSQL does not safely allow a newly added enum value to be used by an insert in the
+  same migration transaction. Real disposable-PostgreSQL validation exposed this issue before the
+  migration was accepted. A typed varchar preserves stable codes while keeping permission migrations
+  atomic and forward-compatible.
+- **Alternatives considered:** Splitting the enum change and permission inserts into a second
+  migration, using an unsafe transaction boundary, or hand-editing applied migration metadata were
+  rejected.
+- **Status:** Accepted and validated on migrated PGlite and disposable PostgreSQL.
+- **Affected modules:** `packages/database/src/schema/authorization.ts`,
+  `0012_phase4_telephony.sql`, authorization contracts and seed.
+
+## ADR-0031 - Telephony is provider-authoritative, tenant-scoped and recording fail-closed
+
+- **Date:** 2026-08-07
+- **Decision:** Phase 4 uses one `TelephonyProvider` port and a development-only HMAC adapter.
+  Authoritative provider events flow through durable generic webhook receipt plus an idempotent call
+  event. Calls attach to existing Lead/Contact IDs and use existing assignment scope. A completed call
+  requires an outcome unless a supervisor records an exception. Recording URLs are issued only after
+  scope, active consent, availability and retention checks, and use existing private object storage.
+- **Reason:** This preserves Phase 2 membership/team authorization and Phase 3 canonical customer and
+  activity models while making retries/reconciliation deterministic. It prevents an unapproved vendor,
+  unsafe Android recording or a generic manager/customer duplicate model from entering scope.
+- **Alternatives considered:** Client-authoritative post-call state, public recording links,
+  provider-specific domain tables, and treating `tel:` as a reliable duration/recording source were
+  rejected.
+- **Status:** Accepted for Phase 4. A real provider remains disabled pending credentials,
+  documentation and compliance approval.
+- **Affected modules:** `apps/api/src/telephony`, `packages/contracts/src/telephony`,
+  `packages/database/src/schema/telephony.ts`, web/mobile telephony surfaces and migration `0012`.
+
 ## ADR-0028 — Phase 3 assignment consumes canonical Phase 2 team relationships
 
 - **Date:** 2026-08-07
@@ -467,3 +537,100 @@
   or invalidate migration evidence.
 - **Status:** Accepted and verified on disposable PostgreSQL.
 - **Affected modules:** `packages/database/src/seed.ts`, development migration/seed workflow.
+
+## ADR-0031 — Manual recording uploads use the canonical recording model and staged private storage
+
+- **Date:** 2026-08-08
+- **Decision:** Add `MANUAL_UPLOAD` as a recording source and call origin. An authorized user first
+  selects an already scoped Phase 3 Lead/Contact and active recording-consent record; the API creates
+  the canonical Call/Recording/Call Event/Outbox/Audit evidence and an atomic idempotency receipt,
+  then returns a short-lived private S3-compatible PUT URL. Completion verifies object metadata
+  against the requested MIME type, byte length and optional SHA-256 before the recording becomes
+  available. Provider recordings and manual recordings use the same `call_recordings` table, access
+  policy, retention fields and timeline.
+- **Reason:** A manual business recording can be lawfully attached without introducing a parallel
+  customer/call model or unsafe device capture. Keeping binary data outside PostgreSQL limits the
+  database to auditable metadata and uses existing private object-storage controls.
+- **Alternatives considered:** Storing audio in PostgreSQL, accepting a browser data URL, a standalone
+  manual-recordings table, or SIM/mobile capture were rejected for storage, provenance, tenancy or
+  Android/privacy reasons.
+- **Status:** Accepted for Phase 4. Real-provider recordings remain provider/consent dependent; AI
+  transcript/summary, custom customer-profile fields and voice-note features remain future scope.
+- **Affected modules:** `packages/contracts/src/telephony`, `packages/database/src/schema/telephony.ts`,
+  migration `0013_adorable_havok.sql`, `apps/api/src/telephony`, S3 storage adapter, Lead timeline
+  and web telephony UI.
+
+## ADR-0032 — Existing canonical Contact remains the Phase 4 customer profile boundary
+
+- **Date:** 2026-08-08
+- **Decision:** Do not add DOB, anniversary, arbitrary custom fields, duplicate customer records or
+  manager records as part of the manual-recording amendment. Calls are linked through the existing
+  canonical Contact and legitimate repeat Lead opportunities.
+- **Reason:** The Phase 4 requirement is calling/recording; the requested profile fields need a
+  product-wide custom-field, privacy, retention and UI policy. Adding them here would be a future
+  Phase 13 customer-profile/configuration feature.
+- **Status:** Accepted.
+- **Affected modules:** Phase 3 Contact/Lead model; no Phase 4 schema expansion beyond recording
+  provenance.
+
+## ADR-0033 - Canonical design system governs current and future UI work
+
+- **Date:** 2026-08-08
+- **Decision:** `DESIGN.md` is the canonical UI source for the CRM. The current Phase 0-4 refresh
+  centralizes the dark-navy shell, application canvas, semantic tokens and shared web primitives;
+  it does not alter API, database, authorization or workflow contracts.
+- **Reason:** The reviewed design archive contains useful cross-role patterns but also many future
+  modules. A durable design contract prevents copied placeholder screens, arbitrary status colours
+  and new component libraries while retaining functional Phase 0-4 boundaries.
+- **Status:** Accepted. Visual-browser/device QA remains a separate host-fixture prerequisite.
+- **Affected modules:** `DESIGN.md`, `@gdm/design-tokens`, `@gdm/ui`, web AppShell, Lead and
+  Telephony workspaces; all Phase 5+ UI work.
+
+## ADR-0034 — Official provider boundary and encrypted per-tenant WhatsApp credentials
+
+- **Date:** 2026-08-08
+- **Decision:** Implement `MessagingProvider` with development and official WhatsApp Cloud adapters.
+  Store each tenant's access token, app secret and verify token only as AES-256-GCM ciphertext with
+  key ID/IV/authentication tag; store WABA/phone IDs, onboarding state, webhook/template/quality and
+  messaging-limit metadata separately. A Cloud connection starts `PENDING_APPROVAL` and requires one
+  provider callback path, successful verification/health and explicit activation. Personal WhatsApp
+  QR, WhatsApp Web and unofficial automation are prohibited.
+- **Reason:** This satisfies the provider-neutral and embedded-onboarding-ready boundary without
+  exposing credentials or claiming that absent external approval is complete.
+- **Alternatives considered:** Browser/mobile credentials, one agency-wide token, personal WhatsApp
+  automation and automatic activation on configuration were rejected for tenancy, security,
+  reliability and provider-policy reasons.
+- **Status:** Accepted; live Meta activation remains external.
+- **Affected modules:** messaging contracts/config/schema/API providers, `.env.example`, integration UI.
+
+## ADR-0035 — PostgreSQL receipts precede asynchronous messaging work
+
+- **Date:** 2026-08-08
+- **Decision:** Verify provider signatures, normalize and uniquely persist each webhook receipt in
+  PostgreSQL before acknowledging it. Dispatch `messaging.webhook.process` through the shared BullMQ
+  queue; keep PostgreSQL status/attempt/error/dead-letter state authoritative and expose reconciliation
+  for receipts left pending when Redis is unavailable. Outbound messages similarly commit Message,
+  status, outbox, audit and domain-event evidence before provider dispatch.
+- **Reason:** A queue outage must not lose customer messages, duplicate delivery must be harmless, and
+  provider failure must not roll back committed CRM state.
+- **Alternatives considered:** Processing before receipt, Redis-only queues, request-memory dedupe and
+  generating a new Message on retry were rejected because they lose or duplicate business evidence.
+- **Status:** Accepted and covered by migrated-PGlite integration tests.
+- **Affected modules:** `webhook_events`, messaging outbox/status tables, API background registration,
+  worker module and messaging service.
+
+## ADR-0036 — Conversations attach to canonical Leads and retain a separate owner
+
+- **Date:** 2026-08-08
+- **Decision:** Every customer conversation references one canonical Phase 3 Contact and Lead.
+  `conversation_owner_id`/membership and queue Team remain separate from relationship and
+  current-process owners; assignment updates only the conversation owner plus append-only history.
+  An unmatched official Click-to-WhatsApp referral creates a provider Lead on its first signed inbound
+  message, never on a click and never for an unmatched message without referral evidence.
+- **Reason:** This preserves the product's three-owner model, continuous customer timeline and safe
+  CTWA attribution without inventing a second customer/lead system.
+- **Alternatives considered:** A generic owner, standalone messaging contacts, click-time Lead creation
+  and phone-only guessing for unknown inbound senders were rejected.
+- **Status:** Accepted.
+- **Affected modules:** Phase 3 Lead service/timeline, Phase 5 conversations/participants/assignments,
+  inbound webhook processing, web/mobile customer context.

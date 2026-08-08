@@ -108,3 +108,69 @@ were rejected. This is valid test evidence, not authorization to run production 
 There is no approved destructive down migration once organization or Lead history exists. Rollback
 means stopping deployment and restoring the pre-migration recovery point, or shipping a reviewed
 forward compensating migration that preserves historical evidence.
+
+## Phase 4 telephony migration
+
+`0012_phase4_telephony.sql` is a forward-only Phase 4 migration. It first changes the legacy
+`permissions.code` storage from PostgreSQL enum to `varchar(100)`, then creates telephony enums and
+tenant-owned provider-connection, call, participant, event, recording, outcome, supervisor-exception
+and reconciliation tables. It adds the new telephony permissions/mappings, composite tenant foreign
+keys, provider event/call uniqueness, useful scoped indexes and a check that prevents a completed
+call from being left `NOT_REQUIRED`.
+
+The varchar conversion is intentional: PostgreSQL rejects use of a newly added enum value inside the
+same migration transaction. The TypeScript permission union remains the application-level type. Do
+not revert the column to an enum as part of a down script.
+
+Before staging/production execution, take a recovery-point backup and run one migration worker before
+API rollout. The migration was checked by Drizzle, applied in the canonical PGlite chain and applied
+on the confirmed disposable development PostgreSQL database before a successful seed. Once call/event
+or recording-reference history exists, rollback means restoring the recovery point or shipping a
+reviewed compensating migration; never delete the history to make a down migration succeed.
+
+## Phase 4 manual recording amendment
+
+`0013_adorable_havok.sql` is the forward-only amendment to Phase 4. It adds
+`MANUAL_UPLOAD` to the call-origin enum, a `telephony_recording_source` enum, and source,
+filename, MIME type, byte length, checksum, uploader and notes columns to `call_recordings`. It adds
+composite tenant membership/user foreign keys, checks that a manual upload has its required
+provenance metadata and that a byte length is non-negative, then seeds the
+`telephony.recordings.upload` permission and its approved role mappings.
+
+Existing recordings receive the non-null `PROVIDER` default and existing provider references are not
+rewritten. No audio binary is stored in PostgreSQL. The application only marks an upload available
+after private object-storage metadata matches the requested content type/length and active consent;
+the database retains the auditable reference, not the object contents.
+
+Before a shared/staging/production run, take a recovery-point backup and apply the complete journal
+once with `pnpm db:migrate`. Do not edit the migration after it has been applied. If a deployed change
+needs correction, ship a reviewed forward migration or restore the recovery point; never delete
+call/recording/audit data or edit Drizzle migration metadata. PGlite migration integration validation
+covers the complete chain and the manual metadata constraints.
+
+## Phase 5 messaging migrations
+
+`0014_bouncy_pete_wisdom.sql` is the forward-only Phase 5 foundation. It creates tenant-owned
+messaging connections, templates, conversations, participants, messages, media, append-only status
+and assignment history, outbound outbox, opt-in and suppression tables. It also seeds the Phase 5
+permissions and role mappings. Composite tenant foreign keys, provider/idempotency uniqueness,
+active-conversation uniqueness and ordering indexes prevent cross-tenant references and duplicate
+durable records.
+
+`0015_slimy_lenny_balinger.sql` strengthens the generated foundation with tenant-aware queue, Team,
+membership and actor foreign keys. `0016_steady_may_parker.sql` adds the canonical request
+fingerprint used to reject conflicting reuse of an outbound idempotency key.
+
+Before a shared, staging or production execution, take a recovery-point backup and apply the journal
+once with `pnpm db:migrate`. Verify existing Branch, queue, Team, membership and user references
+before rollout. These migrations contain messaging, consent and audit evidence; rollback means
+restoring the pre-migration recovery point or shipping a reviewed forward compensating migration.
+Do not delete conversation/message history or edit an already-applied migration.
+
+## Post-Phase-5 architecture amendment
+
+**DATABASE MIGRATION: NONE.** The 2026-08-08 Unified Inbox/client-state amendment changes provider
+boundaries, backend validation, retry/status behavior, UI-state ownership and documentation only.
+It does not alter the Phase 5 table shape or the canonical journal through
+`0016_steady_may_parker.sql`. The existing generic channel enum remains a dormant extension boundary;
+it does not activate SMS, email, Instagram Direct or Facebook Messenger.

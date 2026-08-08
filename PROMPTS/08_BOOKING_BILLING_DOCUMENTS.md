@@ -3,12 +3,13 @@ You are working inside the existing Go Digital Automobile CRM repository.
 Read these before making changes:
 
 1. `Go_Digital_Automobile_CRM_10_on_10_Final_Technical_PRD_v4_0.docx`
-2. `AGENTS.md`
-3. `docs/implementation/PHASE_STATUS.md`
-4. `docs/implementation/DECISIONS.md`
-5. `docs/implementation/KNOWN_ISSUES.md`
-6. `docs/implementation/NEXT_PHASE_HANDOFF.md`
-7. Existing source code, migrations and tests related to this phase
+2. `DESIGN.md`
+3. `AGENTS.md`
+4. `docs/implementation/PHASE_STATUS.md`
+5. `docs/implementation/DECISIONS.md`
+6. `docs/implementation/KNOWN_ISSUES.md`
+7. `docs/implementation/NEXT_PHASE_HANDOFF.md`
+8. Existing source code, migrations and tests related to this phase
 
 Do not regenerate the entire project. Inspect the current implementation first and preserve working code and accepted architectural decisions.
 
@@ -25,6 +26,14 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 ---
 
 # PHASE 8 — BOOKING, BILLING, PAYMENTS, FINANCE AND DOCUMENTS
+
+## Client-state rules
+
+Zustand may coordinate workflow presentation, the current UI step and temporary selections. It must
+not own authoritative quotation, booking, payment, finance, insurance, document or approval state.
+Keep shareable state in the URL, isolated form state local, server data in API/TanStack Query and
+durable offline commands outside Zustand. Financial/customer data, documents and signed URLs must
+not be casually persisted; reset transient state on logout and every context switch.
 
 ## Objective
 

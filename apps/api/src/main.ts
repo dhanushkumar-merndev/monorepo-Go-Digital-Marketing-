@@ -10,6 +10,7 @@ import { API_ENVIRONMENT } from './config/api-config.module.js';
 async function bootstrap(): Promise<void> {
   const application = await NestFactory.create(AppModule, {
     bufferLogs: true,
+    rawBody: true,
   });
 
   configureApplication(application);

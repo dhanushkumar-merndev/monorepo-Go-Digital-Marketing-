@@ -4,11 +4,13 @@ Production foundation for the Go Digital Automobile CRM: a pnpm/Turborepo monore
 Next.js office dashboard, NestJS API, Expo Android/iOS application, shared contracts and design
 tokens, and a portable PostgreSQL/Redis/S3 infrastructure boundary.
 
-Phases 1-3 provide invitation-only authentication, rotating CRM sessions, tenant administration,
-and the lead-management foundation. Leads include public/manual capture, tenant-scoped contact
-deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation, web operations and
-an offline-aware salesperson mobile flow. Inventory, booking, delivery, registration and post-sale
-remain deferred to their approved phases.
+Phases 1-4 provide invitation-only authentication, rotating CRM sessions, tenant administration,
+the lead-management foundation, and provider-neutral calling. Leads include public/manual capture,
+tenant-scoped contact deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation,
+web operations and an offline-aware salesperson mobile flow. Calling adds canonical Lead/Contact call
+history, outcome requirements, idempotent provider webhooks, reconciliation and private,
+consent-aware recording references. Inventory, booking, delivery, registration and post-sale remain
+deferred to their approved phases.
 
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
@@ -102,6 +104,32 @@ When upgrading an existing Phase 3 database, review the forward-only recovery mi
 `0009_mean_domino.sql` through `0011_yielding_barracuda.sql` before `pnpm db:migrate`. After staging
 apply, rename `RECOVERY_DEFAULT` Departments and confirm team memberships inferred from explicit
 selected team scopes. See [Database migration workflow](docs/implementation/DATABASE_MIGRATIONS.md).
+
+Phase 4 adds only the HMAC-signed development telephony adapter. Its seed connection key is
+`seed-alpha-development-telephony`; it is not a live calling provider and does not create real calls
+or recordings. Configure backend-only `TELEPHONY_DEVELOPMENT_WEBHOOK_SECRET` (32+ characters),
+`TELEPHONY_RECORDING_URL_TTL_SECONDS` (30-900, default 300), and
+`TELEPHONY_MANUAL_RECORDING_MAX_BYTES` (1 MiB-100 MiB, default 25 MiB), and
+`TELEPHONY_WEBHOOK_RAW_RETENTION_HOURS` (1-720, default 168) from `.env.example`. Manual recordings
+are private, consent-gated uploads with explicit provider/manual provenance; their binary is never
+stored in PostgreSQL. Do not add Android call-log, SMS, contacts or accessibility permissions. `tel:`
+fallback opens the native dialer only; it is not duration, answer-state or recording evidence.
+
+Phase 5 adds a provider-neutral unified inbox and an official WhatsApp Cloud API boundary. The Alpha
+development seed exposes the signed development connection key
+`development-messaging-20000000-0000-4000-8000-000000000001`; it never connects to personal
+WhatsApp, WhatsApp Web, or QR automation. Configure the backend-only `MESSAGING_*` values in
+`.env.example`. A 32-byte base64 `MESSAGING_CREDENTIAL_ENCRYPTION_KEY` is mandatory before saving
+live Cloud API credentials; the API stores only AES-256-GCM ciphertext and metadata. Provider
+activation still requires an approved tenant WABA, phone-number ID, token, app secret, verify token,
+template review, consent/retention policy, and webhook URL. Media objects remain private and use
+short-lived signed URLs plus the `MESSAGING_MEDIA_RETENTION_DAYS` retention placeholder. Phase 5
+enables official WhatsApp only; SMS/email and Instagram Direct/Facebook Messenger are deferred and
+must extend the same canonical Unified Inbox rather than create separate inbox products. Web and
+mobile use separate, non-persisted Zustand inbox stores for transient composer/panel workflow only;
+API/TanStack Query remains server truth and the inbox stores reset when authentication or tenant
+context changes. Mobile text/template sends use the tenant-bound SQLite outbox when offline; media
+upload requires connectivity.
 
 ## Repository layout
 

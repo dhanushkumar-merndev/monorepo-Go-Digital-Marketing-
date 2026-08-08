@@ -165,6 +165,9 @@ importers:
       expo-dev-client:
         specifier: 57.0.10
         version: 57.0.10(expo@57.0.11)(react-native@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/jest-preset@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))
+      expo-document-picker:
+        specifier: ~57.0.1
+        version: 57.0.1(expo@57.0.11)
       expo-linking:
         specifier: 57.0.5
         version: 57.0.5(expo@57.0.11)(react-native@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/jest-preset@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2)
@@ -337,6 +340,9 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+      zustand:
+        specifier: 5.0.14
+        version: 5.0.14(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
       '@gdm/eslint-config':
         specifier: workspace:*
@@ -6170,6 +6176,11 @@ packages:
       expo: '*'
       react-native: '*'
 
+  expo-document-picker@57.0.1:
+    resolution: {integrity: sha512-qBwM5oxDZ3I9kwFD3pUE1oK/WNv9artoEKO6UpqhQgNRr0XA1ALRVWYjkF4+ge9lUNDRehjTm/jenINkzqg84g==}
+    peerDependencies:
+      expo: '*'
+
   expo-file-system@57.0.2:
     resolution: {integrity: sha512-bPgzpaOJ3NWHZxV++Osj/1QoFzFe/QOo1jBF4EODJdiZgrrxyi2dv+7PLhKuut5QqPBuihUOITRh3s5jhRtA5A==}
     peerDependencies:
@@ -11832,7 +11843,7 @@ snapshots:
 
   '@expo/config@57.0.6(supports-color@10.2.2)(typescript@6.0.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.6(supports-color@10.2.2)(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.7(supports-color@10.2.2)(typescript@6.0.3)
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
       '@expo/require-utils': 57.0.4(supports-color@10.2.2)(typescript@6.0.3)
@@ -11907,7 +11918,7 @@ snapshots:
 
   '@expo/inline-modules@0.1.4(supports-color@10.2.2)(typescript@6.0.3)':
     dependencies:
-      '@expo/config-plugins': 57.0.6(supports-color@10.2.2)(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.7(supports-color@10.2.2)(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -12034,7 +12045,7 @@ snapshots:
   '@expo/prebuild-config@57.0.10(supports-color@10.2.2)(typescript@6.0.3)':
     dependencies:
       '@expo/config': 57.0.6(supports-color@10.2.2)(typescript@6.0.3)
-      '@expo/config-plugins': 57.0.6(supports-color@10.2.2)(typescript@6.0.3)
+      '@expo/config-plugins': 57.0.7(supports-color@10.2.2)(typescript@6.0.3)
       '@expo/config-types': 57.0.2
       '@expo/image-utils': 0.11.4(supports-color@10.2.2)(typescript@6.0.3)
       '@expo/json-file': 11.0.1
@@ -13236,7 +13247,7 @@ snapshots:
   '@react-native/babel-plugin-codegen@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
       '@babel/traverse': 7.29.8(supports-color@10.2.2)
-      '@react-native/codegen': 0.86.2(@babel/core@7.29.7(supports-color@10.2.2))
+      '@react-native/codegen': 0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color
@@ -13279,7 +13290,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@react-native/codegen@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))':
+  '@react-native/codegen@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
       '@babel/core': 7.29.7(supports-color@10.2.2)
       '@babel/parser': 7.29.8
@@ -13288,6 +13299,8 @@ snapshots:
       nullthrows: 1.1.1
       tinyglobby: 0.2.17
       yargs: 17.7.3
+    transitivePeerDependencies:
+      - supports-color
 
   '@react-native/community-cli-plugin@0.86.2(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
@@ -16071,6 +16084,10 @@ snapshots:
       expo-dev-menu-interface: 57.0.0(expo@57.0.11)
       react-native: 0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/jest-preset@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2)
 
+  expo-document-picker@57.0.1(expo@57.0.11):
+    dependencies:
+      expo: 57.0.11(2569855dcb5632b26d1b8dd7a5c9fd70)
+
   expo-file-system@57.0.2(expo@57.0.11)(react-native@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/jest-preset@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2)):
     dependencies:
       expo: 57.0.11(2569855dcb5632b26d1b8dd7a5c9fd70)
@@ -18728,7 +18745,7 @@ snapshots:
   react-native@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(@react-native/jest-preset@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.8)(supports-color@10.2.2))(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.18)(react@19.2.8)(supports-color@10.2.2):
     dependencies:
       '@react-native/assets-registry': 0.86.2
-      '@react-native/codegen': 0.86.2(@babel/core@7.29.7(supports-color@10.2.2))
+      '@react-native/codegen': 0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)
       '@react-native/community-cli-plugin': 0.86.2(@react-native/metro-config@0.86.2(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(supports-color@10.2.2)
       '@react-native/gradle-plugin': 0.86.2
       '@react-native/js-polyfills': 0.86.2

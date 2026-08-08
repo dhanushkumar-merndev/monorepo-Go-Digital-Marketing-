@@ -68,10 +68,36 @@ export const PERMISSION_CODES = [
   'organization.departments.manage',
   'organization.hierarchy.read',
   'organization.hierarchy.manage',
+  'telephony.calls.read',
+  'telephony.calls.start',
+  'telephony.outcomes.manage',
+  'telephony.outcomes.override',
+  'telephony.recordings.read',
+  'telephony.recordings.upload',
+  'telephony.connections.manage',
+  'telephony.reconciliation.manage',
+  'telephony.health.read',
+  'messaging.conversations.read',
+  'messaging.messages.send',
+  'messaging.notes.create',
+  'messaging.assignments.manage',
+  'messaging.templates.read',
+  'messaging.templates.manage',
+  'messaging.connections.manage',
+  'messaging.failures.manage',
+  'messaging.media.read',
+  'messaging.media.upload',
 ] as const;
 
+// Retained only so Drizzle recognizes the pre-Phase-4 PostgreSQL enum while the
+// migration converts permissions.code to varchar. New permission codes must not
+// be added to this legacy enum.
+const legacyPermissionCodes = PERMISSION_CODES.filter(
+  (code) => !code.startsWith('telephony.') && !code.startsWith('messaging.'),
+) as unknown as [string, ...string[]];
+
 export const canonicalRoleCodeEnum = pgEnum('canonical_role_code', CANONICAL_ROLE_CODES);
-export const permissionCodeEnum = pgEnum('permission_code', PERMISSION_CODES);
+export const legacyPermissionCodeEnum = pgEnum('permission_code', legacyPermissionCodes);
 export const membershipContextTypeEnum = pgEnum('membership_context_type', ['AGENCY', 'CLIENT']);
 export const membershipStatusEnum = pgEnum('membership_status', [
   'INVITED',
@@ -113,7 +139,9 @@ export const permissions = pgTable(
   'permissions',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    code: permissionCodeEnum('code').notNull(),
+    // Permission codes evolve by phase. Keep TypeScript's canonical union while avoiding
+    // PostgreSQL enum transaction restrictions during a rolling migration.
+    code: varchar('code', { length: 100 }).$type<(typeof PERMISSION_CODES)[number]>().notNull(),
     description: text('description').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
   },

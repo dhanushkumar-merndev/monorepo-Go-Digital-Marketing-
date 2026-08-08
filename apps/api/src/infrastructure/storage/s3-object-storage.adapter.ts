@@ -146,6 +146,7 @@ export class S3ObjectStorageAdapter implements ObjectStorage, OnApplicationShutd
       );
 
       return {
+        ...(result.ChecksumSHA256 === undefined ? {} : { checksumSha256: result.ChecksumSHA256 }),
         ...(result.ContentLength === undefined ? {} : { contentLength: result.ContentLength }),
         ...(result.ContentType === undefined ? {} : { contentType: result.ContentType }),
         ...(result.ETag === undefined ? {} : { etag: result.ETag }),

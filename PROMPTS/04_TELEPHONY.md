@@ -72,3 +72,24 @@ Click to call, provider call action where supported, post-call outcome, callback
 - Completed call creates an outcome requirement.
 - Reconciliation restores missed events.
 - Mobile functions without restricted permissions.
+
+## Approved 2026-08-08 amendment — manual recording upload
+
+Implement a manual recording attachment only through the canonical Phase 3 Lead/Contact and existing
+Phase 4 Call/Recording activity model. A user must choose an already authorized Lead/Contact, provide
+an active recording-consent record, and create an auditable manual call when no applicable Call exists.
+Use private S3-compatible object storage with a short-lived signed upload URL; do not store audio
+binary in PostgreSQL or expose storage credentials.
+
+Use explicit recording provenance: `PROVIDER` for provider material and `MANUAL_UPLOAD` for a manually
+supplied recording. Manual metadata must include original filename, MIME type, byte length, uploader,
+timestamps and optional checksum/notes. Validate an allowlisted audio MIME type, configured size limit,
+safe filename and post-upload object metadata before the recording becomes available. Record activity,
+audit and outbox events. Upload retries must be idempotent and must not duplicate call, recording,
+event or audit history. Upload, listen and download must each enforce tenant plus Lead scope; listening
+and downloading remain separate from upload permission.
+
+Do not implement SIM/mobile capture, call-log/SMS/contacts/accessibility permissions, browser-only
+"recording proof", public object access, AI transcript/summary, Previous Voice Quick Note, AI
+auto-calling, or customer custom-profile fields in this phase. A real provider still requires approved
+credentials, signature/retry documentation and recording/privacy/legal validation.

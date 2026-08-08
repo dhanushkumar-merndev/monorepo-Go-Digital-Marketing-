@@ -21,6 +21,7 @@ export interface PresignDownloadRequest {
 }
 
 export interface StoredObjectMetadata {
+  checksumSha256?: string;
   contentLength?: number;
   contentType?: string;
   etag?: string;

@@ -3,12 +3,13 @@ You are working inside the existing Go Digital Automobile CRM repository.
 Read these before making changes:
 
 1. `Go_Digital_Automobile_CRM_10_on_10_Final_Technical_PRD_v4_0.docx`
-2. `AGENTS.md`
-3. `docs/implementation/PHASE_STATUS.md`
-4. `docs/implementation/DECISIONS.md`
-5. `docs/implementation/KNOWN_ISSUES.md`
-6. `docs/implementation/NEXT_PHASE_HANDOFF.md`
-7. Existing source code, migrations and tests related to this phase
+2. `DESIGN.md`
+3. `AGENTS.md`
+4. `docs/implementation/PHASE_STATUS.md`
+5. `docs/implementation/DECISIONS.md`
+6. `docs/implementation/KNOWN_ISSUES.md`
+7. `docs/implementation/NEXT_PHASE_HANDOFF.md`
+8. Existing source code, migrations and tests related to this phase
 
 Do not regenerate the entire project. Inspect the current implementation first and preserve working code and accepted architectural decisions.
 
@@ -25,6 +26,21 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 ---
 
 # PHASE 13 — EXTERNAL INTEGRATIONS, AI, SOCIAL AND CLIENT ONBOARDING
+
+## Unified Inbox and client-state rules
+
+Instagram Direct Messages and Facebook Messenger, when approved, must extend the Phase 5
+channel-neutral Conversation/Message model, Contact/Lead context, Conversation Owner, timeline,
+authorization and Unified Inbox UI. Do not build separate channel inbox products. Keep
+provider-specific OAuth, webhook, media and policy logic behind provider adapters; SMS and email
+remain separate future provider integrations using the same canonical inbox foundation where
+appropriate. Official provider APIs are mandatory.
+
+Zustand may coordinate transient integration/onboarding wizard progress, local selection and panel
+state. Provider connections, OAuth state, sync status, failures and onboarding completion remain
+server state. Never place OAuth codes, access/refresh tokens, provider secrets, webhook secrets,
+customer messages or signed URLs in Zustand or persisted browser/mobile storage. Reset transient
+stores on logout and every account, membership, tenant or support-context change.
 
 ## Objective
 

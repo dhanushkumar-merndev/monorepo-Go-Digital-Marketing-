@@ -3,12 +3,13 @@ You are working inside the existing Go Digital Automobile CRM repository.
 Read these before making changes:
 
 1. `Go_Digital_Automobile_CRM_10_on_10_Final_Technical_PRD_v4_0.docx`
-2. `AGENTS.md`
-3. `docs/implementation/PHASE_STATUS.md`
-4. `docs/implementation/DECISIONS.md`
-5. `docs/implementation/KNOWN_ISSUES.md`
-6. `docs/implementation/NEXT_PHASE_HANDOFF.md`
-7. Existing source code, migrations and tests related to this phase
+2. `DESIGN.md`
+3. `AGENTS.md`
+4. `docs/implementation/PHASE_STATUS.md`
+5. `docs/implementation/DECISIONS.md`
+6. `docs/implementation/KNOWN_ISSUES.md`
+7. `docs/implementation/NEXT_PHASE_HANDOFF.md`
+8. Existing source code, migrations and tests related to this phase
 
 Do not regenerate the entire project. Inspect the current implementation first and preserve working code and accepted architectural decisions.
 
@@ -25,6 +26,14 @@ Implement only the phase below. At completion, run the mandatory checks and upda
 ---
 
 # PHASE 7 — VEHICLE INVENTORY AND ALLOCATION
+
+## Client-state rules
+
+Zustand may coordinate non-shareable table filters, selection, layout and temporary inventory UI
+workflow. API/TanStack Query remains authoritative for stock, VIN, physical units, reservations,
+allocations and concurrency/version state. Prefer URL state for shareable filters, React state for
+isolated controls, no sensitive persistence by default, and reset transient state on every
+user/tenant/support-context change.
 
 ## Objective
 
