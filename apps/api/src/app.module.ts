@@ -18,6 +18,7 @@ import { MessagingModule } from './messaging/messaging.module.js';
 import { TestRidesModule } from './test-rides/test-rides.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { CommercialModule } from './commercial/commercial.module.js';
+import { DeliveryModule } from './delivery/delivery.module.js';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { CommercialModule } from './commercial/commercial.module.js';
     TestRidesModule,
     InventoryModule,
     CommercialModule,
+    DeliveryModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

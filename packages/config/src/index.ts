@@ -22,3 +22,8 @@ export {
   testRideEnvironmentSchema,
   type TestRideEnvironment,
 } from './test-rides.js';
+export {
+  deliveryEnvironmentSchema,
+  parseDeliveryEnvironment,
+  type DeliveryEnvironment,
+} from './delivery.js';

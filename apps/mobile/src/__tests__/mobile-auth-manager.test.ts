@@ -4,6 +4,7 @@ import type { GoogleIdentityClient } from '../auth/google-identity-client';
 import type { MobileSession } from '../auth/auth-types';
 import { useAppStore } from '../store/app-store';
 import { initialAuthState, setAuthState, useAuthStore } from '../store/auth-store';
+import { useDeliveryUiStore } from '../store/delivery-ui.store';
 import { useMobileInboxUiStore } from '../store/inbox-ui.store';
 import { useTestRidesUiStore } from '../store/test-rides-ui.store';
 import {
@@ -228,6 +229,7 @@ describe('MobileAuthManager', () => {
     useMobileInboxUiStore.getState().prepareComposer('tenant-a-conversation');
     useMobileInboxUiStore.getState().setDraftText('Tenant A draft');
     useTestRidesUiStore.getState().setDisclosureRideId('tenant-a-ride');
+    useDeliveryUiStore.getState().setDisclosureJobId('tenant-a-delivery');
     queryCache.clear.mockClear();
     stopActiveTestRideTracking.mockClear();
 
@@ -260,6 +262,7 @@ describe('MobileAuthManager', () => {
     expect(useAppStore.getState().previewState).toBe('loading');
     expect(useMobileInboxUiStore.getState().draftText).toBe('');
     expect(useTestRidesUiStore.getState().disclosureRideId).toBeNull();
+    expect(useDeliveryUiStore.getState().disclosureJobId).toBeNull();
     expect(useAuthStore.getState().principal?.clientOrganizationId).toBe('client-2');
   });
 
@@ -365,6 +368,8 @@ describe('MobileAuthManager', () => {
     useMobileInboxUiStore.getState().setDraftText('Customer draft must not survive logout.');
     useTestRidesUiStore.getState().setDisclosureRideId('ride-before-logout');
     useTestRidesUiStore.getState().setFilter('UPCOMING');
+    useDeliveryUiStore.getState().setDisclosureJobId('delivery-before-logout');
+    useDeliveryUiStore.getState().setFilter('UPCOMING');
     useAppStore.getState().setConnectivity('online');
     useAppStore.getState().setNotificationPermission('granted');
     useAppStore.getState().setPreviewState('success');
@@ -382,6 +387,10 @@ describe('MobileAuthManager', () => {
     });
     expect(useTestRidesUiStore.getState()).toMatchObject({
       disclosureRideId: null,
+      filter: 'TODAY',
+    });
+    expect(useDeliveryUiStore.getState()).toMatchObject({
+      disclosureJobId: null,
       filter: 'TODAY',
     });
     expect(useAppStore.getState()).toMatchObject({

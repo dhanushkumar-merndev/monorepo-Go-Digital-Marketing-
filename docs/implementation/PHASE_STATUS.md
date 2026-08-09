@@ -1,86 +1,92 @@
 # Phase Status
 
-- **Current phase:** Phase 8 - Booking, Billing, Payments, Finance and Documents.
+- **Current phase:** Phase 9 - Delivery Operations.
 - **Current status:** **Implementation and strict local completion audit passed.** All migrations
-  apply from zero, all affected tests/builds pass, and no Critical/High Phase 8 issue is open.
+  apply from zero, affected tests/builds pass, and no Critical/High Phase 9 source issue is open.
 - **Completed phases:** Phase 0 foundation, Phase 1 authentication/tenancy, Phase 2 organization,
-  Phase 3 Lead CRM, Phase 4 telephony, Phase 6 test rides, Phase 7 inventory and Phase 8 commercial
-  workflows. Phase 5 automated acceptance remains green; live WhatsApp activation remains gated by
-  its documented provider-success/process-crash issue.
-- **Next phase:** Phase 9 - Delivery and RC Operations is not started.
+  Phase 3 Lead CRM, Phase 4 telephony, Phase 6 test rides, Phase 7 inventory, Phase 8 commercial and
+  Phase 9 delivery workflows. Phase 5 automated acceptance remains green; live WhatsApp activation
+  remains gated by its documented external reliability issue.
+- **Next phase:** Phase 10 - RC and Customer Vehicle Records is not started.
 - **Last updated:** 2026-08-09
 
-## Phase 8 acceptance-criterion checklist
+## Phase 9 acceptance-criterion checklist
 
-- [x] Quotation price components and versions are immutable; discount/exchange reductions use
-      integer minor currency units and configurable tenant thresholds.
-- [x] Above-threshold discounts create a separately permissioned Pending approval. Only the exact
-      current Approved/Not Required quotation version can create one booking.
-- [x] Bookings consume canonical tenant/branch Lead, Contact and quotation identities, retain the
-      exact price snapshot and link an exact active Phase 7 allocation without rewriting history.
-- [x] Payment evidence is append-only. Pending proof is not paid, verification is separately
-      permissioned, verified totals cannot exceed payable, and corrections append a linked reversal.
-- [x] Full, Partial, Finance, Installment and Mixed payment types remain separate from finance,
-      insurance, invoice, exchange and Lead lifecycle records.
-- [x] Finance application, approval/rejection and disbursement are separate versioned milestones
-      with provider references and append-only events.
-- [x] Booking cancellation retains reason, notification decision and a required refund/settlement
-      note whenever verified payment exists.
-- [x] Commercial documents use private signed S3-compatible upload/download URLs, type/extension,
-      MIME, size, checksum and metadata checks, version/status evidence and audited downloads.
-- [x] Document approval fails closed unless the scanner reports `CLEAN`; upload alone never approves
-      proof or changes payment state.
-- [x] Readiness derives from canonical booking, allocation, verified payment threshold, finance,
-      invoice, insurance, customer confirmation and configured approved document types and returns
-      explicit blocking items.
-- [x] Every route requires active tenant/module/permission context; backend resource lookup enforces
-      tenant and branch scope and returns Not Found for inaccessible objects.
-- [x] Mutations use idempotency receipts and commit domain outbox plus immutable audit evidence in
-      the same PostgreSQL transaction as business state.
-- [x] `/bookings` and `/bookings/[bookingId]` provide query-backed loading, empty, error and success
-      states for booking search/detail, price breakdown, discount decision, quotation-to-booking,
-      payment verification, finance, insurance, invoice, exchange, documents and readiness.
+- [x] One tenant-owned delivery operation consumes a confirmed Phase 8 booking, its canonical
+      customer/Lead, active physical allocation and vehicle; opaque client booking or VIN assertions
+      are not accepted.
+- [x] Delivery, checklist/accessory/PDI and proof states are separate from the Lead pipeline and use
+      the required Vehicle Allocated through Delivered/Delayed/Failed/Rescheduled/Cancelled states.
+- [x] Required preparation checklist items block Ready and Start. Start performs a fresh canonical
+      Phase 8 readiness evaluation and fails closed without activating location when readiness is
+      blocked.
+- [x] Assignment is limited to active branch-scoped `DELIVERY_EXECUTIVE` memberships. Mobile exposes
+      only assigned work and the customer/vehicle/address fields needed to execute it.
+- [x] Active location begins only after explicit disclosure and foreground permission, has a visible
+      notification and server timeout, and stops locally plus server-side on completion, delay,
+      failure, reschedule, cancellation or session/account cleanup.
+- [x] Location samples are temporary, tenant/job/session bound, idempotent, stale-aware and excluded
+      from completed/off-duty manager history.
+- [x] Configured proof is mandatory for completion. Received-by proof can be committed atomically
+      with offline completion; photo/signature uploads use private signed URLs, checksum/metadata
+      validation, fail-closed scanning and audited short-lived downloads.
+- [x] Delay, failure, cancellation, reassignment, reschedule requests/decisions and proof reviews
+      require reasons and append immutable workflow/audit evidence.
+- [x] Offline terminal mobile commands stop location immediately, persist in tenant-bound SQLite and
+      replay in order with the same stable idempotency key, including lost-response retries.
+- [x] Completion atomically marks delivery, inventory allocation and unit Delivered. Permanent RC is
+      neither queried nor required, so registration can continue independently in Phase 10.
+- [x] Every route requires active tenant, `DELIVERY_RC`, permission and object scope; cross-tenant job
+      reads and private proof downloads return Not Found and are integration-tested.
+- [x] `/deliveries`, `/deliveries/[jobId]` and mobile assigned/detail routes include permission-aware
+      loading, empty, error, disabled and success states, active/stale monitoring, exception queues,
+      proof review and audit timeline.
 
 ## External and deferred release checks
 
-- [ ] No production malware-scanner provider was supplied. The default adapter is intentionally
-      fail-closed (`PENDING_EXTERNAL_SCAN`), so document approval cannot be activated until a
-      reviewed adapter is configured and tested.
+- [ ] No production delivery-proof malware scanner was supplied. Photo/signature proof remains
+      pending and cannot be verified unless a reviewed adapter reports `CLEAN`.
+- [ ] No delivery OTP provider was supplied. The adapter fails closed with a visible 503; default
+      tenant proof configuration uses received-by evidence so this does not bypass a requirement.
+- [ ] Physical-device foreground service, notification, location-stop, offline-replay and private
+      proof upload UX still require signed-device validation before release.
 - [ ] Hosted Cloudflare/Render/Supabase/Upstash/Tigris smoke, Linux OpenNext packaging and browser
-      visual regression remain external release checks. Ordinary Next.js and Expo builds pass.
-- [ ] Phase 8 migrations were validated from zero in PGlite but were not applied to a shared,
-      staging or production database and the Phase 8 seed was not executed against one.
-- [ ] Phase 5 live WhatsApp activation remains blocked by its documented Medium reliability issue;
-      it does not affect Phase 8 internal commercial correctness.
+      visual regression remain Phase 14 external checks. Local Next and Expo production builds pass.
+- [ ] Phase 9 migrations and seed were validated locally but not applied to a shared, staging or
+      production database.
 
 ## Last verified results (2026-08-09)
 
-| Command                          | Result  | Actual evidence                                                                                                         |
-| -------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | Pass    | Workspace was already up to date.                                                                                       |
-| `pnpm format:check`              | Pass    | All repository files matched Prettier before the final focused regression; modified files were formatted again.         |
-| `pnpm lint`                      | Pass    | 8 applicable workspace lint tasks passed with zero warnings; final API/web/database lint also passed.                   |
-| `pnpm type-check`                | Pass    | 13/13 strict TypeScript tasks passed; final API/web/database checks also passed.                                        |
-| `pnpm test`                      | Pass    | 13/13 tasks: API 61 unit + 42 integration, mobile 82, web 69, contracts 35 and all package tests passed.                |
-| `pnpm test:integration`          | Pass    | API 42/42 and complete database migration suite 18/18 passed in parallel after raising the setup timeout to 30 seconds. |
-| Focused Phase 8 regression       | Pass    | Commercial service 4/4, web 69/69 and migration 18/18 passed after the final audit changes.                             |
-| `pnpm db:check`                  | Pass    | Drizzle accepted the Phase 8 journal.                                                                                   |
-| `pnpm build`                     | Pass    | API/shared packages, 22 Next routes including booking list/detail, and Android/iOS Expo exports passed.                 |
-| `pnpm db:migrate`                | Not run | No shared/external database mutation was authorized for this phase checkpoint.                                          |
+| Command                          | Result  | Actual evidence                                                                                         |
+| -------------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass    | All 11 workspace projects were already up to date.                                                      |
+| `pnpm format:check`              | Pass    | Repository matched Prettier after Phase 9 docs and source formatting.                                   |
+| `pnpm lint`                      | Pass    | All applicable workspace lint tasks passed with zero warnings.                                          |
+| `pnpm type-check`                | Pass    | 13/13 strict TypeScript tasks passed.                                                                   |
+| `pnpm test`                      | Pass    | 13/13 tasks; API 61 unit + 46 integration, mobile 86, web 70, contracts 41 and package tests passed.    |
+| `pnpm test:integration`          | Pass    | API 46/46 and complete database migration suite 19/19 passed.                                           |
+| Focused Phase 9 regression       | Pass    | Delivery API 4/4, mobile 86/86, web 70/70, contracts 41/41 and migration 19/19 passed.                  |
+| `pnpm db:check`                  | Pass    | Drizzle accepted the 29-entry migration journal (`0000` through `0028`).                                |
+| `pnpm build`                     | Pass    | 8/8 build tasks; API/shared packages, 24 Next routes and Android/iOS Expo production exports completed. |
+| `pnpm db:migrate`                | Not run | No shared/external database mutation was authorized for this checkpoint.                                |
+
+The Windows host temporarily returned `uv_os_get_passwd ENOMEM` from Node despite 24 GB free. Tests
+used a local process-only `geteuid` shim to bypass that host lookup; the shim was removed before the
+checkpoint and does not alter product runtime behavior.
 
 ## Database and environment changes
 
-- `0024_brave_white_queen.sql` creates the commercial domain, 18 permissions, tenant-safe foreign
-  keys, allocation compatibility link, append-only triggers and private document evidence.
-- `0025_aberrant_shen.sql` adds the explicit finance disbursement timestamp.
-- `0026_goofy_changeling.sql` prevents duplicate bookings from one quotation version.
-- `.env.example` documents reuse of private S3/Tigris storage and the fail-closed scanner boundary;
-  no payment-provider secret or browser/mobile financial secret was added.
-- Alpha seed enables `BOOKING_BILLING`, configures explicit commercial thresholds and adds one
-  deterministic partial-payment finance booking. It is development-only data.
+- `0027_lush_silk_fever.sql` creates delivery settings/jobs, append-only status/checklist evidence,
+  private proof/download evidence, OTP challenges, active-location sessions/samples, command
+  receipts, 12 permissions and role mappings.
+- `0028_sweet_tyger_tiger.sql` enforces exact tenant/session/job identity for location samples.
+- `DELIVERY_OTP_PEPPER` is backend-only, requires an independent 32+ character hosted value and is
+  never exposed through `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*`.
+- Alpha development seed enables `DELIVERY_RC`, adds delivery settings and one assigned preparation
+  job backed by a separate confirmed allocated vehicle.
 
 ## Final gate
 
-`PHASE 8 COMPLETE - MANDATORY LOCAL TESTS, MIGRATION VALIDATION AND BUILDS PASSED`
+`PHASE 9 COMPLETE - MANDATORY LOCAL TESTS, MIGRATION VALIDATION AND BUILDS PASSED`
 
-`PHASE 9 NOT STARTED`
+`PHASE 10 NOT STARTED`

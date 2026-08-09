@@ -1,9 +1,18 @@
 # Known Issues
 
-The 2026-08-09 Phase 8 implementation/audit has no known Critical/High or source-level acceptance
+The 2026-08-09 Phase 9 implementation/audit has no known Critical/High or source-level acceptance
 blocker. Final local command and migration evidence is in `PHASE_STATUS.md`. Physical-device,
 provider, retention-operations and hosted-release items below must not be represented as locally
 verified.
+
+## Phase 9 delivery release issues
+
+| Open issue                                                     | Severity | Impact                                                                                                                                                  | Reproduction or evidence                                                                                     | Workaround                                                                                                                                                   | Owning phase               | Resolution status               |
+| -------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------- |
+| No approved malware scanner for photo/signature delivery proof | Medium   | Private upload completes, but proof remains pending and cannot satisfy a configured photo/signature requirement                                         | `FailClosedDeliveryProofScanner` returns `UNAVAILABLE`; `reviewProof` permits Verified only after `CLEAN`    | Keep received-by as the development requirement; bind and test a tenant-safe scanner/quarantine adapter before enabling photo/signature as required proof    | Phase 9 / storage security | Open, intentionally fail-closed |
+| No configured delivery OTP sender                              | Medium   | Tenants cannot use OTP proof; request fails visibly with 503                                                                                            | `FailClosedDeliveryOtpSender` throws `DELIVERY_OTP_PROVIDER_UNAVAILABLE`                                     | Keep OTP out of required proof settings until Phase 13 binds a reviewed provider; never expose `DELIVERY_OTP_PEPPER`                                         | Phase 9 / Phase 13         | Open external integration       |
+| Physical-device active delivery validation has not run         | Medium   | Android foreground notification, actual permission behavior, background samples, immediate terminal stop and lost-response replay are not device-proven | Jest validates SQLite replay and Expo production exports compile, but no signed device/emulator was supplied | Run the Phase 14 signed-device script with permission deny/allow, app background/kill, offline complete, account switch and timeout cases                    | Phase 9 / Phase 14         | Open external validation        |
+| Phase 9 migrations and seed have not run on a shared database  | Medium   | PGlite proves the 29-entry chain, but Supabase backup, execution permissions and operational retention remain unverified                                | `pnpm db:migrate` is Not run; local migration integration is 19/19                                           | Take a staging recovery point, apply once through `0028`, verify 12 delivery permissions/composite identities/triggers, then seed only a disposable database | Phase 9 release validation | Open external validation        |
 
 ## Phase 8 commercial release issues
 

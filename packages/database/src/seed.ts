@@ -26,6 +26,10 @@ import {
   commercialSettings,
   financeCaseEvents,
   financeCases,
+  deliveryChecklistItems,
+  deliveryJobs,
+  deliverySettings,
+  deliveryStatusEvents,
   paymentEntries,
   paymentVerificationEvents,
   quotationPriceComponents,
@@ -34,6 +38,7 @@ import {
   leadSettings,
   leadOpportunities,
   inventoryBrands,
+  inventoryAllocations,
   inventoryColours,
   inventoryModels,
   inventoryUnitStatusHistory,
@@ -104,6 +109,11 @@ const ALPHA_COMMERCIAL_PAYMENT_ID = '74000000-0000-4000-8000-000000000001';
 const ALPHA_COMMERCIAL_PAYMENT_EVENT_ID = '75000000-0000-4000-8000-000000000001';
 const ALPHA_COMMERCIAL_FINANCE_ID = '76000000-0000-4000-8000-000000000001';
 const ALPHA_COMMERCIAL_FINANCE_EVENT_ID = '77000000-0000-4000-8000-000000000001';
+const ALPHA_DELIVERY_INVENTORY_UNIT_ID = '78000000-0000-4000-8000-000000000001';
+const ALPHA_DELIVERY_INVENTORY_HISTORY_ID = '78000000-0000-4000-8000-000000000002';
+const ALPHA_DELIVERY_ALLOCATION_ID = '79000000-0000-4000-8000-000000000001';
+const ALPHA_DELIVERY_JOB_ID = '7a000000-0000-4000-8000-000000000001';
+const ALPHA_DELIVERY_EVENT_ID = '7b000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -306,7 +316,40 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'commercial.documents.verify': 'Approve or reject uploaded booking documents with reason.',
   'commercial.readiness.read': 'Evaluate the server-authoritative delivery-readiness checklist.',
   'commercial.settings.manage': 'Manage versioned commercial thresholds and readiness policy.',
+  'delivery.jobs.read': 'Read scoped delivery jobs and customer-minimized execution details.',
+  'delivery.jobs.manage': 'Create, prepare and schedule tenant-scoped delivery jobs.',
+  'delivery.jobs.assign': 'Assign an active eligible Delivery Executive within branch scope.',
+  'delivery.jobs.execute': 'Execute only an assigned delivery and record reasoned exceptions.',
+  'delivery.jobs.cancel': 'Cancel a delivery with a mandatory reason and audit evidence.',
+  'delivery.checklists.manage':
+    'Record PDI, accessory and handover preparation checklist evidence.',
+  'delivery.proofs.upload': 'Capture configured private delivery proof for an assigned job.',
+  'delivery.proofs.review': 'Review and access private delivery proof with an audited purpose.',
+  'delivery.location.write': 'Submit location only while an assigned delivery is active.',
+  'delivery.active_map.read': 'Monitor active delivery locations with stale-state indication.',
+  'delivery.reschedules.approve': 'Approve or reject reasoned delivery reschedule requests.',
+  'delivery.settings.manage': 'Manage delivery checklist, proof and location policy.',
 };
+
+const deliveryManagerPermissions = [
+  'delivery.jobs.read',
+  'delivery.jobs.manage',
+  'delivery.jobs.assign',
+  'delivery.jobs.cancel',
+  'delivery.checklists.manage',
+  'delivery.proofs.upload',
+  'delivery.proofs.review',
+  'delivery.active_map.read',
+  'delivery.reschedules.approve',
+  'delivery.settings.manage',
+] as const satisfies readonly PermissionCode[];
+const deliveryExecutivePermissions = [
+  'delivery.jobs.read',
+  'delivery.jobs.execute',
+  'delivery.checklists.manage',
+  'delivery.proofs.upload',
+  'delivery.location.write',
+] as const satisfies readonly PermissionCode[];
 
 const commercialReadPermissions = [
   'commercial.bookings.read',
@@ -492,6 +535,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
+    ...deliveryManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -515,6 +559,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
+    ...deliveryManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -531,6 +576,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
+    ...deliveryManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -545,6 +591,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideManagerPermissions,
     ...inventoryReadPermissions,
     ...commercialManagerPermissions,
+    ...deliveryManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -586,6 +633,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...commercialReadPermissions,
+    ...deliveryExecutivePermissions,
   ],
   RC_REGISTRATION_EXECUTIVE: [
     ...accountPermissions,
@@ -603,6 +651,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideManagerPermissions,
     ...inventoryReadPermissions,
     ...commercialManagerPermissions,
+    ...deliveryManagerPermissions,
   ],
 };
 
@@ -763,7 +812,7 @@ const seedUsers: readonly SeedUser[] = [
     branchScopeMode: 'SELECTED',
     teamScopeMode: 'NONE',
     assignmentScope: 'ASSIGNED',
-    branchIds: [ALPHA_MUMBAI_BRANCH_ID],
+    branchIds: [ALPHA_PUNE_BRANCH_ID],
   },
   {
     userId: '50000000-0000-4000-8000-000000000011',
@@ -1091,7 +1140,8 @@ async function seed(): Promise<void> {
                 module === 'INBOX' ||
                 module === 'TEST_RIDES' ||
                 module === 'INVENTORY' ||
-                module === 'BOOKING_BILLING'));
+                module === 'BOOKING_BILLING' ||
+                module === 'DELIVERY_RC'));
           await transaction
             .insert(clientModuleFlags)
             .values({
@@ -1616,6 +1666,45 @@ async function seed(): Promise<void> {
         })
         .onConflictDoNothing();
       await transaction
+        .insert(inventoryUnits)
+        .values({
+          acquisitionReference: 'SALE-STOCK-2026-01',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          chassisNumber: 'GDMZXSALECHASSIS01',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          colourId: ALPHA_INVENTORY_COLOUR_ID,
+          conditionNotes: 'Development-only allocated customer unit.',
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000003',
+          createdByUserId: '50000000-0000-4000-8000-000000000003',
+          currentOdometerKm: 8,
+          engineNumber: 'GDMZXSALEMOTOR01',
+          id: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+          ownershipType: 'DEALER_OWNED',
+          receivedAt: SEED_DATE,
+          status: 'ALLOCATED',
+          unitReference: 'STOCK-EV-ZX-DELIVERY-01',
+          updatedAt: SEED_DATE,
+          variantId: ALPHA_INVENTORY_VARIANT_ID,
+          vin: 'GDMZXSALE00000001',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(inventoryUnitStatusHistory)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000003',
+          actorUserId: '50000000-0000-4000-8000-000000000003',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          eventType: 'UNIT_ALLOCATED',
+          evidence: { development_fixture: true },
+          id: ALPHA_DELIVERY_INVENTORY_HISTORY_ID,
+          inventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+          reason: 'Development delivery fixture.',
+          toStatus: 'ALLOCATED',
+        })
+        .onConflictDoNothing();
+      await transaction
         .insert(contacts)
         .values({
           clientOrganizationId: ALPHA_CLIENT_ID,
@@ -1771,10 +1860,17 @@ async function seed(): Promise<void> {
           paymentType: 'FINANCE',
           quotationId: ALPHA_COMMERCIAL_QUOTATION_ID,
           quotationVersion: 1,
+          selectedInventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
           status: 'CONFIRMED',
           updatedAt: SEED_DATE,
         })
-        .onConflictDoUpdate({ target: bookings.id, set: { updatedAt: SEED_DATE } });
+        .onConflictDoUpdate({
+          target: bookings.id,
+          set: {
+            selectedInventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+            updatedAt: SEED_DATE,
+          },
+        });
       for (const item of [
         { amountMinor: 2_800_000, code: 'EX_SHOWROOM', description: 'Ex-showroom price' },
         { amountMinor: 200_000, code: 'RTO', description: 'Registration and road tax' },
@@ -1850,6 +1946,119 @@ async function seed(): Promise<void> {
           providerReference: 'FIN-DEV-2026-0001',
           reason: 'Development seed application.',
           toStatus: 'APPLIED',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(inventoryAllocations)
+        .values({
+          allocatedAt: SEED_DATE,
+          allocatedByMembershipId: '60000000-0000-4000-8000-000000000003',
+          allocatedByUserId: '50000000-0000-4000-8000-000000000003',
+          bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+          bookingReference: 'BK-DEV-2026-0001',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          customerCommunicationDecision: 'Development fixture; no customer notification.',
+          id: ALPHA_DELIVERY_ALLOCATION_ID,
+          inventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+          readinessAsserted: true,
+          reason: 'Development seed canonical booking allocation.',
+          status: 'ACTIVE',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(deliverySettings)
+        .values({
+          activeTimeoutMinutes: 480,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          locationRetentionDays: 30,
+          locationStaleSeconds: 180,
+          requiredChecklistCodes: [
+            'ACCESSORIES',
+            'PDI',
+            'DOCUMENTS',
+            'FUEL_OR_CHARGE',
+            'BATTERY',
+            'EXTERIOR_CONDITION',
+            'INTERIOR_CONDITION',
+          ],
+          requiredProofTypes: ['RECEIVED_BY'],
+          updatedAt: SEED_DATE,
+          updatedByMembershipId: '60000000-0000-4000-8000-000000000003',
+        })
+        .onConflictDoUpdate({
+          target: deliverySettings.clientOrganizationId,
+          set: {
+            requiredProofTypes: ['RECEIVED_BY'],
+            updatedAt: SEED_DATE,
+          },
+        });
+      await transaction
+        .insert(deliveryJobs)
+        .values({
+          assignedMembershipId: '60000000-0000-4000-8000-000000000010',
+          assignedUserId: '50000000-0000-4000-8000-000000000010',
+          bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000003',
+          destinationAddress: 'Baner, Pune, Maharashtra',
+          destinationLatitude: 18.559,
+          destinationLongitude: 73.7868,
+          id: ALPHA_DELIVERY_JOB_ID,
+          inventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+          leadId: ALPHA_TEST_RIDE_LEAD_ID,
+          scheduledFor: new Date('2026-09-15T05:30:00.000Z'),
+          status: 'VEHICLE_PREPARATION',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: deliveryJobs.id,
+          set: {
+            assignedMembershipId: '60000000-0000-4000-8000-000000000010',
+            assignedUserId: '50000000-0000-4000-8000-000000000010',
+            updatedAt: SEED_DATE,
+          },
+        });
+      for (const code of [
+        'ACCESSORIES',
+        'PDI',
+        'DOCUMENTS',
+        'FUEL_OR_CHARGE',
+        'BATTERY',
+        'EXTERIOR_CONDITION',
+        'INTERIOR_CONDITION',
+      ] as const) {
+        await transaction
+          .insert(deliveryChecklistItems)
+          .values({
+            checked: code === 'ACCESSORIES',
+            checkedAt: code === 'ACCESSORIES' ? SEED_DATE : null,
+            checkedByMembershipId:
+              code === 'ACCESSORIES' ? '60000000-0000-4000-8000-000000000003' : null,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            code,
+            deliveryJobId: ALPHA_DELIVERY_JOB_ID,
+            note: code === 'ACCESSORIES' ? 'Accessory fitment checked.' : null,
+            required: true,
+          })
+          .onConflictDoNothing();
+      }
+      await transaction
+        .insert(deliveryStatusEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000003',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          correlationId: 'development-seed-phase-9',
+          createdAt: SEED_DATE,
+          deliveryJobId: ALPHA_DELIVERY_JOB_ID,
+          eventType: 'DELIVERY_CREATED',
+          evidence: { development_fixture: true },
+          fromStatus: null,
+          id: ALPHA_DELIVERY_EVENT_ID,
+          reason: 'Development delivery fixture.',
+          toStatus: 'VEHICLE_PREPARATION',
         })
         .onConflictDoNothing();
       await transaction

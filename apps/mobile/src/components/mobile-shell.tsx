@@ -73,6 +73,16 @@ export function MobileShell({ children, title }: MobileShellProps) {
             variant={pathname.startsWith('/test-rides') ? 'primary' : 'secondary'}
           />
         ) : null}
+        {principal?.permissions.includes('delivery.jobs.read') ? (
+          <Button
+            accessibilityRole="tab"
+            accessibilityState={{ selected: pathname.startsWith('/deliveries') }}
+            className="flex-1"
+            label="Deliveries"
+            onPress={() => router.replace('/(app)/deliveries')}
+            variant={pathname.startsWith('/deliveries') ? 'primary' : 'secondary'}
+          />
+        ) : null}
         <Button
           accessibilityRole="tab"
           accessibilityState={{ selected: pathname === '/profile' }}

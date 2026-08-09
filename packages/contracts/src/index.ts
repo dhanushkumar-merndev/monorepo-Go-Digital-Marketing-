@@ -6,6 +6,7 @@ export * from './messaging/index.js';
 export * from './test-rides/index.js';
 export * from './inventory/index.js';
 export * from './commercial/index.js';
+export * from './delivery/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

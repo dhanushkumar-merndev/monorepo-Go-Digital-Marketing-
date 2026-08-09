@@ -15,6 +15,12 @@ describe('mobile role and route policy', () => {
     expect(canAccessMobileRoute({ roleCode: 'DELIVERY_EXECUTIVE' }, 'test-rides')).toBe(false);
   });
 
+  it('allows delivery routes only for delivery executives', () => {
+    expect(canAccessMobileRoute({ roleCode: 'DELIVERY_EXECUTIVE' }, 'deliveries')).toBe(true);
+    expect(canAccessMobileRoute({ roleCode: 'SALESPERSON' }, 'deliveries')).toBe(false);
+    expect(canAccessMobileRoute({ roleCode: 'TEST_RIDE_EXECUTIVE' }, 'deliveries')).toBe(false);
+  });
+
   it.each(officeRoleCodes)(
     'denies office/admin role %s from every mobile app route',
     (roleCode) => {

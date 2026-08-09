@@ -41,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', () => {
+describe('reviewed PostgreSQL migrations through Phase 9 delivery workflows', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -157,7 +157,12 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
           'messaging_opt_in_records', 'messaging_suppressions',
           'test_ride_allocation_locks', 'test_ride_command_receipts',
           'test_ride_demo_vehicle_bookings', 'test_ride_events', 'test_ride_jobs',
-          'test_ride_location_samples', 'test_ride_location_sessions'
+          'test_ride_location_samples', 'test_ride_location_sessions',
+          'delivery_checklist_events', 'delivery_checklist_items',
+          'delivery_command_receipts', 'delivery_jobs', 'delivery_location_samples',
+          'delivery_location_sessions', 'delivery_otp_challenges',
+          'delivery_proof_download_events', 'delivery_proofs', 'delivery_settings',
+          'delivery_status_events'
         )
       order by table_name
     `);
@@ -181,6 +186,17 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
       'conversation_assignments',
       'conversation_participants',
       'conversations',
+      'delivery_checklist_events',
+      'delivery_checklist_items',
+      'delivery_command_receipts',
+      'delivery_jobs',
+      'delivery_location_samples',
+      'delivery_location_sessions',
+      'delivery_otp_challenges',
+      'delivery_proof_download_events',
+      'delivery_proofs',
+      'delivery_settings',
+      'delivery_status_events',
       'departments',
       'external_auth_challenges',
       'membership_branch_scopes',
@@ -271,7 +287,7 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(88);
+    expect(permissionCount.rows[0]?.count).toBe(100);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -296,6 +312,9 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
         'commercial.discounts.approve',
         'commercial.payments.verify',
         'commercial.settings.manage',
+        'delivery.active_map.read',
+        'delivery.proofs.review',
+        'delivery.settings.manage',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
@@ -380,6 +399,13 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
     expect(roleFamilies.get('SALESPERSON')?.permissions.has('commercial.discounts.approve')).toBe(
       false,
     );
+    expect(roleFamilies.get('DELIVERY_EXECUTIVE')?.permissions.has('delivery.jobs.execute')).toBe(
+      true,
+    );
+    expect(
+      roleFamilies.get('DELIVERY_EXECUTIVE')?.permissions.has('delivery.active_map.read'),
+    ).toBe(false);
+    expect(roleFamilies.get('MANAGER')?.permissions.has('delivery.reschedules.approve')).toBe(true);
   });
 
   it('keeps Phase 6 jobs tenant-consistent and binds each location sample to its session identity', async () => {
@@ -554,6 +580,150 @@ describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', 
         )
       `),
     ).rejects.toThrow();
+  });
+
+  it('enforces Phase 9 delivery tenant roots, append-only history and exact location sessions', async () => {
+    const contactId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d01';
+    const leadId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d02';
+    const brandId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d03';
+    const modelId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d04';
+    const variantId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d05';
+    const colourId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d06';
+    const unitId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d07';
+    const quotationId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d08';
+    const versionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d09';
+    const bookingId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d10';
+    const allocationId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d11';
+    const jobId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d12';
+    const itemId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d13';
+    const eventId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d14';
+    const sessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446d15';
+    await client.exec(`
+      insert into contacts (
+        id, client_organization_id, display_name, primary_phone_e164,
+        primary_phone_lookup_hash
+      ) values (
+        '${contactId}', '${tenantId}', 'Delivery Customer', '+919876543218', repeat('8', 64)
+      );
+      insert into lead_opportunities (
+        id, client_organization_id, contact_id, branch_id, source, entry_method,
+        vehicle_interest, status, sla_due_at, sla_warning_at
+      ) values (
+        '${leadId}', '${tenantId}', '${contactId}', '${branchId}', 'WEBSITE', 'MANUAL',
+        'Delivery Model', 'NEGOTIATION', now() + interval '15 minutes',
+        now() + interval '10 minutes'
+      );
+      insert into inventory_brands (id, client_organization_id, code, name)
+      values ('${brandId}', '${tenantId}', 'DELIVERY', 'Delivery Brand');
+      insert into inventory_models (id, client_organization_id, brand_id, code, name)
+      values ('${modelId}', '${tenantId}', '${brandId}', 'MODEL', 'Delivery Model');
+      insert into inventory_variants (
+        id, client_organization_id, model_id, code, name, fuel_powertrain, model_year
+      ) values (
+        '${variantId}', '${tenantId}', '${modelId}', 'VARIANT', 'Delivery Variant', 'EV', 2026
+      );
+      insert into inventory_colours (id, client_organization_id, code, name)
+      values ('${colourId}', '${tenantId}', 'BLUE', 'Blue');
+      insert into inventory_units (
+        id, client_organization_id, branch_id, variant_id, colour_id, unit_reference,
+        status, ownership_type, created_by_user_id, created_by_membership_id
+      ) values (
+        '${unitId}', '${tenantId}', '${branchId}', '${variantId}', '${colourId}',
+        'DELIVERY-UNIT-1', 'ALLOCATED', 'DEALER_OWNED', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into quotations (
+        id, client_organization_id, branch_id, contact_id, lead_id,
+        quotation_reference, status, approval_status, current_version, currency,
+        total_minor, discount_minor, payable_minor, vehicle_configuration, expires_at,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${quotationId}', '${tenantId}', '${branchId}', '${contactId}', '${leadId}',
+        'QT-DELIVERY-1', 'ACTIVE', 'NOT_REQUIRED', 1, 'INR', 100000, 0, 100000,
+        'Delivery Model', now() + interval '1 day', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into quotation_versions (
+        id, client_organization_id, quotation_id, version, currency, total_minor,
+        discount_minor, payable_minor, vehicle_configuration, expires_at,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${versionId}', '${tenantId}', '${quotationId}', 1, 'INR', 100000, 0, 100000,
+        'Delivery Model', now() + interval '1 day', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into bookings (
+        id, client_organization_id, branch_id, contact_id, lead_id, quotation_id,
+        quotation_version, booking_reference, payment_type, currency, payable_minor,
+        selected_inventory_unit_id, customer_confirmed_at,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${bookingId}', '${tenantId}', '${branchId}', '${contactId}', '${leadId}',
+        '${quotationId}', 1, 'BK-DELIVERY-1', 'FULL', 'INR', 100000, '${unitId}', now(),
+        '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into inventory_allocations (
+        id, client_organization_id, inventory_unit_id, booking_reference, booking_id,
+        readiness_asserted, reason, allocated_by_user_id, allocated_by_membership_id
+      ) values (
+        '${allocationId}', '${tenantId}', '${unitId}', 'BK-DELIVERY-1', '${bookingId}',
+        true, 'Migration delivery fixture', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into delivery_settings (client_organization_id)
+      values ('${tenantId}');
+      insert into delivery_jobs (
+        id, client_organization_id, branch_id, booking_id, inventory_unit_id,
+        contact_id, lead_id, assigned_membership_id, assigned_user_id, status,
+        scheduled_for, destination_address, created_by_membership_id
+      ) values (
+        '${jobId}', '${tenantId}', '${branchId}', '${bookingId}', '${unitId}',
+        '${contactId}', '${leadId}', '${clientMembershipId}', '${clientUserId}',
+        'OUT_FOR_DELIVERY', now() + interval '1 hour', 'Migration destination',
+        '${clientMembershipId}'
+      );
+      insert into delivery_checklist_items (
+        id, client_organization_id, delivery_job_id, code, required, checked
+      ) values ('${itemId}', '${tenantId}', '${jobId}', 'PDI', true, true);
+      insert into delivery_status_events (
+        id, client_organization_id, delivery_job_id, from_status, to_status,
+        event_type, correlation_id
+      ) values (
+        '${eventId}', '${tenantId}', '${jobId}', 'DELIVERY_SCHEDULED',
+        'OUT_FOR_DELIVERY', 'DELIVERY_STARTED', 'migration-phase-9'
+      );
+      insert into delivery_location_sessions (
+        id, client_organization_id, delivery_job_id, membership_id, user_id,
+        started_at, expires_at
+      ) values (
+        '${sessionId}', '${tenantId}', '${jobId}', '${clientMembershipId}', '${clientUserId}',
+        now(), now() + interval '2 hours'
+      );
+      insert into delivery_location_samples (
+        client_organization_id, delivery_job_id, location_session_id, idempotency_key,
+        latitude, longitude, accuracy_meters, captured_at, expires_at
+      ) values (
+        '${tenantId}', '${jobId}', '${sessionId}', 'delivery-location-1',
+        18.5204, 73.8567, 20, now(), now() + interval '30 days'
+      );
+    `);
+
+    await expect(
+      client.exec(`update delivery_status_events set reason = 'rewrite' where id = '${eventId}'`),
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      client.exec(`
+        insert into delivery_jobs (
+          client_organization_id, branch_id, booking_id, inventory_unit_id, contact_id,
+          lead_id, scheduled_for, destination_address, created_by_membership_id
+        ) values (
+          '${otherTenantId}', '${otherBranchId}', '${bookingId}', '${unitId}', '${contactId}',
+          '${leadId}', now() + interval '1 day', 'Cross tenant', '${clientMembershipId}'
+        )
+      `),
+    ).rejects.toThrow();
+    const sessionConstraint = await client.query<{ count: number }>(`
+      select count(*)::int as count
+      from pg_constraint
+      where conname = 'delivery_locations_session_identity_fk'
+    `);
+    expect(sessionConstraint.rows[0]?.count).toBe(1);
   });
 
   it('keeps call evidence tenant-scoped and enforces completed-call outcome requirements', async () => {

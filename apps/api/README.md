@@ -1,8 +1,7 @@
 # API application
 
-NestJS modular-monolith foundation for the Go Digital Automobile CRM. Phase 0
-contains platform infrastructure only; it intentionally has no authentication,
-tenancy or dealership workflow endpoints.
+NestJS modular-monolith API for the Go Digital Automobile CRM. It owns authentication, tenancy,
+authorization and the implemented dealership workflows through Phase 9.
 
 ## Routes
 
@@ -10,6 +9,9 @@ tenancy or dealership workflow endpoints.
 - `GET /v1/health/live` reports process liveness without checking dependencies.
 - `GET /v1/health/ready` checks PostgreSQL and Redis readiness.
 - `/docs` serves Swagger UI and `/docs-json` serves the OpenAPI document.
+- `/v1/commercial` owns Phase 8 quotation, booking, payment, document and readiness authority.
+- `/v1/delivery` owns Phase 9 preparation, scheduling, active location, proof and completion. It
+  requires `DELIVERY_RC`, tenant/object scope and explicit `delivery.*` permissions.
 
 Run from the repository root:
 
@@ -18,6 +20,10 @@ pnpm install
 pnpm services:up
 pnpm dev:api
 ```
+
+Hosted Phase 9 environments must set an independent 32+ character `DELIVERY_OTP_PEPPER`. Delivery
+photo/signature verification and OTP requests remain fail-closed until reviewed scanner/sender
+adapters are bound; private proof storage uses the existing S3/Tigris settings.
 
 `WORKER_MODE=disabled` starts no consumers, `embedded` starts one BullMQ worker in the API, and
 `standalone` keeps the API producer-only while `pnpm dev:worker` or `pnpm start:worker` runs the

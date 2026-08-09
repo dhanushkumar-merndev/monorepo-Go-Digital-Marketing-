@@ -1,6 +1,6 @@
 import { isMobileRoleCode, type MobilePrincipal, type MobileRoleCode } from './auth-types';
 
-export type MobileRoute = 'home' | 'profile' | 'test-rides';
+export type MobileRoute = 'deliveries' | 'home' | 'profile' | 'test-rides';
 
 export interface MobileRolePresentation {
   accent: string;
@@ -12,7 +12,7 @@ const rolePresentation: Record<MobileRoleCode, MobileRolePresentation> = {
   DELIVERY_EXECUTIVE: {
     accent: 'Delivery workspace',
     landingDescription:
-      'Your authenticated delivery workspace is ready. Delivery operations are introduced in a later phase.',
+      'Prepare assigned vehicles, run active deliveries and capture proof with tenant-bound offline replay.',
     roleLabel: 'Delivery Executive',
   },
   SALESPERSON: {
@@ -44,6 +44,7 @@ export function canAccessMobileRoute(
   return (
     route === 'home' ||
     route === 'profile' ||
+    (route === 'deliveries' && principal.roleCode === 'DELIVERY_EXECUTIVE') ||
     (route === 'test-rides' &&
       (principal.roleCode === 'SALESPERSON' || principal.roleCode === 'TEST_RIDE_EXECUTIVE'))
   );

@@ -104,6 +104,18 @@ export const PERMISSION_CODES = [
   'commercial.documents.verify',
   'commercial.readiness.read',
   'commercial.settings.manage',
+  'delivery.jobs.read',
+  'delivery.jobs.manage',
+  'delivery.jobs.assign',
+  'delivery.jobs.execute',
+  'delivery.jobs.cancel',
+  'delivery.checklists.manage',
+  'delivery.proofs.upload',
+  'delivery.proofs.review',
+  'delivery.location.write',
+  'delivery.active_map.read',
+  'delivery.reschedules.approve',
+  'delivery.settings.manage',
 ] as const;
 
 export const canonicalRoleCodeSchema = z.enum(CANONICAL_ROLE_CODES);

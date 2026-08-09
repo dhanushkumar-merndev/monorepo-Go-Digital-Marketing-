@@ -795,3 +795,63 @@
   inferred payment proof were rejected.
 - **Status:** Accepted and tested fail-closed.
 - **Affected modules:** Commercial service/schema/contracts/UI and canonical Inventory allocation link.
+
+## ADR-0041 - Delivery is a separate operational aggregate over canonical commercial inventory
+
+- **Date:** 2026-08-09
+- **Decision:** Create one tenant-owned delivery job per confirmed booking and reference the exact
+  Phase 8 booking, customer/Lead and active Phase 7 allocation/unit. Delivery status, preparation
+  checklist and handover proof do not mutate the Lead pipeline or registration state. Start always
+  calls the Phase 8 readiness evaluator immediately before its locked transition.
+- **Reason:** Delivery staff need an operational workflow without duplicating sales truth or trusting
+  stale client readiness. Registration may finish after handover and cannot be a permanent-RC gate.
+- **Alternatives considered:** Client-supplied VIN/readiness, one generic Lead stage and requiring
+  permanent RC before handover were rejected.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Delivery contracts/schema/API, Commercial readiness, Inventory delivered
+  transition, web/mobile delivery workspaces.
+
+## ADR-0042 - Active delivery location is job-bound temporary evidence
+
+- **Date:** 2026-08-09
+- **Decision:** Begin foreground location only after assigned-user disclosure and permission. Bind
+  every sample to tenant, delivery job and exact active session, expose stale/current state only to
+  authorized managers, expire samples by retention metadata and stop tracking at every terminal or
+  exceptional boundary plus session/account cleanup.
+- **Reason:** Managers need current operational visibility, not an employee movement history. Exact
+  composite foreign keys prevent a valid tenant session from being attached to another delivery.
+- **Alternatives considered:** Continuous/off-duty tracking, a tenant-only sample foreign key and
+  mobile-supplied assignment authority were rejected.
+- **Status:** Accepted and migration/integration-tested; signed physical-device validation remains.
+- **Affected modules:** Delivery location schema/service, Expo foreground task/SQLite queue, manager
+  active monitor and authorization.
+
+## ADR-0043 - Offline delivery terminal commands reuse one durable operation identity
+
+- **Date:** 2026-08-09
+- **Decision:** Completion, delay, failure and reschedule stop native tracking immediately and use one
+  UUID as both SQLite operation identity and HTTP `Idempotency-Key`. If connectivity is absent, a
+  request fails, its response is lost or it returns a retryable server failure, the exact command and
+  key replay in creation order. PostgreSQL command receipts return the original response.
+- **Reason:** A lost response after a successful server commit must not create duplicate proof,
+  inventory or lifecycle effects, and privacy cannot wait for connectivity.
+- **Alternatives considered:** New key on replay, an in-memory queue and stopping location only after
+  an HTTP success were rejected.
+- **Status:** Accepted and tested.
+- **Affected modules:** Mobile delivery outbox/location cleanup, delivery command receipts and API
+  start/completion idempotency.
+
+## ADR-0044 - Delivery proof is private, configurable and fail-closed
+
+- **Date:** 2026-08-09
+- **Decision:** Tenant settings choose required proof types. Received-by/OTP proof is retained as
+  verified structured evidence; photo/signature proof uses private signed storage with MIME, size,
+  SHA-256 checksum, metadata and provider-neutral malware scanning. Only clean proof can be verified,
+  and each signed download requires a purpose and immutable audit event.
+- **Reason:** Upload success is not evidence of safe content, and storage keys or long-lived URLs must
+  never become customer-facing data.
+- **Alternatives considered:** Public URLs, client-provided scan status, upload-implies-verification
+  and mandatory OTP without a provider were rejected.
+- **Status:** Accepted; scanner and OTP providers remain external prerequisites when enabled.
+- **Affected modules:** Delivery settings/proofs/API, S3 adapter boundary, manager review and mobile
+  proof capture.

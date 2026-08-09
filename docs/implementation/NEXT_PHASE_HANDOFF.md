@@ -2,102 +2,105 @@
 
 ## Completed phase
 
-Phase 8 - Booking, Billing, Payments, Finance and Documents. Strict local audit passed on
-2026-08-09. Phase 9 has not started.
+Phase 9 - Delivery Operations. Strict local audit passed on 2026-08-09. Phase 10 has not started.
 
 ## Modules created or changed
 
-| Area                                          | Actual implementation                                                                                                                                                                                                       |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/commercial`           | Zod contracts/enums for quotation, booking, payment, finance, insurance, invoice, exchange, private documents, list summaries and readiness.                                                                                |
-| `packages/database/src/schema/commercial.ts`  | Tenant-owned commercial settings, immutable quote/price history, booking snapshots, append-only payment evidence, finance/exchange events, invoices, insurance, private document versions/events and readiness evaluations. |
-| `apps/api/src/commercial`                     | `/v1/commercial` controller/service, authorization, idempotency, audit/outbox, fail-closed scanner port and private object-storage workflow.                                                                                |
-| `apps/api/src/inventory/inventory.service.ts` | When `BOOKING_BILLING` is enabled, allocation validates and links the canonical confirmed booking instead of trusting the client readiness assertion.                                                                       |
-| `apps/web/src/features/commercial`            | Permission-aware booking list/detail, quotation-to-booking, discount, payment, finance, invoice, insurance, exchange, private document and readiness workflows.                                                             |
-| `packages/database/src/seed.ts`               | Alpha commercial settings, module flag, role mappings and deterministic quotation/booking/payment/finance fixture.                                                                                                          |
+| Area                                            | Actual implementation                                                                                                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/delivery`               | Shared states, checklist/proof enums and Zod contracts for creation, assignment, readiness, schedule, location, proof, completion, exceptions and reschedule.         |
+| `packages/config/src/delivery.ts`               | Backend-only OTP pepper validation with hosted-environment default rejection.                                                                                         |
+| `packages/database/src/schema/delivery.ts`      | Tenant-safe delivery settings/jobs, append-only status/checklist evidence, proofs/download audits, OTP, location sessions/samples and command receipts.               |
+| `apps/api/src/delivery`                         | `/v1/delivery` controller/service/module, fresh Commercial readiness, private proof adapters, authorization, idempotency, audit/outbox and terminal Inventory update. |
+| `apps/mobile/src/{screens,data,platform,store}` | Assigned Today/Upcoming work, prep/proof/exceptions, explicit active tracking, tenant SQLite queues and exact-key offline terminal replay.                            |
+| `apps/web/src/features/delivery`                | Manager totals, active/stale monitor, exception queue, create/assign/prep/schedule, proof review/download, reschedule decision and immutable timeline.                |
+| `packages/database/src/seed.ts`                 | Alpha `DELIVERY_RC` flag/settings/permissions and one assigned preparation job backed by a separate confirmed allocated vehicle.                                      |
 
 ## Database migrations
 
-- `0024_brave_white_queen.sql`: commercial entities, permissions, tenant/actor foreign keys,
-  allocation booking link, private payment-proof link, append-only triggers and compatibility
-  backfill by exact tenant/reference only.
-- `0025_aberrant_shen.sql`: `finance_cases.disbursed_at`.
-- `0026_goofy_changeling.sql`: unique tenant/quotation/version booking constraint.
+- `0027_lush_silk_fever.sql`: delivery enums/tables, 12 permissions and mappings, composite
+  tenant/actor/resource foreign keys, unique command identities and append-only status/checklist/
+  proof-download triggers.
+- `0028_sweet_tyger_tiger.sql`: exact `(client_organization_id, session_id, delivery_job_id)`
+  location-sample identity through the matching session uniqueness constraint.
 
-The canonical journal has 27 entries (`0000` through `0026`). All apply from zero in PGlite and
-18 migration integrity tests pass. No shared/staging/production migration or seed ran in Phase 8.
-Rollback after commercial evidence exists means restoring the pre-Phase-8 recovery point or a
-reviewed forward compensation; never delete payment/document/audit history or edit applied files.
+The canonical journal has 29 entries (`0000` through `0028`). All apply from zero in PGlite and all
+19 migration integrity tests pass. No shared/staging/production migration or seed ran in Phase 9.
+Rollback before business use can restore the pre-Phase-9 recovery point. After evidence exists, use
+a reviewed forward compensation; never delete delivery/proof/audit history or edit applied files.
 
 ## Routes and API contracts
 
-All routes require client context, `BOOKING_BILLING` and the declared `commercial.*` permission.
-Important paths are:
+All routes require client context, `DELIVERY_RC`, the declared `delivery.*` permission and backend
+branch/assignment scope. Important paths are:
 
-- `GET /v1/commercial/bookings`, `GET /v1/commercial/bookings/:id`
-- `POST /v1/commercial/quotations`, `.../:id/revisions`, `.../:id/discount-decision`
-- `POST /v1/commercial/bookings`, `.../:id/cancel`
-- `POST /v1/commercial/bookings/:id/payments`, `payments/:id/verify|reverse`
-- `POST /v1/commercial/bookings/:id/finance`, `finance/:id/decision|disburse`
-- `POST /v1/commercial/bookings/:id/insurance|invoices|exchange`
-- `POST /v1/commercial/exchange/:id/decision`
-- `POST /v1/commercial/documents/uploads`, `documents/:id/complete|verify`
-- `GET /v1/commercial/documents/:id/download`
-- `POST /v1/commercial/bookings/:id/readiness/evaluate`
+- `GET/POST /v1/delivery`, `GET /v1/delivery/:jobId`
+- `GET /v1/delivery/active`, `POST /v1/delivery/tracking/reconcile`
+- `GET /v1/delivery/executives?branch_id=...`
+- `GET/POST /v1/delivery/settings`
+- `POST /v1/delivery/:jobId/assign|checklist|ready|schedule|start|location`
+- `POST /v1/delivery/:jobId/proofs/received-by|initiate|complete`
+- `POST /v1/delivery/:jobId/otp/request|verify`
+- `POST /v1/delivery/:jobId/complete|delay|fail|cancel|reschedule`
+- `POST /v1/delivery/:jobId/reschedule-decision`
+- `POST /v1/delivery/proofs/:proofId/review`
+- `GET /v1/delivery/proofs/:proofId/download?purpose=...`
 
-Every mutating path except read-only readiness/download requires `Idempotency-Key`; readiness
-evaluation itself writes immutable evidence but is safe to repeat. OpenAPI is generated from the
-controller and shared Zod validation remains the request source of truth.
+Mutating workflow/proof commands require `Idempotency-Key`, except batched location samples, which
+carry per-sample idempotency keys, and OTP request, whose durable challenge is not safe to replay.
+OpenAPI is generated from the controller; shared Zod schemas remain the request source of truth.
 
 ## Environment variables
 
-No Phase 8 payment-provider or public financial variable exists. Private documents reuse the
-existing Tigris/S3 configuration. The built-in scanner binding deliberately returns unavailable;
-production must bind and test an approved scanner before any required document can become Approved.
+- `DELIVERY_OTP_PEPPER`: independent backend-only 32+ character secret. The local default is rejected
+  in staging/production. It must never use `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*`.
+- Private delivery proof reuses existing S3/Tigris settings. The default scanner and OTP sender fail
+  closed until reviewed providers are bound.
 
 ## Verified commands and results
 
-| Command                 | Result                                                                                  |
-| ----------------------- | --------------------------------------------------------------------------------------- |
-| `pnpm format:check`     | Pass.                                                                                   |
-| `pnpm lint`             | Pass; 8 applicable tasks.                                                               |
-| `pnpm type-check`       | Pass; 13/13 tasks.                                                                      |
-| `pnpm test`             | Pass; API 61 unit + 42 integration, mobile 82, web 69, contracts 35 and other packages. |
-| `pnpm test:integration` | Pass; API 42/42 and migrations 18/18.                                                   |
-| `pnpm db:check`         | Pass.                                                                                   |
-| `pnpm build`            | Pass; API, 22 web routes and Android/iOS Expo exports.                                  |
+| Command                          | Result                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass; all 11 projects already up to date.                                                    |
+| `pnpm format:check`              | Pass.                                                                                        |
+| `pnpm lint`                      | Pass; zero warnings.                                                                         |
+| `pnpm type-check`                | Pass; 13/13 tasks.                                                                           |
+| `pnpm test`                      | Pass; API 61 unit + 46 integration, mobile 86, web 70, contracts 41 and other package tests. |
+| `pnpm test:integration`          | Pass; API 46/46 and migrations 19/19.                                                        |
+| `pnpm db:check`                  | Pass.                                                                                        |
+| `pnpm build`                     | Pass; API/shared packages, 24 Next routes and Android/iOS Expo exports.                      |
 
 ## Seed accounts and data
 
-Existing Phase 7 seed accounts remain unchanged. Alpha now has `BOOKING_BILLING` enabled and the
-deterministic `BK-DEV-2026-0001` finance booking for `Ananya Test Ride Customer`, with one verified
-partial UPI entry and one Applied finance case. Commercial settings use INR, a 100,000-minor-unit
-discount threshold, 50% payment gate and Booking/Identity/Address required documents.
+Existing accounts remain. Alpha enables `DELIVERY_RC`. `Dev Delivery Executive` is scoped to the
+Pune branch and receives only delivery read/execute/checklist/proof-upload/location permissions.
+The deterministic Alpha delivery job is in Vehicle Preparation with required checklist rows and is
+backed by a new confirmed booking, active allocation and physical unit. It deliberately remains
+commercial-readiness blocked so managers/executives can verify the fail-closed start path.
 
-## Known limitations
+## Known limitations and deferred work
 
-- Document upload/download privacy is implemented, but approval is fail-closed until a real scanner
-  adapter reports `CLEAN`.
-- No customer money is processed and no accounting ledger/provider integration exists by design.
-- No shared database migration/seed, hosted smoke, Linux OpenNext package or browser visual
-  regression ran in this local phase.
+- Photo/signature proof cannot be verified until a production scanner reports `CLEAN`.
+- OTP request fails visibly until Phase 13 supplies a provider; received-by remains the seeded proof
+  requirement.
+- Physical device, shared database, hosted providers, retention execution, browser visual regression
+  and deployment smoke remain external Phase 14 work.
+- Phase 9 creates no RC record and never requires permanent RC. Registration begins only in Phase 10.
 
-## Exact Phase 9 prerequisites and recommendations
+## Exact Phase 10 prerequisites and recommendations
 
-1. Read the PRD and `PROMPTS/09_DELIVERY_RC.md`; do not infer delivery/RC state from this handoff.
-2. Consume canonical `bookings.id`, `inventory_allocations.booking_id` and
-   `bookings.selected_inventory_unit_id`; never accept an opaque booking/VIN assertion when the
-   commercial module is enabled.
-3. Extend readiness with Phase 9 PDI, delivery, registration and handover evidence without mutating
-   existing Phase 8 readiness evaluations. New evaluations remain append-only snapshots.
-4. Keep Delivery and RC operational ownership separate from relationship, process and conversation
-   owners. Use role/branch/assignment scope in the API.
-5. Delivery cannot proceed unless the latest server evaluation is ready. Re-evaluate immediately
-   before the terminal handover transaction; never trust a cached web/mobile readiness result.
-6. Registration documents must reuse the Phase 8 private document/version/download-audit boundary.
-   Do not expose object keys or create a public bucket.
-7. Treat the scanner issue as a release prerequisite if Phase 9 requires approved documents; keep
-   the workflow visibly blocked rather than bypassing it.
-8. Add Phase 9 migrations, shared contracts, API authorization/business tests, assigned-role web or
-   mobile UI, realistic seed evidence, OpenAPI/docs and all mandatory workspace gates before the next
-   checkpoint.
+1. Read the PRD and `PROMPTS/10_RC_CUSTOMER_VEHICLE.md`; implement only Phase 10.
+2. Consume the canonical delivered `delivery_jobs.id`, `bookings.id`, `inventory_units.id`, Contact
+   and Lead identities. Never create a duplicate vehicle/customer record from browser-supplied VIN.
+3. Keep delivery and registration parallel. A delivered job is valid without permanent RC, and a
+   registration delay must not rewrite the delivery status/timeline.
+4. Reuse private signed storage, fail-closed scanning and audited download evidence for temporary RC,
+   permanent RC and registration documents; do not expose object keys.
+5. Add a distinct customer-vehicle ownership/history model. Do not collapse relationship,
+   current-process, conversation, delivery or registration ownership.
+6. Preserve tenant/branch scope, append-only status history, idempotent commands and exact foreign
+   keys. Cross-tenant vehicle/document access needs migrated integration coverage.
+7. Treat the scanner/hosted/device issues in `KNOWN_ISSUES.md` as external prerequisites, not reasons
+   to bypass proof or claim provider completion.
+8. Add Phase 10 migrations, contracts, backend policies/tests, functional UI, seeds, OpenAPI/env/docs
+   and run the strict completion audit before its checkpoint.

@@ -170,6 +170,18 @@ URLs; the default malware-scanner adapter fails closed, so approval remains bloc
 `PENDING_EXTERNAL_SCAN` until a reviewed production scanner is configured. Alpha development seed
 enables `BOOKING_BILLING` and includes one partial-payment finance booking for UI/API validation.
 
+Phase 9 adds tenant-owned delivery authority at `/v1/delivery`, the manager workspace at
+`/deliveries` and an assigned Delivery Executive mobile workspace. A delivery consumes the exact
+confirmed booking and active physical allocation, keeps preparation/proof state separate from the
+Lead pipeline, and performs a fresh Phase 8 readiness evaluation before Start. Active-job location
+requires explicit disclosure, uses a visible foreground notification and stops on every terminal or
+exception path; tenant-bound SQLite replays terminal commands with stable idempotency keys. Private
+photo/signature proof reuses signed S3-compatible storage and fails closed without a clean scanner;
+received-by evidence is the seeded default. Completion atomically marks the job, allocation and unit
+Delivered and deliberately does not require permanent RC, leaving registration to Phase 10. Set an
+independent backend-only `DELIVERY_OTP_PEPPER` in hosted environments; OTP delivery remains visibly
+unavailable until a reviewed provider is bound.
+
 ## Repository layout
 
 ```text

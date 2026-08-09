@@ -10,6 +10,7 @@ import type { AuthTransport } from '../api/auth-transport';
 import { resetAppState } from '../store/app-store';
 import { setAuthState } from '../store/auth-store';
 import { resetMobileInboxUiState } from '../store/inbox-ui.store';
+import { resetMobileDeliveryUiState } from '../store/delivery-ui.store';
 import { resetMobileTestRidesUiState } from '../store/test-rides-ui.store';
 import type { CredentialVault } from './credential-vault';
 import { GoogleIdentityError, type GoogleIdentityClient } from './google-identity-client';
@@ -24,6 +25,7 @@ import {
 
 function resetFeatureUiState(): void {
   resetAppState();
+  resetMobileDeliveryUiState();
   resetMobileInboxUiState();
   resetMobileTestRidesUiState();
 }

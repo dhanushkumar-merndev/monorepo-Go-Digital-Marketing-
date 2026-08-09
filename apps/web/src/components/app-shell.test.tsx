@@ -75,4 +75,18 @@ describe('AppShell permission-aware navigation', () => {
     expect(screen.getByRole('link', { name: 'Bookings' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Inventory' })).not.toBeInTheDocument();
   });
+
+  it('shows deliveries only with delivery read permission', () => {
+    render(
+      <AuthContext.Provider
+        value={testAuthContext({
+          session: testAuthSession('MANAGER', ['delivery.jobs.read']),
+        })}
+      >
+        <AppShell>Delivery content</AppShell>
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByRole('link', { name: 'Deliveries' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Bookings' })).not.toBeInTheDocument();
+  });
 });

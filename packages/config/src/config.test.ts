@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseApiEnvironment } from './api.js';
 import { parseAuthEnvironment } from './auth.js';
+import { parseDeliveryEnvironment } from './delivery.js';
 import { parseMobileEnvironment } from './mobile.js';
 import { parseMessagingEnvironment } from './messaging.js';
 import { parseTestRideEnvironment } from './test-rides.js';
@@ -16,6 +17,18 @@ const validServerEnvironment = {
 const googleWebClientId = '123456789-webclient.apps.googleusercontent.com';
 
 describe('environment validation', () => {
+  it('keeps the delivery OTP pepper backend-only and rejects the local default in production', () => {
+    expect(
+      parseDeliveryEnvironment({
+        DELIVERY_OTP_PEPPER: 'hosted-delivery-otp-pepper-at-least-32-characters',
+        NODE_ENV: 'production',
+      }),
+    ).toEqual({ otpPepper: 'hosted-delivery-otp-pepper-at-least-32-characters' });
+    expect(() => parseDeliveryEnvironment({ NODE_ENV: 'production' })).toThrow(
+      /DELIVERY_OTP_PEPPER/u,
+    );
+  });
+
   it('bounds Phase 6 tracking settings and requires a hosted OTP pepper', () => {
     expect(
       parseTestRideEnvironment({

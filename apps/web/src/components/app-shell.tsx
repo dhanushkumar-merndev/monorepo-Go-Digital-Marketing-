@@ -26,6 +26,7 @@ import {
   MapPinned,
   Warehouse,
   ReceiptText,
+  Truck,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -71,6 +72,12 @@ const navigation = [
     icon: ReceiptText,
     label: 'Bookings',
     permission: 'commercial.bookings.read',
+  },
+  {
+    href: '/deliveries',
+    icon: Truck,
+    label: 'Deliveries',
+    permission: 'delivery.jobs.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {
