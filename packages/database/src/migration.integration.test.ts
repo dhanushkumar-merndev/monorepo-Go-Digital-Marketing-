@@ -1477,4 +1477,51 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
       `),
     ).rejects.toThrow();
   });
+
+  it('enforces Phase 13 integration tenant isolation and human-review constraints', async () => {
+    const connectionId = 'f0000000-0000-4000-8000-000000000001';
+    const creativeId = 'f1000000-0000-4000-8000-000000000001';
+    await client.exec(`
+      insert into integration_connections (
+        id, client_organization_id, provider, display_name, status
+      ) values (
+        '${connectionId}', '${tenantId}', 'AI_IMAGE', 'Tenant image provider', 'PENDING_APPROVAL'
+      );
+      insert into generated_creative_assets (
+        id, client_organization_id, requested_by_membership_id, brand_profile,
+        brand_template, brief, provider, status
+      ) values (
+        '${creativeId}', '${tenantId}', '${clientMembershipId}', 'Alpha brand',
+        'Festival template', 'Approved creative brief for tenant test.', 'AI_IMAGE', 'REVIEW_PENDING'
+      );
+    `);
+    await expect(
+      client.exec(`
+        insert into integration_connections (
+          client_organization_id, provider, display_name, status
+        ) values ('${tenantId}', 'AI_IMAGE', 'Duplicate provider', 'PENDING_APPROVAL')
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into generated_creative_assets (
+          client_organization_id, requested_by_membership_id, brand_profile,
+          brand_template, brief, provider, status
+        ) values (
+          '${otherTenantId}', '${clientMembershipId}', 'Cross tenant', 'Nope', 'Cross tenant attempt.',
+          'AI_IMAGE', 'MODERATION_PENDING'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        update generated_creative_assets set status = 'APPROVED' where id = '${creativeId}'
+      `),
+    ).rejects.toThrow();
+    await client.exec(`
+      update generated_creative_assets
+      set status = 'APPROVED', reviewed_at = now(), reviewed_by_membership_id = '${clientMembershipId}'
+      where id = '${creativeId}'
+    `);
+  });
 });

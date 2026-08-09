@@ -10,6 +10,7 @@ export * from './delivery/index.js';
 export * from './registration/index.js';
 export * from './reminders/index.js';
 export * from './reporting/index.js';
+export * from './integrations/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

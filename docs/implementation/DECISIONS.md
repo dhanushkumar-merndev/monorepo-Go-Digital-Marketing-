@@ -988,3 +988,12 @@
   while the worker is waiting.
 - **Status:** Accepted.
 - **Affected modules:** Reports API, export jobs, background worker and private object storage.
+
+## ADR-0054 - AI output is proposal-only until explicit human review
+
+- **Date:** 2026-08-09
+- **Decision:** Creative assets and transcript-derived CRM suggestions are tenant-scoped review records.
+  AI cannot publish, send, or overwrite CRM records automatically.
+- **Reason:** Provider output, moderation and telecom/social consent remain external approval boundaries.
+- **Status:** Accepted.
+- **Affected modules:** Integration centre, creative assets, transcript suggestions, audit and UI.

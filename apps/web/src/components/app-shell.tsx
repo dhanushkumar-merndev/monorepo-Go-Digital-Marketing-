@@ -30,6 +30,7 @@ import {
   FileBadge2,
   BellRing,
   ChartNoAxesCombined,
+  PlugZap,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -100,6 +101,7 @@ const navigation = [
     label: 'Reports & audit',
     permission: 'reports.read',
   },
+  { href: '/integrations', icon: PlugZap, label: 'Integrations', permission: 'integrations.read' },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {
     href: '/sessions',

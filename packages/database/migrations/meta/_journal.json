@@ -232,6 +232,13 @@
       "when": 1786266046962,
       "tag": "0032_stale_union_jack",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786266888871,
+      "tag": "0033_fixed_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

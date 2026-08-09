@@ -369,12 +369,30 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'reports.read': 'Read authoritative, scope-filtered operational KPI dashboards and reports.',
   'reports.export': 'Create and download tenant-scoped, expiring report exports.',
   'audit.events.read': 'Search immutable tenant audit events with sensitive values minimized.',
+  'integrations.read': 'Read tenant provider state and onboarding progress without credentials.',
+  'integrations.manage': 'Configure, test, rotate or disconnect tenant provider connections.',
+  'onboarding.manage': 'Record audited client onboarding checklist evidence.',
+  'ai.creatives.manage': 'Request and inspect private AI creative assets.',
+  'ai.creatives.review': 'Approve or reject moderated creative assets before publishing.',
+  'ai.transcripts.manage': 'Create and inspect AI transcript and CRM-change suggestions.',
+  'ai.transcripts.review': 'Accept or reject AI suggestions; never silently update CRM data.',
+  'social.publish': 'Publish only human-approved assets through granted official APIs.',
 };
 
 const reportingManagerPermissions = [
   'reports.read',
   'reports.export',
   'audit.events.read',
+] as const satisfies readonly PermissionCode[];
+const integrationManagerPermissions = [
+  'integrations.read',
+  'integrations.manage',
+  'onboarding.manage',
+  'ai.creatives.manage',
+  'ai.creatives.review',
+  'ai.transcripts.manage',
+  'ai.transcripts.review',
+  'social.publish',
 ] as const satisfies readonly PermissionCode[];
 
 const reminderOperatorPermissions = [
@@ -619,6 +637,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
     ...reportingManagerPermissions,
+    ...integrationManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -646,6 +665,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
     ...reportingManagerPermissions,
+    ...integrationManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -666,6 +686,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
     ...reportingManagerPermissions,
+    ...integrationManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -684,6 +705,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
     ...reportingManagerPermissions,
+    ...integrationManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -752,6 +774,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
     ...reportingManagerPermissions,
+    ...integrationManagerPermissions,
   ],
 };
 

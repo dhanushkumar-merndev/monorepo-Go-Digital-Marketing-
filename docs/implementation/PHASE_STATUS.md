@@ -1,10 +1,10 @@
 # Phase Status
 
-- **Current phase:** Phase 12 - Dashboards, Reports, Audit and Exports.
+- **Current phase:** Phase 13 - External Integrations, AI, Social and Client Onboarding.
 - **Current status:** **Implementation and strict local completion audit passed.**
 - **Completed phases:** Phases 0-4, 6-11; Phase 5 automated acceptance remains green. Live official
   messaging activation remains gated by its documented external provider-readiness issue.
-- **Next phase:** Phase 13 - External Integrations.
+- **Next phase:** Phase 14 - Production Release (hard stop before implementation per user instruction).
 - **Last updated:** 2026-08-09
 
 ## Phase 12 acceptance-criterion checklist
@@ -25,6 +25,25 @@
 | `pnpm --filter @gdm/api test`                         | Pass; 61 unit and 55 integration tests.              |
 | `pnpm format:check` / `pnpm lint` / `pnpm type-check` | Pass.                                                |
 | `pnpm build`                                          | Pass; 8/8 production tasks and `/reports` web route. |
+
+## Phase 13 acceptance-criterion checklist
+
+- [x] Official WhatsApp/telephony adapters, encrypted credentials, durable webhooks and the unified
+      inbox remain the canonical provider boundaries.
+- [x] Tenant connection state, disconnect audit and onboarding evidence are available without secrets.
+- [x] Creative and transcript records require explicit human review and cannot silently publish or mutate
+      CRM data.
+- [x] Transcript suggestions verify the recording belongs to the active tenant before persistence.
+- [x] Integration/onboarding/AI permissions, migration constraints, routes and `/integrations` UI exist.
+
+## Phase 13 verification
+
+| Command                                                          | Result                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| `pnpm db:check` / `pnpm --filter @gdm/database test:integration` | Pass; 22 migration tests.                                 |
+| `pnpm --filter @gdm/api test`                                    | Pass; 61 unit and 55 integration tests.                   |
+| `pnpm type-check` / `pnpm lint` / `pnpm format:check`            | Pass.                                                     |
+| `pnpm build`                                                     | Pass; 8/8 production tasks and `/integrations` web route. |
 
 ## Phase 11 acceptance-criterion checklist
 

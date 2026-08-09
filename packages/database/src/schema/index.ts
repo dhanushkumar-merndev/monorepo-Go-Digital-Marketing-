@@ -70,3 +70,4 @@ export * from './delivery.js';
 export * from './registration.js';
 export * from './reminders.js';
 export * from './reporting.js';
+export * from './integrations.js';

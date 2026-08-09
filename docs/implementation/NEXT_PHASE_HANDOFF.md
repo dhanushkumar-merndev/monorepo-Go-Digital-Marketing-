@@ -2,24 +2,23 @@
 
 ## Completed phase
 
-Phase 12 - Dashboards, Reports, Audit and Exports. Local API regression and migration validation passed
-on 2026-08-09; final workspace-wide completion gates remain in progress.
+Phase 13 - External Integrations, AI, Social and Client Onboarding. Strict local completion audit
+passed on 2026-08-09. Stop before Phase 14 until the user changes model and explicitly continues.
 
-## Phase 12 implementation
+## Phase 13 implementation
 
-- `packages/contracts/src/reporting` defines report ranges, audit filters and export commands.
-- `0031_panoramic_mimic.sql` creates tenant-scoped durable export jobs; `0032_stale_union_jack.sql`
-  adds reporting/audit/export permissions to the retained compatibility enum.
-- `apps/api/src/reports` supplies scoped canonical KPI, immutable audit search, durable export jobs,
-  worker registration and short-lived private download URLs.
-- `apps/web/src/features/reports` provides URL-state date filtering, dashboard/audit views, loading,
-  empty/error states and export-status visibility.
-- CSV and a standards-based minimal XLSX writer are persisted only through the private storage adapter.
+- `packages/contracts/src/integrations` defines provider, onboarding, creative and transcript-review input.
+- `0033_fixed_silver_samurai.sql` adds tenant integration, onboarding, creative and transcript records,
+  permissions and foreign-key/review-state checks.
+- `apps/api/src/integrations` supplies scoped connection/onboarding/AI authority and audit events.
+- `apps/web/src/features/integrations` shows safe provider status, failures, disconnect controls and
+  onboarding progress without credentials or OAuth state.
 
 ## Next phase recommendation
 
-Read `PROMPTS/13_EXTERNAL_INTEGRATIONS.md`; preserve the Phase 12 report contracts and do not expose
-stored export object keys or signed URLs in long-lived client state.
+Read `PROMPTS/14_PRODUCTION_RELEASE.md` only after the user explicitly continues. Preserve pending
+provider states and use approved external accounts for release smoke tests; development adapters are
+not production activation.
 
 ## Modules created or changed
 
