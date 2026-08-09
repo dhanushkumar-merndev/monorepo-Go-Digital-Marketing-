@@ -41,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 9 delivery workflows', () => {
+describe('reviewed PostgreSQL migrations through Phase 10 registration workflows', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -287,7 +287,7 @@ describe('reviewed PostgreSQL migrations through Phase 9 delivery workflows', ()
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(100);
+    expect(permissionCount.rows[0]?.count).toBe(113);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -1218,6 +1218,67 @@ describe('reviewed PostgreSQL migrations through Phase 9 delivery workflows', ()
     ).rejects.toThrow(/immutable/u);
     await expect(client.exec(`delete from audit_events where id = '${auditId}'`)).rejects.toThrow(
       /immutable/u,
+    );
+  });
+
+  it('installs tenant-safe Phase 10 identity, history and permission guards', async () => {
+    const constraints = await client.query<{ constraint_name: string }>(`
+      select constraint_name
+      from information_schema.table_constraints
+      where constraint_name in (
+        'registration_events_correction_tenant_fk',
+        'registration_cases_booking_tenant_fk',
+        'customer_vehicles_delivery_tenant_fk',
+        'customer_vehicles_source_check'
+      )
+    `);
+    expect(new Set(constraints.rows.map((row) => row.constraint_name))).toEqual(
+      new Set([
+        'registration_events_correction_tenant_fk',
+        'registration_cases_booking_tenant_fk',
+        'customer_vehicles_delivery_tenant_fk',
+        'customer_vehicles_source_check',
+      ]),
+    );
+
+    const triggers = await client.query<{ trigger_name: string }>(`
+      select tgname as trigger_name
+      from pg_trigger
+      where not tgisinternal
+        and tgname in (
+          'registration_events_immutable',
+          'rc_delivery_records_immutable',
+          'customer_vehicle_events_immutable'
+        )
+    `);
+    expect(new Set(triggers.rows.map((row) => row.trigger_name))).toEqual(
+      new Set([
+        'registration_events_immutable',
+        'rc_delivery_records_immutable',
+        'customer_vehicle_events_immutable',
+      ]),
+    );
+
+    const permissions = await client.query<{ code: string }>(`
+      select code from permissions
+      where code like 'registration.%' or code like 'customer_vehicles.%'
+    `);
+    expect(permissions.rows).toHaveLength(13);
+
+    const executivePermissions = await client.query<{ code: string }>(`
+      select p.code
+      from role_permission_mappings rpm
+      join roles r on r.id = rpm.role_id
+      join permissions p on p.id = rpm.permission_id
+      where r.code = 'RC_REGISTRATION_EXECUTIVE'
+        and p.code in ('registration.cases.execute', 'registration.cases.close', 'registration.documents.share')
+    `);
+    expect(new Set(executivePermissions.rows.map((row) => row.code))).toEqual(
+      new Set([
+        'registration.cases.execute',
+        'registration.cases.close',
+        'registration.documents.share',
+      ]),
     );
   });
 

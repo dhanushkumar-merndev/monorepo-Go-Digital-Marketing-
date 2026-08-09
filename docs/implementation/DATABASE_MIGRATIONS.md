@@ -225,3 +225,24 @@ passes Drizzle check and 18 zero-to-latest PGlite integrity tests. No shared dat
 the Phase 8 local checkpoint. Once payment, booking or document evidence exists, rollback means
 restoring the pre-Phase-8 recovery point or a reviewed forward compensation; never delete immutable
 commercial/audit history or edit an already-applied migration.
+
+## Phase 10 registration and customer-vehicle migration
+
+`0029_closed_trish_tilby.sql` creates tenant registration settings/cases/events, private RC
+document metadata, immutable RC delivery records, Customer Vehicle projections/events and command
+receipts. It installs 13 permissions with manager, RC Executive, Billing and Inventory mappings.
+Composite tenant foreign keys prevent a case, government document, delivery, Contact, booking or
+physical unit from being attached across tenants. Partial unique indexes prevent duplicate
+Customer Vehicles by booking, case-insensitive VIN or case-insensitive registration number.
+
+The migration adds a tenant-aware self-reference for correction events and triggers that reject
+updates or deletes of registration events, RC delivery records and Customer Vehicle events. Apply
+it forward-only after taking a recoverable backup. Before enablement, check for any experimental
+tables named `registration_*`, `rc_*` or `customer_vehicle*`; this reviewed migration assumes none
+exist. After apply, verify 30 journal rows, 13 permissions, role mappings, three immutable triggers
+and the registration/customer-vehicle uniqueness indexes.
+
+No shared, staging or production database was mutated during the local Phase 10 checkpoint. Before
+business evidence exists, rollback means restoring the pre-Phase-10 recovery point. After a case,
+RC delivery record or Customer Vehicle event exists, use a reviewed forward compensation and retain
+the immutable history; never drop the tables or edit an applied migration to simulate rollback.

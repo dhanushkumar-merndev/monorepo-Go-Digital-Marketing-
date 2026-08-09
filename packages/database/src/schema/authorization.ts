@@ -134,6 +134,19 @@ export const PERMISSION_CODES = [
   'delivery.active_map.read',
   'delivery.reschedules.approve',
   'delivery.settings.manage',
+  'registration.cases.read',
+  'registration.cases.manage',
+  'registration.cases.assign',
+  'registration.cases.execute',
+  'registration.cases.close',
+  'registration.cases.reopen',
+  'registration.documents.upload',
+  'registration.documents.review',
+  'registration.documents.share',
+  'registration.aging.read',
+  'registration.settings.manage',
+  'customer_vehicles.read',
+  'customer_vehicles.manage',
 ] as const;
 
 // Retained only so Drizzle recognizes the pre-Phase-4 PostgreSQL enum while the

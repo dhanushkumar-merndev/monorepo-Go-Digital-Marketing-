@@ -89,4 +89,18 @@ describe('AppShell permission-aware navigation', () => {
     expect(screen.getByRole('link', { name: 'Deliveries' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Bookings' })).not.toBeInTheDocument();
   });
+
+  it('shows registration only with registration case read permission', () => {
+    render(
+      <AuthContext.Provider
+        value={testAuthContext({
+          session: testAuthSession('RC_REGISTRATION_EXECUTIVE', ['registration.cases.read']),
+        })}
+      >
+        <AppShell>Registration content</AppShell>
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByRole('link', { name: 'Registration & RC' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Deliveries' })).not.toBeInTheDocument();
+  });
 });

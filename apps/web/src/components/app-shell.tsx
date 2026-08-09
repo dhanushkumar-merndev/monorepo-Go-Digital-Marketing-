@@ -27,6 +27,7 @@ import {
   Warehouse,
   ReceiptText,
   Truck,
+  FileBadge2,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -78,6 +79,12 @@ const navigation = [
     icon: Truck,
     label: 'Deliveries',
     permission: 'delivery.jobs.read',
+  },
+  {
+    href: '/registrations',
+    icon: FileBadge2,
+    label: 'Registration & RC',
+    permission: 'registration.cases.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {

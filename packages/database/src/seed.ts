@@ -30,6 +30,11 @@ import {
   deliveryJobs,
   deliverySettings,
   deliveryStatusEvents,
+  registrationCases,
+  registrationEvents,
+  registrationSettings,
+  customerVehicles,
+  customerVehicleEvents,
   paymentEntries,
   paymentVerificationEvents,
   quotationPriceComponents,
@@ -114,6 +119,10 @@ const ALPHA_DELIVERY_INVENTORY_HISTORY_ID = '78000000-0000-4000-8000-00000000000
 const ALPHA_DELIVERY_ALLOCATION_ID = '79000000-0000-4000-8000-000000000001';
 const ALPHA_DELIVERY_JOB_ID = '7a000000-0000-4000-8000-000000000001';
 const ALPHA_DELIVERY_EVENT_ID = '7b000000-0000-4000-8000-000000000001';
+const ALPHA_REGISTRATION_CASE_ID = '7c000000-0000-4000-8000-000000000001';
+const ALPHA_REGISTRATION_EVENT_ID = '7d000000-0000-4000-8000-000000000001';
+const ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID = '7e000000-0000-4000-8000-000000000001';
+const ALPHA_EXTERNAL_CUSTOMER_VEHICLE_EVENT_ID = '7f000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -329,7 +338,42 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'delivery.active_map.read': 'Monitor active delivery locations with stale-state indication.',
   'delivery.reschedules.approve': 'Approve or reject reasoned delivery reschedule requests.',
   'delivery.settings.manage': 'Manage delivery checklist, proof and location policy.',
+  'registration.cases.read': 'Read branch or assignment-scoped registration and RC cases.',
+  'registration.cases.manage': 'Create registration cases and record controlled corrections.',
+  'registration.cases.assign': 'Assign an eligible RC Registration Executive.',
+  'registration.cases.execute': 'Advance assigned registration and RC workflow states.',
+  'registration.cases.close': 'Close a complete registration case with mandatory evidence.',
+  'registration.cases.reopen': 'Reopen a closed registration case with reason and next action.',
+  'registration.documents.upload': 'Upload private RC documents through validated signed storage.',
+  'registration.documents.review': 'Review and download private RC documents with audit evidence.',
+  'registration.documents.share': 'Create an audited RC delivery record and short-lived link.',
+  'registration.aging.read': 'Read registration aging and overdue queues.',
+  'registration.settings.manage': 'Manage tenant registration SLA thresholds.',
+  'customer_vehicles.read': 'Read scoped canonical customer-owned vehicles.',
+  'customer_vehicles.manage': 'Create external or delivered-sale vehicles and update coverage.',
 };
+
+const registrationReadPermissions = [
+  'registration.cases.read',
+  'registration.aging.read',
+  'customer_vehicles.read',
+] as const satisfies readonly PermissionCode[];
+const registrationExecutivePermissions = [
+  ...registrationReadPermissions,
+  'registration.cases.execute',
+  'registration.cases.close',
+  'registration.documents.upload',
+  'registration.documents.review',
+  'registration.documents.share',
+  'customer_vehicles.manage',
+] as const satisfies readonly PermissionCode[];
+const registrationManagerPermissions = [
+  ...registrationExecutivePermissions,
+  'registration.cases.manage',
+  'registration.cases.assign',
+  'registration.cases.reopen',
+  'registration.settings.manage',
+] as const satisfies readonly PermissionCode[];
 
 const deliveryManagerPermissions = [
   'delivery.jobs.read',
@@ -536,6 +580,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
+    ...registrationManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -560,6 +605,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
+    ...registrationManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -577,6 +623,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryManagerPermissions,
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
+    ...registrationManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -592,6 +639,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryReadPermissions,
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
+    ...registrationManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -622,12 +670,14 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...scopedOrganizationReadPermissions,
     ...inventoryOperatorPermissions,
     ...commercialReadPermissions,
+    ...registrationReadPermissions,
   ],
   BILLING_DOCUMENTATION_EXECUTIVE: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...inventoryReadPermissions,
     ...commercialBillingPermissions,
+    ...registrationReadPermissions,
   ],
   DELIVERY_EXECUTIVE: [
     ...accountPermissions,
@@ -639,6 +689,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...commercialReadPermissions,
+    ...registrationExecutivePermissions,
   ],
   TEAM_MANAGER: [
     ...accountPermissions,
@@ -652,6 +703,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryReadPermissions,
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
+    ...registrationManagerPermissions,
   ],
 };
 
@@ -784,7 +836,7 @@ const seedUsers: readonly SeedUser[] = [
     branchScopeMode: 'SELECTED',
     teamScopeMode: 'NONE',
     assignmentScope: 'ASSIGNED',
-    branchIds: [ALPHA_MUMBAI_BRANCH_ID],
+    branchIds: [ALPHA_PUNE_BRANCH_ID, ALPHA_MUMBAI_BRANCH_ID],
   },
   {
     userId: '50000000-0000-4000-8000-000000000009',
@@ -2059,6 +2111,102 @@ async function seed(): Promise<void> {
           id: ALPHA_DELIVERY_EVENT_ID,
           reason: 'Development delivery fixture.',
           toStatus: 'VEHICLE_PREPARATION',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(registrationSettings)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          slaHours: {
+            DOCUMENTS_READY: 48,
+            REGISTRATION_STARTED: 48,
+            RTO_SUBMITTED: 168,
+            NUMBER_ALLOTTED: 168,
+            RC_PENDING: 720,
+            RC_RECEIVED: 48,
+            RC_SHARED_COLLECTED: 48,
+            REOPENED: 48,
+          },
+          updatedAt: SEED_DATE,
+          updatedByMembershipId: '60000000-0000-4000-8000-000000000003',
+        })
+        .onConflictDoUpdate({
+          target: registrationSettings.clientOrganizationId,
+          set: { updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(registrationCases)
+        .values({
+          assignedMembershipId: '60000000-0000-4000-8000-000000000011',
+          assignedUserId: '50000000-0000-4000-8000-000000000011',
+          bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000003',
+          expectedCompletionAt: new Date('2026-08-03T00:00:00.000Z'),
+          id: ALPHA_REGISTRATION_CASE_ID,
+          inventoryUnitId: ALPHA_DELIVERY_INVENTORY_UNIT_ID,
+          status: 'DOCUMENTS_READY',
+          statusChangedAt: SEED_DATE,
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({
+          target: registrationCases.id,
+          set: {
+            assignedMembershipId: '60000000-0000-4000-8000-000000000011',
+            assignedUserId: '50000000-0000-4000-8000-000000000011',
+            updatedAt: SEED_DATE,
+          },
+        });
+      await transaction
+        .insert(registrationEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000003',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          correlationId: 'development-seed-phase-10',
+          createdAt: SEED_DATE,
+          eventType: 'REGISTRATION_CASE_CREATED',
+          evidence: { development_fixture: true },
+          fromStatus: null,
+          id: ALPHA_REGISTRATION_EVENT_ID,
+          registrationCaseId: ALPHA_REGISTRATION_CASE_ID,
+          toStatus: 'DOCUMENTS_READY',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(customerVehicles)
+        .values({
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          brandName: 'Legacy Motors',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000011',
+          engineNumber: 'LEGACYENGINE0001',
+          id: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID,
+          modelName: 'City Runner',
+          ownershipSource: 'EXTERNAL',
+          purchaseDate: '2024-06-15',
+          registrationNumber: 'MH12DEV1001',
+          updatedAt: SEED_DATE,
+          variantName: 'Petrol Manual',
+          vin: 'LEGACYVIN000000001',
+          warrantyExpiresOn: '2027-06-14',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(customerVehicleEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000011',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          correlationId: 'development-seed-phase-10',
+          createdAt: SEED_DATE,
+          customerVehicleId: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID,
+          eventType: 'EXTERNAL_CUSTOMER_VEHICLE_CREATED',
+          evidence: { development_fixture: true, ownership_source: 'EXTERNAL' },
+          id: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_EVENT_ID,
         })
         .onConflictDoNothing();
       await transaction

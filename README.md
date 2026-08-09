@@ -9,9 +9,10 @@ the lead-management foundation, and provider-neutral calling. Leads include publ
 tenant-scoped contact deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation,
 web operations and an offline-aware salesperson mobile flow. Calling adds canonical Lead/Contact call
 history, outcome requirements, idempotent provider webhooks, reconciliation and private,
-consent-aware recording references. Phase 7 adds canonical physical inventory, reservation,
-allocation, transfer and demo-stock controls. Booking, payment, delivery, registration and post-sale
-remain deferred to their approved phases.
+consent-aware recording references. Phases 7-10 add canonical physical inventory, commercial
+booking/payment/document readiness, delivery operations, registration/RC and Customer Vehicles.
+Post-sale reminders, reports, expanded integrations and production release remain assigned to their
+later approved phases.
 
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
@@ -178,9 +179,19 @@ requires explicit disclosure, uses a visible foreground notification and stops o
 exception path; tenant-bound SQLite replays terminal commands with stable idempotency keys. Private
 photo/signature proof reuses signed S3-compatible storage and fails closed without a clean scanner;
 received-by evidence is the seeded default. Completion atomically marks the job, allocation and unit
-Delivered and deliberately does not require permanent RC, leaving registration to Phase 10. Set an
-independent backend-only `DELIVERY_OTP_PEPPER` in hosted environments; OTP delivery remains visibly
-unavailable until a reviewed provider is bound.
+Delivered while remaining independent from permanent RC status. Set an independent backend-only
+`DELIVERY_OTP_PEPPER` in hosted environments; OTP delivery remains visibly unavailable until a
+reviewed provider is bound.
+
+Phase 10 adds registration/RTO/RC authority at `/v1/registration-cases`, customer-owned vehicles at
+`/v1/customer-vehicles`, and office workspaces at `/registrations` and `/customer-vehicles`.
+Registration may begin before delivery and advances on its own append-only timeline. RTO submission,
+number allotment, RC receipt, verified private RC delivery, closure and reasoned reopening are
+server-authoritative idempotent commands. Corrections append a linked event instead of rewriting
+history. Customer Vehicles reuse the canonical Contact and delivered booking/unit or carry the
+explicit `EXTERNAL` ownership source; tenant booking, VIN and registration uniqueness prevent
+duplicates. Private RC copies reuse signed S3-compatible storage, metadata/checksum validation and
+audited access, and remain unverified while the fail-closed scanner is unavailable.
 
 ## Repository layout
 

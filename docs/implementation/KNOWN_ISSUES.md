@@ -1,9 +1,17 @@
 # Known Issues
 
-The 2026-08-09 Phase 9 implementation/audit has no known Critical/High or source-level acceptance
+The 2026-08-09 Phase 10 implementation/audit has no known Critical/High or source-level acceptance
 blocker. Final local command and migration evidence is in `PHASE_STATUS.md`. Physical-device,
 provider, retention-operations and hosted-release items below must not be represented as locally
 verified.
+
+## Phase 10 registration/RC release issues
+
+| Open issue                                                    | Severity | Impact                                                                                                                                   | Reproduction or evidence                                                                                                     | Workaround                                                                                                                                                       | Owning phase                | Resolution status               |
+| ------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------- |
+| No approved malware scanner for private RC copies             | Medium   | Upload can complete, but the document remains Pending Scan and cannot be Verified, shared or used to close a case                        | `FailClosedRcDocumentScanner` returns `UNAVAILABLE`; verification requires `scannerStatus = CLEAN`                           | Bind and test a tenant-safe scanner/quarantine adapter before production RC upload; never override status from a client                                          | Phase 10 / storage security | Open, intentionally fail-closed |
+| No RTO/government integration was authorized                  | Low      | Staff must record RTO/application/number evidence manually; the CRM does not query, submit to or claim success from a government service | No provider credentials, approved API contract or government sandbox was supplied; Phase 10 exposes manual RTO commands only | Continue reasoned manual evidence, or add a provider-neutral signed adapter in a separately approved integration phase                                           | Phase 10 / integrations     | Open external integration       |
+| Phase 10 migration and seed have not run on a shared database | Medium   | PGlite proves the 30-entry chain, constraints and triggers, but Supabase backup/apply/permissions are not staging-proven                 | `pnpm db:migrate` remains Not run against shared infrastructure; local migration integration is 20/20                        | Take a staging recovery point, apply through `0029`, verify 13 permissions, mappings, uniqueness and immutable triggers, then seed only a disposable environment | Phase 10 release validation | Open external validation        |
 
 ## Phase 9 delivery release issues
 

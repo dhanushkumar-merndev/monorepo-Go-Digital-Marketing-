@@ -855,3 +855,66 @@
 - **Status:** Accepted; scanner and OTP providers remain external prerequisites when enabled.
 - **Affected modules:** Delivery settings/proofs/API, S3 adapter boundary, manager review and mobile
   proof capture.
+
+## ADR-0045 - Registration and delivery are parallel aggregates over one booking
+
+- **Date:** 2026-08-09
+- **Decision:** Create one tenant registration case per canonical confirmed booking and exact
+  allocated inventory unit. Registration may begin before delivery and never reads or rewrites the
+  delivery status. A case detail may display the linked delivery as read-only context.
+- **Reason:** Registration work starts during post-booking preparation, while permanent RC commonly
+  finishes after handover. Treating either timeline as the other's gate would falsify operational
+  history and delay valid delivery.
+- **Alternatives considered:** A single combined delivery/RC status, requiring Delivered before
+  registration start, and requiring permanent RC before delivery were rejected.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Registration contracts/schema/API/web queue, Booking, Delivery and Inventory
+  references.
+
+## ADR-0046 - Registration corrections and RC delivery are append-only evidence
+
+- **Date:** 2026-08-09
+- **Decision:** Status changes append registration events. A correction updates the current
+  projection only while appending a new event that identifies the prior event being corrected.
+  PostgreSQL rejects updates/deletes of registration events, RC delivery records and customer
+  vehicle events. Closure requires application/RTO submission, permanent number, received date,
+  verified private RC and delivery evidence; reopening retains the original close event.
+- **Reason:** Government-registration values can be corrected, but the dealership must retain what
+  was recorded, who changed it, why and when. Mutable history or a client-side completion flag is
+  insufficient audit evidence.
+- **Alternatives considered:** Editing events in place, deleting rejected evidence, optional closure
+  fields and reopening by resetting the row without an event were rejected.
+- **Status:** Accepted, database-enforced and integration-tested.
+- **Affected modules:** Registration cases/events, RC documents/delivery records, audit/outbox and
+  closure/reopen/correction commands.
+
+## ADR-0047 - Customer Vehicle is canonical, source-explicit and identity-idempotent
+
+- **Date:** 2026-08-09
+- **Decision:** A dealership-sale Customer Vehicle can be created only from an actually Delivered
+  booking and reuses its Contact, booking, delivery and physical inventory identity. External
+  vehicles require authorized manual entry and have no dealership booking/delivery/inventory links.
+  Tenant plus booking, normalized VIN and normalized registration number are independently unique.
+- **Reason:** Post-sale modules need one durable ownership record without duplicating customers or
+  representing outside purchases as dealership revenue. Retries and reversed workflow order must
+  not create duplicate vehicles.
+- **Alternatives considered:** Browser-supplied dealership VIN lineage, one generic free-text asset,
+  uniqueness by registration only and automatically manufacturing a sale for an external vehicle
+  were rejected.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Customer Vehicle schema/API/web, Registration number allotment, Delivery,
+  Inventory and canonical Contact.
+
+## ADR-0048 - RC material stays private and scanner verification fails closed
+
+- **Date:** 2026-08-09
+- **Decision:** RC copies use tenant-scoped private object keys and short-lived signed PUT/GET URLs.
+  Completion verifies MIME, size and SHA-256 object metadata. Only a `CLEAN` scanner result can be
+  verified; download and share require a stated purpose and produce audit/outbox plus immutable RC
+  delivery evidence. Object keys and signed URLs are not persisted in browser state.
+- **Reason:** RCs are sensitive government documents. Successful upload is neither safe-content
+  evidence nor authorization to publish the object.
+- **Alternatives considered:** Public URLs, database blobs, client-provided scan flags, long-lived
+  links and unaudited download were rejected.
+- **Status:** Accepted; production scanner activation remains an external prerequisite.
+- **Affected modules:** RC document schema/service/UI, S3-compatible storage boundary and audit.
