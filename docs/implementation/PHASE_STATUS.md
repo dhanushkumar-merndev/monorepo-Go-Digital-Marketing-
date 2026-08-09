@@ -1,11 +1,30 @@
 # Phase Status
 
-- **Current phase:** Phase 11 - Post-Sale Reminders and Customer Lifecycle.
+- **Current phase:** Phase 12 - Dashboards, Reports, Audit and Exports.
 - **Current status:** **Implementation and strict local completion audit passed.**
 - **Completed phases:** Phases 0-4, 6-11; Phase 5 automated acceptance remains green. Live official
   messaging activation remains gated by its documented external provider-readiness issue.
-- **Next phase:** Phase 12 - Reports, Dashboards and Exports has not started.
+- **Next phase:** Phase 13 - External Integrations.
 - **Last updated:** 2026-08-09
+
+## Phase 12 acceptance-criterion checklist
+
+- [x] Dashboard metrics read canonical tenant/branch-scoped domain records and declare KPI time basis,
+      inclusion and relationship-owner attribution.
+- [x] IANA timezone date boundaries are calculated server-side and return deterministic UTC bounds.
+- [x] Audit search returns immutable actor/action/entity/correlation/reason metadata from `audit_events`.
+- [x] CSV/XLSX export jobs are asynchronous, scope-snapshotted, private, expiring and audited.
+- [x] Reporting permissions, seed mappings, OpenAPI endpoints, worker registration and URL-state web
+      dashboard/audit/export views are included.
+
+## Phase 12 verification
+
+| Command                                               | Result                                               |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| `pnpm db:generate` / `pnpm db:check`                  | Pass; migrations `0031` and `0032` validated.        |
+| `pnpm --filter @gdm/api test`                         | Pass; 61 unit and 55 integration tests.              |
+| `pnpm format:check` / `pnpm lint` / `pnpm type-check` | Pass.                                                |
+| `pnpm build`                                          | Pass; 8/8 production tasks and `/reports` web route. |
 
 ## Phase 11 acceptance-criterion checklist
 

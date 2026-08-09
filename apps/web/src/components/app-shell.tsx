@@ -29,6 +29,7 @@ import {
   Truck,
   FileBadge2,
   BellRing,
+  ChartNoAxesCombined,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -92,6 +93,12 @@ const navigation = [
     icon: BellRing,
     label: 'Post-sale reminders',
     permission: 'reminders.read',
+  },
+  {
+    href: '/reports',
+    icon: ChartNoAxesCombined,
+    label: 'Reports & audit',
+    permission: 'reports.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {

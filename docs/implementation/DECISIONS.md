@@ -978,3 +978,13 @@
   customer timeline rows were rejected.
 - **Status:** Accepted and migration-enforced for immutable history.
 - **Affected modules:** Customer Activity schema/API, reminders, audit/outbox and lifecycle UI.
+
+## ADR-0053 - Report/export scope is snapshotted at request time
+
+- **Date:** 2026-08-09
+- **Decision:** Report reads apply live tenant and branch authorization; each asynchronous export records
+  the requesting membership's scope snapshot and produces a private file only from that snapshot.
+- **Reason:** A queued export must not become cross-tenant or broader-scope if membership access changes
+  while the worker is waiting.
+- **Status:** Accepted.
+- **Affected modules:** Reports API, export jobs, background worker and private object storage.

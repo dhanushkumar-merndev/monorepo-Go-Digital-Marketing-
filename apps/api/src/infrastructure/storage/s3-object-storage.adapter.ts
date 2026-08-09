@@ -11,6 +11,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { API_ENVIRONMENT } from '../../config/api-config.module.js';
 import type {
   ObjectStorage,
+  PutPrivateObjectRequest,
   PresignedObjectUrl,
   PresignDownloadRequest,
   PresignUploadRequest,
@@ -114,6 +115,17 @@ export class S3ObjectStorageAdapter implements ObjectStorage, OnApplicationShutd
       method: 'PUT',
       url: await getSignedUrl(this.client, command, { expiresIn }),
     };
+  }
+
+  async putPrivateObject(request: PutPrivateObjectRequest): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Body: request.body,
+        Bucket: this.bucket,
+        ContentType: request.contentType,
+        Key: validateObjectKey(request.key),
+      }),
+    );
   }
 
   async createDownloadUrl(request: PresignDownloadRequest): Promise<PresignedObjectUrl> {

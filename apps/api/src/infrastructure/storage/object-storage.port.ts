@@ -28,8 +28,15 @@ export interface StoredObjectMetadata {
   lastModified?: string;
 }
 
+export interface PutPrivateObjectRequest {
+  body: Uint8Array;
+  contentType: string;
+  key: string;
+}
+
 /** Provider-neutral private object storage contract. */
 export interface ObjectStorage {
+  putPrivateObject?(request: PutPrivateObjectRequest): Promise<void>;
   createUploadUrl(request: PresignUploadRequest): Promise<PresignedObjectUrl>;
   createDownloadUrl(request: PresignDownloadRequest): Promise<PresignedObjectUrl>;
   stat(key: string): Promise<StoredObjectMetadata | undefined>;

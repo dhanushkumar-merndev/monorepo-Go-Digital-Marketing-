@@ -135,6 +135,9 @@ export const PERMISSION_CODES = [
   'reminders.dispatch.manage',
   'reminders.preferences.manage',
   'customer_activities.create',
+  'reports.read',
+  'reports.export',
+  'audit.events.read',
 ] as const;
 
 export const canonicalRoleCodeSchema = z.enum(CANONICAL_ROLE_CODES);

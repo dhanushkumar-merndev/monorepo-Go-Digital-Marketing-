@@ -366,7 +366,16 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'reminders.dispatch.manage': 'Reschedule, cancel and retry reminder delivery work.',
   'reminders.preferences.manage': 'Capture customer reminder channel and category preferences.',
   'customer_activities.create': 'Append feedback, complaint and escalation customer activity.',
+  'reports.read': 'Read authoritative, scope-filtered operational KPI dashboards and reports.',
+  'reports.export': 'Create and download tenant-scoped, expiring report exports.',
+  'audit.events.read': 'Search immutable tenant audit events with sensitive values minimized.',
 };
+
+const reportingManagerPermissions = [
+  'reports.read',
+  'reports.export',
+  'audit.events.read',
+] as const satisfies readonly PermissionCode[];
 
 const reminderOperatorPermissions = [
   'reminders.read',
@@ -609,6 +618,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
+    ...reportingManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -635,6 +645,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
+    ...reportingManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -654,6 +665,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
+    ...reportingManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -671,6 +683,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
+    ...reportingManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -738,6 +751,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
+    ...reportingManagerPermissions,
   ],
 };
 

@@ -2,8 +2,24 @@
 
 ## Completed phase
 
-Phase 11 - Post-Sale Reminders and Customer Lifecycle. Strict local audit passed on 2026-08-09.
-Phase 12 has not started.
+Phase 12 - Dashboards, Reports, Audit and Exports. Local API regression and migration validation passed
+on 2026-08-09; final workspace-wide completion gates remain in progress.
+
+## Phase 12 implementation
+
+- `packages/contracts/src/reporting` defines report ranges, audit filters and export commands.
+- `0031_panoramic_mimic.sql` creates tenant-scoped durable export jobs; `0032_stale_union_jack.sql`
+  adds reporting/audit/export permissions to the retained compatibility enum.
+- `apps/api/src/reports` supplies scoped canonical KPI, immutable audit search, durable export jobs,
+  worker registration and short-lived private download URLs.
+- `apps/web/src/features/reports` provides URL-state date filtering, dashboard/audit views, loading,
+  empty/error states and export-status visibility.
+- CSV and a standards-based minimal XLSX writer are persisted only through the private storage adapter.
+
+## Next phase recommendation
+
+Read `PROMPTS/13_EXTERNAL_INTEGRATIONS.md`; preserve the Phase 12 report contracts and do not expose
+stored export object keys or signed URLs in long-lived client state.
 
 ## Modules created or changed
 

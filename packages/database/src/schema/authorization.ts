@@ -153,6 +153,9 @@ export const PERMISSION_CODES = [
   'reminders.dispatch.manage',
   'reminders.preferences.manage',
   'customer_activities.create',
+  'reports.read',
+  'reports.export',
+  'audit.events.read',
 ] as const;
 
 // Retained only so Drizzle recognizes the pre-Phase-4 PostgreSQL enum while the

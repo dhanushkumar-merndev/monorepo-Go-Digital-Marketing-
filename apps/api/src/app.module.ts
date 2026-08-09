@@ -21,6 +21,7 @@ import { CommercialModule } from './commercial/commercial.module.js';
 import { DeliveryModule } from './delivery/delivery.module.js';
 import { RegistrationModule } from './registration/registration.module.js';
 import { RemindersModule } from './reminders/reminders.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { RemindersModule } from './reminders/reminders.module.js';
     DeliveryModule,
     RegistrationModule,
     RemindersModule,
+    ReportsModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

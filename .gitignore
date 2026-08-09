@@ -41,3 +41,9 @@ apps/mobile/ios/
 
 # Generated exports and reports
 reports/
+!apps/api/src/reports/
+!apps/api/src/reports/**
+!apps/web/src/app/(app)/reports/
+!apps/web/src/app/(app)/reports/**
+!apps/web/src/features/reports/
+!apps/web/src/features/reports/**

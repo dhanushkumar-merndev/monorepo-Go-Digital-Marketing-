@@ -6,6 +6,7 @@ import { API_ENVIRONMENT, ApiConfigModule } from './config/api-config.module.js'
 import { createPinoHttpOptions } from './observability/pino-options.js';
 import { MessagingModule } from './messaging/messaging.module.js';
 import { RemindersModule } from './reminders/reminders.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RemindersModule } from './reminders/reminders.module.js';
     BackgroundProcessingModule.forStandaloneWorker(),
     MessagingModule,
     RemindersModule,
+    ReportsModule,
   ],
 })
 export class WorkerModule {}
