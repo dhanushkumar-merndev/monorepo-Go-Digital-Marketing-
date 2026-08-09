@@ -41,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle workflows', () => {
+describe('reviewed PostgreSQL migrations through Phase 14 release hardening', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -144,6 +144,7 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
           'departments', 'external_auth_challenges',
           'membership_branch_scopes', 'membership_department_scopes',
           'membership_team_scopes', 'memberships',
+          'mfa_authenticators', 'mfa_login_challenges', 'mfa_recovery_codes',
           'outbox_events', 'password_reset_tokens', 'permissions', 'refresh_sessions',
           'refresh_token_rotations', 'role_permission_mappings', 'roles',
           'reporting_lines', 'support_elevations', 'team_manager_assignments',
@@ -211,6 +212,9 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
       'messaging_opt_in_records',
       'messaging_provider_connections',
       'messaging_suppressions',
+      'mfa_authenticators',
+      'mfa_login_challenges',
+      'mfa_recovery_codes',
       'outbox_events',
       'password_reset_tokens',
       'permissions',
@@ -287,7 +291,7 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(119);
+    expect(permissionCount.rows[0]?.count).toBe(130);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -1481,6 +1485,8 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
   it('enforces Phase 13 integration tenant isolation and human-review constraints', async () => {
     const connectionId = 'f0000000-0000-4000-8000-000000000001';
     const creativeId = 'f1000000-0000-4000-8000-000000000001';
+    const firstCallId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446804';
+    const secondCallId = 'f2000000-0000-4000-8000-000000000001';
     await client.exec(`
       insert into integration_connections (
         id, client_organization_id, provider, display_name, status
@@ -1523,5 +1529,86 @@ describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle wor
       set status = 'APPROVED', reviewed_at = now(), reviewed_by_membership_id = '${clientMembershipId}'
       where id = '${creativeId}'
     `);
+
+    const recording = await client.query<{ id: string }>(`
+      select id from call_recordings
+      where client_organization_id = '${tenantId}' and call_id = '${firstCallId}'
+      limit 1
+    `);
+    expect(recording.rows[0]?.id).toBeTruthy();
+    await client.exec(`
+      insert into calls (
+        id, client_organization_id, lead_id, contact_id, connection_id, provider,
+        provider_call_id, origin, direction, status, outcome_requirement
+      )
+      select
+        '${secondCallId}', client_organization_id, lead_id, contact_id, connection_id,
+        provider, 'provider-call-phase13-second', origin, direction, status, outcome_requirement
+      from calls where id = '${firstCallId}'
+    `);
+    await expect(
+      client.exec(`
+        insert into call_transcript_suggestions (
+          client_organization_id, call_id, recording_id, transcript, summary, suggestions
+        ) values (
+          '${tenantId}', '${secondCallId}', '${recording.rows[0]?.id}',
+          'Wrong call transcript', 'Wrong call summary', '[]'::jsonb
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`
+        insert into call_transcript_suggestions (
+          client_organization_id, call_id, recording_id, transcript, summary, suggestions
+        ) values (
+          '${tenantId}', '${firstCallId}', '${recording.rows[0]?.id}',
+          'Exact call transcript', 'Exact call summary', '[]'::jsonb
+        )
+      `),
+    ).resolves.toBeDefined();
+  });
+
+  it('backfills Phase 12/13 permissions with least-privilege role mappings', async () => {
+    const permissionRows = await client.query<{ code: string }>(`
+      select code from permissions
+      where code in (
+        'reports.read', 'reports.export', 'audit.events.read',
+        'integrations.read', 'integrations.manage', 'onboarding.manage',
+        'ai.creatives.manage', 'ai.creatives.review',
+        'ai.transcripts.manage', 'ai.transcripts.review', 'social.publish'
+      )
+      order by code
+    `);
+    expect(permissionRows.rows).toHaveLength(11);
+
+    const mappings = await client.query<{ count: number; role_code: string }>(`
+      select r.code::text as role_code, count(*)::int as count
+      from roles r
+      join role_permission_mappings rpm on rpm.role_id = r.id
+      join permissions p on p.id = rpm.permission_id
+      where p.code in (
+        'reports.read', 'reports.export', 'audit.events.read',
+        'integrations.read', 'integrations.manage', 'onboarding.manage',
+        'ai.creatives.manage', 'ai.creatives.review',
+        'ai.transcripts.manage', 'ai.transcripts.review', 'social.publish'
+      )
+      group by r.code
+      order by r.code
+    `);
+    expect(mappings.rows).toEqual([
+      { count: 11, role_code: 'AGENCY_ADMIN' },
+      { count: 11, role_code: 'CLIENT_ADMIN' },
+      { count: 11, role_code: 'MANAGER' },
+      { count: 11, role_code: 'SALES_MANAGER' },
+      { count: 10, role_code: 'TEAM_MANAGER' },
+    ]);
+    const teamAudit = await client.query<{ count: number }>(`
+      select count(*)::int as count
+      from roles r
+      join role_permission_mappings rpm on rpm.role_id = r.id
+      join permissions p on p.id = rpm.permission_id
+      where r.code = 'TEAM_MANAGER' and p.code = 'audit.events.read'
+    `);
+    expect(teamAudit.rows[0]?.count).toBe(0);
   });
 });

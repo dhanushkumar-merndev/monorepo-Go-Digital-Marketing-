@@ -11,6 +11,13 @@ export interface AuthRuntimeConfig {
   cookieSecure: boolean;
   loginLockoutSeconds: number;
   loginMaxAttempts: number;
+  mfaActiveKeyId: string;
+  mfaChallengePepper: string;
+  mfaChallengeTtlSeconds: number;
+  mfaEncryptionKeys: Readonly<Record<string, string>>;
+  mfaIssuer: string;
+  mfaMaxAttempts: number;
+  mfaRecoveryCodePepper: string;
   googleChallengeTtlSeconds: number;
   googleClientIds: string[];
   passwordPepper: string;

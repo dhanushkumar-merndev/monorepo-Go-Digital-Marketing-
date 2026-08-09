@@ -322,6 +322,11 @@ export const callRecordings = pgTable(
     uniqueIndex('call_recordings_provider_uidx')
       .on(table.clientOrganizationId, table.providerRecordingId)
       .where(sql`${table.providerRecordingId} is not null`),
+    unique('call_recordings_client_call_id_unique').on(
+      table.clientOrganizationId,
+      table.callId,
+      table.id,
+    ),
     index('call_recordings_call_idx').on(table.clientOrganizationId, table.callId),
     check(
       'call_recordings_available_consent_check',

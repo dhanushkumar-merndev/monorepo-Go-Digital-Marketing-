@@ -820,7 +820,8 @@ export class RegistrationService {
         ),
       )
       .limit(1);
-    if (!document) throw missing('Verified RC document not found.');
+    if (!document || document.scannerStatus !== 'CLEAN')
+      throw missing('Verified clean RC document not found.');
     await this.accessibleCase(context, document.registrationCaseId);
     const download = await this.storage.createDownloadUrl({
       downloadFileName: document.fileName,

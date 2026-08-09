@@ -15,10 +15,10 @@ export interface MessagingCredentials {
   verifyToken: string;
 }
 
-function unavailable(): ServiceUnavailableException {
+function unavailable(field = 'MESSAGING_CREDENTIAL_ENCRYPTION_KEY'): ServiceUnavailableException {
   return new ServiceUnavailableException({
     code: 'PROVIDER_UNAVAILABLE',
-    details: [{ field: 'MESSAGING_CREDENTIAL_ENCRYPTION_KEY', reason: 'Not configured.' }],
+    details: [{ field, reason: 'Not configured for the requested key ID.' }],
     message: 'Messaging credential encryption is not configured.',
     retryable: false,
   });
@@ -45,8 +45,11 @@ export class MessagingCredentialProtector {
   }
 
   decrypt(value: EncryptedMessagingCredentials): MessagingCredentials {
-    const key = this.config.credentialEncryptionKey;
-    if (!key || value.keyId !== this.config.credentialKeyId) throw unavailable();
+    const key =
+      value.keyId === this.config.credentialKeyId
+        ? this.config.credentialEncryptionKey
+        : this.config.credentialDecryptionKeys[value.keyId];
+    if (!key) throw unavailable('MESSAGING_CREDENTIAL_DECRYPTION_KEYS');
     try {
       const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(value.iv, 'base64'));
       decipher.setAuthTag(Buffer.from(value.authTag, 'base64'));

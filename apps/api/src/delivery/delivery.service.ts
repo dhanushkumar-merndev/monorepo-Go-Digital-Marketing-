@@ -1035,6 +1035,11 @@ export class DeliveryService {
       )
       .limit(1);
     if (!proof?.objectKey) throw notFound('Downloadable delivery proof not found.');
+    if (proof.scannerStatus !== 'CLEAN')
+      throw conflict(
+        'PROOF_SCAN_REQUIRED',
+        'Delivery proof download is blocked until malware scanning reports CLEAN.',
+      );
     await this.accessibleJob(context, proof.deliveryJobId);
     const download = await this.storage.createDownloadUrl({
       ...(proof.fileName ? { downloadFileName: proof.fileName } : {}),

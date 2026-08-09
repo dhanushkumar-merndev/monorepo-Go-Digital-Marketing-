@@ -106,6 +106,29 @@ describe('AuthApiClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('returns an Agency Admin MFA challenge without treating it as an authenticated session', async () => {
+    const challengeToken = `77777777-7777-4777-8777-777777777777.${'a'.repeat(43)}`;
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        challenge_expires_at: later,
+        challenge_token: challengeToken,
+        methods: ['TOTP', 'RECOVERY_CODE'],
+        status: 'MFA_REQUIRED',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new AuthApiClient().login({ email: 'agency@example.com', password: 'correct horse' }),
+    ).resolves.toEqual({
+      challengeExpiresAt: later,
+      challengeToken,
+      methods: ['TOTP', 'RECOVERY_CODE'],
+      status: 'MFA_REQUIRED',
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('uses the HttpOnly cookie transport and retries once after SESSION_EXPIRED', async () => {
     const calls: {
       authorization: string | null;
@@ -179,6 +202,26 @@ describe('AuthApiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(onExpired).toHaveBeenCalledTimes(1);
     expect(onExpired).toHaveBeenCalledWith(expect.objectContaining({ code: 'SESSION_REVOKED' }));
+  });
+
+  it('signals an expired support context on a protected 403 before rejecting the request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => authError('SUPPORT_ELEVATION_REQUIRED', 403)),
+    );
+    const onSupportExpired = vi.fn();
+    const client = new AuthApiClient();
+    client.setAccessToken(accessToken);
+    client.setSupportElevationExpiredHandler(onSupportExpired);
+
+    await expect(client.request('/protected-client-resource')).rejects.toMatchObject({
+      code: 'SUPPORT_ELEVATION_REQUIRED',
+      status: 403,
+    });
+    expect(onSupportExpired).toHaveBeenCalledOnce();
+    expect(onSupportExpired).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'SUPPORT_ELEVATION_REQUIRED' }),
+    );
   });
 
   it('does not expose a server-provided 5xx message', async () => {

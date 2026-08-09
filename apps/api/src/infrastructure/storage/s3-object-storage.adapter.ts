@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
+  DeleteObjectCommand,
   S3Client,
   type S3ClientConfig,
 } from '@aws-sdk/client-s3';
@@ -115,6 +116,12 @@ export class S3ObjectStorageAdapter implements ObjectStorage, OnApplicationShutd
       method: 'PUT',
       url: await getSignedUrl(this.client, command, { expiresIn }),
     };
+  }
+
+  async deletePrivateObject(key: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: validateObjectKey(key) }),
+    );
   }
 
   async putPrivateObject(request: PutPrivateObjectRequest): Promise<void> {

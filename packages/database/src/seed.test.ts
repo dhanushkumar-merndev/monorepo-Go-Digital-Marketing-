@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CANONICAL_ROLE_CODES } from './schema/index.js';
-import { DEVELOPMENT_SEED_USERS } from './seed.js';
+import { CANONICAL_ROLE_PERMISSION_MATRIX, DEVELOPMENT_SEED_USERS } from './seed.js';
 
 describe('development seed definition', () => {
   it('covers every role family and two distinct clients deterministically', () => {
@@ -29,5 +29,20 @@ describe('development seed definition', () => {
     expect(
       DEVELOPMENT_SEED_USERS.every((user) => user.email.endsWith('@seed.godigital.test')),
     ).toBe(true);
+  });
+
+  it('keeps Team Manager reporting useful without tenant-wide audit access', () => {
+    expect(CANONICAL_ROLE_PERMISSION_MATRIX.TEAM_MANAGER).toEqual(
+      expect.arrayContaining([
+        'reports.read',
+        'reports.export',
+        'integrations.read',
+        'integrations.manage',
+      ]),
+    );
+    expect(CANONICAL_ROLE_PERMISSION_MATRIX.TEAM_MANAGER).not.toContain('audit.events.read');
+    for (const role of ['AGENCY_ADMIN', 'CLIENT_ADMIN', 'MANAGER', 'SALES_MANAGER'] as const) {
+      expect(CANONICAL_ROLE_PERMISSION_MATRIX[role]).toContain('audit.events.read');
+    }
   });
 });

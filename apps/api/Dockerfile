@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-alpine AS build
+FROM node:24.18.1-alpine3.23@sha256:c2cc26d8f991c2db236ad51a61efee843c482372d6d22570787309d511694110 AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -18,8 +18,23 @@ RUN pnpm --filter @gdm/api... build
 # step downgrades peer findings to warnings.
 RUN pnpm --config.strict-peer-dependencies=false \
   --filter @gdm/api deploy --prod --legacy /runtime
+# pnpm's workspace audit sees image-size only through Drizzle's optional Expo
+# peer graph. The two release-audit exceptions are valid only while the pruned
+# API artifact excludes that graph; fail the image build if it ever appears.
+RUN if find /runtime/node_modules -type d -name image-size -print -quit | grep -q .; then \
+      echo 'image-size unexpectedly entered the pruned API runtime' >&2; \
+      exit 1; \
+    fi
 
-FROM node:24-alpine AS runtime
+FROM node:24.18.1-alpine3.23@sha256:c2cc26d8f991c2db236ad51a61efee843c482372d6d22570787309d511694110 AS runtime
+
+ARG BUILD_VERSION=unversioned
+ARG VCS_REF=unknown
+
+LABEL org.opencontainers.image.title="Go Digital Automobile CRM API and worker" \
+  org.opencontainers.image.source="https://github.com/dhanushkumar-merndev/monorepo-Go-Digital-Marketing-" \
+  org.opencontainers.image.version="${BUILD_VERSION}" \
+  org.opencontainers.image.revision="${VCS_REF}"
 
 ENV NODE_ENV=production
 

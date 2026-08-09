@@ -32,6 +32,7 @@ const healthBaseSchema = z.object({
   status: healthStatusSchema,
   service: z.literal('go-digital-automobile-crm-api'),
   version: z.string().min(1),
+  release_id: z.string().min(1),
   environment: z.enum(['development', 'test', 'staging', 'production']),
   timestamp: z.iso.datetime({ offset: true }),
   uptime_seconds: z.number().nonnegative(),

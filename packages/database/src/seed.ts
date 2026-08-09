@@ -384,6 +384,10 @@ const reportingManagerPermissions = [
   'reports.export',
   'audit.events.read',
 ] as const satisfies readonly PermissionCode[];
+const teamReportingManagerPermissions = [
+  'reports.read',
+  'reports.export',
+] as const satisfies readonly PermissionCode[];
 const integrationManagerPermissions = [
   'integrations.read',
   'integrations.manage',
@@ -773,7 +777,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
     ...reminderManagerPermissions,
-    ...reportingManagerPermissions,
+    ...teamReportingManagerPermissions,
     ...integrationManagerPermissions,
   ],
 };
@@ -2623,4 +2627,9 @@ if (invokedPath && fileURLToPath(import.meta.url) === invokedPath) {
   await seed();
 }
 
-export { DEVELOPMENT_SEED_PASSWORD, seed, seedUsers as DEVELOPMENT_SEED_USERS };
+export {
+  DEVELOPMENT_SEED_PASSWORD,
+  rolePermissions as CANONICAL_ROLE_PERMISSION_MATRIX,
+  seed,
+  seedUsers as DEVELOPMENT_SEED_USERS,
+};

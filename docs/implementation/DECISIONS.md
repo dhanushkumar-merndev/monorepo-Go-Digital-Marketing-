@@ -997,3 +997,58 @@
 - **Reason:** Provider output, moderation and telecom/social consent remain external approval boundaries.
 - **Status:** Accepted.
 - **Affected modules:** Integration centre, creative assets, transcript suggestions, audit and UI.
+
+## ADR-0055 - Agency Administrator MFA precedes session issuance
+
+- **Date:** 2026-08-09
+- **Decision:** Password and Google authentication for Agency Administrators enter a short-lived MFA
+  challenge before any refresh session is issued. TOTP secrets use an active/previous encryption
+  keyring, recovery codes are hashed and single-use, and an accepted TOTP time step cannot replay.
+- **Reason:** A privileged password or Google identity alone must not create an administrative CRM
+  session, while recovery and encryption-key rotation remain operationally possible.
+- **Status:** Accepted and unit/web-tested; authenticator-device enrollment is an operator action.
+- **Affected modules:** Authentication API, web login, MFA schema, audit and runtime configuration.
+
+## ADR-0056 - Messaging work is leased and ambiguous provider acceptance is not retried blindly
+
+- **Date:** 2026-08-09
+- **Decision:** Webhook claims use atomic expiring leases, processing is bounded and rate-limited per
+  tenant/provider, retries use jitter, and a crash after possible provider acceptance moves outbound
+  work to a reconciliation dead letter instead of silently sending again.
+- **Reason:** PostgreSQL remains authoritative and duplicate customer messages are worse than an
+  explicitly visible reconciliation task.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Messaging ingress, outbound processor, reliability services and maintenance.
+
+## ADR-0057 - Production promotion is manual, migration-first and evidence-gated
+
+- **Date:** 2026-08-09
+- **Decision:** Immutable release candidates pass Linux supply-chain gates, database recovery-point
+  creation and a single migration job before API/worker/web promotion. Missing evidence evaluates to
+  NO-GO by default.
+- **Reason:** Automatic service deployment ahead of schema/recovery validation can create an
+  unrecoverable mixed-version release.
+- **Status:** Accepted; execution against hosted infrastructure remains external.
+- **Affected modules:** CI, Render, Cloudflare, release scripts and production runbooks.
+
+## ADR-0058 - Dependency exceptions are exact and release-artifact scoped
+
+- **Date:** 2026-08-09
+- **Decision:** Do not globally suppress workspace advisories. The release audit may recognize only
+  the two documented unpatched `image-size` advisories and must also prove the package is absent from
+  the pruned API runtime dependency graph.
+- **Reason:** Expo/Metro optional peers affect the broad workspace graph but are not shipped in the
+  backend container; a broad ignore would hide future or runtime vulnerabilities.
+- **Status:** Accepted and enforced by release-tool tests/CI.
+- **Affected modules:** pnpm policy, release audit script and CI supply-chain job.
+
+## ADR-0059 - Retention removes raw payloads and private objects through durable maintenance
+
+- **Date:** 2026-08-09
+- **Decision:** A recurring BullMQ scheduler claims bounded retention work from PostgreSQL, redacts
+  expired raw webhook payloads and deletes expired private media through the storage adapter while
+  retaining minimal lifecycle/audit evidence.
+- **Reason:** A timestamp alone does not enforce data minimization, and Redis loss must not erase or
+  permanently skip retention obligations.
+- **Status:** Accepted and integration-tested; hosted scheduling/alerts remain external.
+- **Affected modules:** Messaging maintenance, BullMQ, webhook storage and private object storage.

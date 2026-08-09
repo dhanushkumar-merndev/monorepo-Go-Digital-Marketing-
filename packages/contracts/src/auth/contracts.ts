@@ -288,7 +288,7 @@ export const loginResponseSchema = z.discriminatedUnion('status', [
   loginMfaEnrollmentRequiredResponseSchema,
 ]);
 
-export const googleLoginResponseSchema = loginAuthenticatedResponseSchema;
+export const googleLoginResponseSchema = loginResponseSchema;
 
 export const authenticationMethodProviderSchema = z.enum(['PASSWORD', 'GOOGLE']);
 export const authenticationMethodUnlinkBlockReasonSchema = z.enum([

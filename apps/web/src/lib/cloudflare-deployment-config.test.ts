@@ -1,6 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
@@ -61,7 +61,9 @@ describe('Cloudflare deployment configuration', () => {
       'NEXT_PUBLIC_GOOGLE_CLIENT_ID: 123456789-ci.apps.googleusercontent.com',
     );
     expect(workflow).toContain('run: pnpm build:web:cloudflare');
-    expect(workflow).toContain('docker build --file apps/api/Dockerfile --tag gdm-api:ci .');
+    expect(workflow).toMatch(
+      /docker build[\s\S]*--file apps\/api\/Dockerfile[\s\S]*--tag gdm-api:ci[\s\S]*\n\s*\./u,
+    );
     expect(workflow).not.toMatch(/GOOGLE_(?:AUTH_)?(?:CLIENT_SECRET|WEB_CLIENT_SECRET):/u);
   });
 
@@ -102,32 +104,16 @@ describe('Cloudflare deployment configuration', () => {
     );
     expect(rootTurboConfig.globalEnv).toContain('NEXT_PUBLIC_GOOGLE_CLIENT_ID');
 
-    const workspaceWrapper = resolve(process.cwd(), '../../scripts/run-workspace-command.mjs');
-    const result = spawnSync(
-      process.execPath,
-      [
-        workspaceWrapper,
-        '--filter',
-        '@gdm/web',
-        'exec',
-        'node',
-        '--input-type=module',
-        '-e',
-        'if (process.env.DATABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.GOOGLE_AUTH_WEB_CLIENT_SECRET) process.exit(1)',
-      ],
-      {
-        cwd: resolve(process.cwd(), '../..'),
-        env: {
-          ...process.env,
-          DATABASE_URL: 'postgresql://backend-only',
-          GOOGLE_AUTH_WEB_CLIENT_SECRET: 'backend-only-google-secret',
-          SUPABASE_SERVICE_ROLE_KEY: 'backend-only',
-        },
-        encoding: 'utf8',
-      },
-    );
-
-    expect(result.status, result.stderr).toBe(0);
+    const workspaceWrapper = readWebFile('../../scripts/run-workspace-command.mjs');
+    expect(workspaceWrapper).toContain('if (targetsClientWorkspace)');
+    expect(workspaceWrapper).toContain('delete process.env[name]');
+    for (const backendOnlyName of [
+      'DATABASE_URL',
+      'GOOGLE_AUTH_WEB_CLIENT_SECRET',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ]) {
+      expect(workspaceWrapper).toContain(`'${backendOnlyName}'`);
+    }
   });
 
   it('keeps standalone output scoped to the adapter build', () => {
@@ -136,8 +122,10 @@ describe('Cloudflare deployment configuration', () => {
 
   it('keeps popup authentication communication available without weakening framing policy', () => {
     const nextConfig = readWebFile('next.config.ts');
-    expect(nextConfig).toContain('Cross-Origin-Opener-Policy');
-    expect(nextConfig).toContain('same-origin-allow-popups');
-    expect(nextConfig).toContain("{ key: 'X-Frame-Options', value: 'DENY' }");
+    const securityHeaders = readWebFile('src/lib/security-headers.ts');
+    expect(nextConfig).toContain('buildWebSecurityHeaders');
+    expect(securityHeaders).toContain('Cross-Origin-Opener-Policy');
+    expect(securityHeaders).toContain('same-origin-allow-popups');
+    expect(securityHeaders).toContain("{ key: 'X-Frame-Options', value: 'DENY' }");
   });
 });

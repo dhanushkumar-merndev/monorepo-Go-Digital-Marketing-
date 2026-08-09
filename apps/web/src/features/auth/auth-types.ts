@@ -88,6 +88,20 @@ export interface LoginInput {
   password: string;
 }
 
+export interface MfaLoginChallenge {
+  challengeExpiresAt: string;
+  challengeToken: string;
+  methods: ('RECOVERY_CODE' | 'TOTP')[];
+  status: 'MFA_ENROLLMENT_REQUIRED' | 'MFA_REQUIRED';
+}
+
+export interface MfaEnrollmentSetup {
+  authenticatorId: string;
+  challengeExpiresAt: string;
+  manualSecret: string;
+  otpauthUri: string;
+}
+
 export interface PasswordResetInput {
   password: string;
   token: string;

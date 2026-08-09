@@ -1806,8 +1806,12 @@ export class CommercialService {
   async downloadDocument(context: AuthorizationContext, documentId: string, correlationId: string) {
     const cid = clientId(context);
     const current = await this.documentVersion(this.connection.db, context, cid, documentId);
-    if (current.version.uploadStatus !== 'UPLOADED' || current.version.scanStatus === 'REJECTED')
-      throw notFound('Document file not found.');
+    if (current.version.uploadStatus !== 'UPLOADED') throw notFound('Document file not found.');
+    if (current.version.scanStatus !== 'CLEAN')
+      throw conflict(
+        'DOCUMENT_SCAN_REQUIRED',
+        'Document download is blocked until malware scanning reports CLEAN.',
+      );
     if (current.document.expiresAt && current.document.expiresAt <= new Date())
       throw conflict('DOCUMENT_EXPIRED', 'This document has expired.');
     const download = await this.storage.createDownloadUrl({

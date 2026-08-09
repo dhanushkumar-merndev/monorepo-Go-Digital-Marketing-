@@ -22,9 +22,13 @@ import { GoogleAuthenticationService } from './google-authentication.service.js'
 import { GoogleIdentityProviderAdapter } from './google-identity-provider.adapter.js';
 import { GOOGLE_IDENTITY_PROVIDER } from './identity-provider.port.js';
 import { MeController } from './me.controller.js';
+import { MfaSecretProtector } from './mfa-secret-protector.js';
+import { MfaController } from './mfa.controller.js';
+import { MfaService } from './mfa.service.js';
 import { OrganizationAccessController } from './organization-access.controller.js';
 import { OrganizationAccessService } from './organization-access.service.js';
 import { PasswordHasher } from './password-hasher.js';
+import { TotpService } from './totp.service.js';
 import {
   PASSWORD_RESET_DELIVERY,
   UnavailablePasswordResetDelivery,
@@ -45,6 +49,13 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     cookieSecure: environment.refreshCookieSecure,
     loginLockoutSeconds: environment.loginLockoutSeconds,
     loginMaxAttempts: environment.loginMaxAttempts,
+    mfaActiveKeyId: environment.mfaActiveKeyId,
+    mfaChallengePepper: environment.mfaChallengePepper,
+    mfaChallengeTtlSeconds: environment.mfaChallengeTtlSeconds,
+    mfaEncryptionKeys: environment.mfaEncryptionKeys,
+    mfaIssuer: environment.mfaIssuer,
+    mfaMaxAttempts: environment.mfaMaxAttempts,
+    mfaRecoveryCodePepper: environment.mfaRecoveryCodePepper,
     googleChallengeTtlSeconds: environment.googleChallengeTtlSeconds,
     googleClientIds: environment.googleClientIds,
     passwordPepper: environment.passwordPepper,
@@ -61,6 +72,7 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     AuthController,
     GoogleAuthController,
     MeController,
+    MfaController,
     OrganizationAccessController,
     SupportElevationController,
     AdministrationController,
@@ -81,6 +93,14 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     GoogleIdentityProviderAdapter,
     OrganizationAccessService,
     PasswordHasher,
+    MfaService,
+    TotpService,
+    {
+      provide: MfaSecretProtector,
+      inject: [AUTH_RUNTIME_CONFIG],
+      useFactory: (config: AuthRuntimeConfig): MfaSecretProtector =>
+        new MfaSecretProtector(config.mfaActiveKeyId, config.mfaEncryptionKeys),
+    },
     UnavailablePasswordResetDelivery,
     RedisAuthenticationRateLimitStore,
     {

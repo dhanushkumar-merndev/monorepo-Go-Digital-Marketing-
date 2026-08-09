@@ -3,6 +3,7 @@ import { parseMessagingEnvironment } from '@gdm/config';
 import { AuthModule } from '../auth/auth.module.js';
 import { BackgroundJobProcessorRegistry } from '../background/background-job-processor.registry.js';
 import { DatabaseInfrastructureModule } from '../infrastructure/database/database.module.js';
+import { RedisInfrastructureModule } from '../infrastructure/redis/redis.module.js';
 import { StorageInfrastructureModule } from '../infrastructure/storage/storage.module.js';
 import { LeadsModule } from '../leads/leads.module.js';
 import { DevelopmentMessagingProvider } from './development-messaging.provider.js';
@@ -10,16 +11,28 @@ import { MessagingController, MessagingWebhooksController } from './messaging.co
 import { MESSAGING_PROVIDER_REGISTRY } from './messaging-provider.port.js';
 import { DefaultMessagingProviderRegistry } from './messaging-provider.registry.js';
 import {
+  MESSAGING_RATE_LIMIT_STORE,
+  MessagingRateLimiter,
+  RedisMessagingRateLimitStore,
+} from './messaging-rate-limiter.js';
+import {
   MESSAGING_RUNTIME_CONFIG,
   type MessagingRuntimeConfig,
 } from './messaging-runtime-config.js';
 import { MessagingService } from './messaging.service.js';
+import { MessagingMaintenanceScheduler } from './messaging-maintenance.scheduler.js';
 import { WhatsAppCloudProvider } from './whatsapp-cloud.provider.js';
 
 const MESSAGING_BACKGROUND_REGISTRATION = Symbol('MESSAGING_BACKGROUND_REGISTRATION');
 
 @Module({
-  imports: [AuthModule, DatabaseInfrastructureModule, StorageInfrastructureModule, LeadsModule],
+  imports: [
+    AuthModule,
+    DatabaseInfrastructureModule,
+    RedisInfrastructureModule,
+    StorageInfrastructureModule,
+    LeadsModule,
+  ],
   controllers: [MessagingController, MessagingWebhooksController],
   providers: [
     {
@@ -30,6 +43,10 @@ const MESSAGING_BACKGROUND_REGISTRATION = Symbol('MESSAGING_BACKGROUND_REGISTRAT
     WhatsAppCloudProvider,
     DefaultMessagingProviderRegistry,
     { provide: MESSAGING_PROVIDER_REGISTRY, useExisting: DefaultMessagingProviderRegistry },
+    RedisMessagingRateLimitStore,
+    { provide: MESSAGING_RATE_LIMIT_STORE, useExisting: RedisMessagingRateLimitStore },
+    MessagingRateLimiter,
+    MessagingMaintenanceScheduler,
     MessagingService,
     {
       provide: MESSAGING_BACKGROUND_REGISTRATION,
@@ -63,6 +80,9 @@ const MESSAGING_BACKGROUND_REGISTRATION = Symbol('MESSAGING_BACKGROUND_REGISTRAT
             messageId: data.messageId,
           });
         });
+        processors.register('messaging.retention.sweep', async () =>
+          messaging.processRetentionJob(),
+        );
         return true;
       },
     },

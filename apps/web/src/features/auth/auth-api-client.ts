@@ -12,6 +12,9 @@ import {
   googleLoginResponseSchema,
   googleUnlinkResponseSchema,
   loginResponseSchema,
+  mfaEnrollmentConfirmResponseSchema,
+  mfaEnrollmentStartResponseSchema,
+  mfaVerificationResponseSchema,
   logoutAllResponseSchema,
   logoutResponseSchema,
   meResponseSchema,
@@ -31,6 +34,8 @@ import type {
   GoogleCredentialInput,
   GoogleIdentityUnlinkResult,
   LoginInput,
+  MfaEnrollmentSetup,
+  MfaLoginChallenge,
   MembershipSummary,
   OrganizationOption,
   PasswordResetInput,
@@ -76,9 +81,14 @@ export class AuthApiClient {
   private expiredNotified = false;
   private refreshPromise: Promise<boolean> | null = null;
   private sessionExpiredHandler: ((reason: ApiClientError) => void) | null = null;
+  private supportElevationExpiredHandler: ((reason: ApiClientError) => void) | null = null;
 
   setSessionExpiredHandler(handler: ((reason: ApiClientError) => void) | null): void {
     this.sessionExpiredHandler = handler;
+  }
+
+  setSupportElevationExpiredHandler(handler: ((reason: ApiClientError) => void) | null): void {
+    this.supportElevationExpiredHandler = handler;
   }
 
   clearAccessToken(): void {
@@ -103,11 +113,14 @@ export class AuthApiClient {
         if (retriedResponse.status === 401) {
           this.notifySessionExpired(await this.errorFromResponse(retriedResponse.clone()));
         }
+        await this.notifySupportElevationExpired(retriedResponse);
         return this.parseResponse<T>(retriedResponse);
       }
 
       this.notifySessionExpired(reason);
     }
+
+    if (authenticated) await this.notifySupportElevationExpired(response);
 
     return this.parseResponse<T>(response);
   }
@@ -116,7 +129,7 @@ export class AuthApiClient {
     return this.refreshAccessToken();
   }
 
-  async login(input: LoginInput): Promise<AuthSession> {
+  async login(input: LoginInput): Promise<AuthSession | MfaLoginChallenge> {
     const response = loginResponseSchema.parse(
       await this.request<unknown>(
         '/auth/login',
@@ -136,8 +149,7 @@ export class AuthApiClient {
       ),
     );
 
-    this.consumeAccessToken(response);
-    return this.me();
+    return this.consumeLoginResponse(response);
   }
 
   async createGoogleLoginChallenge(): Promise<GoogleAuthChallenge> {
@@ -153,7 +165,7 @@ export class AuthApiClient {
     );
   }
 
-  async loginWithGoogle(input: GoogleCredentialInput): Promise<AuthSession> {
+  async loginWithGoogle(input: GoogleCredentialInput): Promise<AuthSession | MfaLoginChallenge> {
     const request = googleLoginRequestSchema.parse({
       challenge_id: input.challengeId,
       client_type: 'web',
@@ -174,8 +186,59 @@ export class AuthApiClient {
       ),
     );
 
+    return this.consumeLoginResponse(response);
+  }
+
+  async startMfaEnrollment(challengeToken: string): Promise<MfaEnrollmentSetup> {
+    const response = mfaEnrollmentStartResponseSchema.parse(
+      await this.request<unknown>(
+        '/auth/mfa/enrollment/start',
+        { body: JSON.stringify({ challenge_token: challengeToken }), method: 'POST' },
+        { allowRefresh: false, authenticated: false },
+      ),
+    );
+    return {
+      authenticatorId: response.authenticator_id,
+      challengeExpiresAt: response.challenge_expires_at,
+      manualSecret: response.manual_secret,
+      otpauthUri: response.otpauth_uri,
+    };
+  }
+
+  async confirmMfaEnrollment(
+    challengeToken: string,
+    code: string,
+  ): Promise<{ recoveryCodes: string[]; session: AuthSession }> {
+    const response = mfaEnrollmentConfirmResponseSchema.parse(
+      await this.request<unknown>(
+        '/auth/mfa/enrollment/confirm',
+        { body: JSON.stringify({ challenge_token: challengeToken, code }), method: 'POST' },
+        { allowRefresh: false, authenticated: false },
+      ),
+    );
     this.consumeAccessToken(response);
-    return this.me();
+    return { recoveryCodes: response.recovery_codes, session: await this.me() };
+  }
+
+  async verifyMfa(
+    challengeToken: string,
+    method: 'RECOVERY_CODE' | 'TOTP',
+    code: string,
+  ): Promise<{ replacementRecoveryCode?: string; session: AuthSession }> {
+    const response = mfaVerificationResponseSchema.parse(
+      await this.request<unknown>(
+        '/auth/mfa/verify',
+        { body: JSON.stringify({ challenge_token: challengeToken, code, method }), method: 'POST' },
+        { allowRefresh: false, authenticated: false },
+      ),
+    );
+    this.consumeAccessToken(response);
+    return {
+      ...(response.replacement_recovery_code
+        ? { replacementRecoveryCode: response.replacement_recovery_code }
+        : {}),
+      session: await this.me(),
+    };
   }
 
   async createGoogleLinkChallenge(): Promise<GoogleAuthChallenge> {
@@ -388,6 +451,15 @@ export class AuthApiClient {
     this.sessionExpiredHandler?.(reason);
   }
 
+  private async notifySupportElevationExpired(response: Response): Promise<void> {
+    if (response.status !== 403) return;
+
+    const reason = await this.errorFromResponse(response.clone());
+    if (reason.code === 'SUPPORT_ELEVATION_REQUIRED') {
+      this.supportElevationExpiredHandler?.(reason);
+    }
+  }
+
   private consumeAccessToken(body: unknown): void {
     const token = findAccessToken(body);
     if (token === undefined) {
@@ -398,6 +470,21 @@ export class AuthApiClient {
       );
     }
     this.setAccessToken(token);
+  }
+
+  private async consumeLoginResponse(
+    response: ReturnType<typeof loginResponseSchema.parse>,
+  ): Promise<AuthSession | MfaLoginChallenge> {
+    if (response.status === 'AUTHENTICATED') {
+      this.consumeAccessToken(response);
+      return this.me();
+    }
+    return {
+      challengeExpiresAt: response.challenge_expires_at,
+      challengeToken: response.challenge_token,
+      methods: response.status === 'MFA_REQUIRED' ? response.methods : ['TOTP'],
+      status: response.status,
+    };
   }
 
   private async fetch(path: string, init: RequestInit, authenticated: boolean): Promise<Response> {

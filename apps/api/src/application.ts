@@ -17,6 +17,10 @@ export interface ConfigureApplicationOptions {
   openApi?: boolean;
 }
 
+interface BodyParserApplication {
+  useBodyParser(type: 'json' | 'urlencoded', options: { extended?: boolean; limit: string }): void;
+}
+
 export function configureApplication(
   application: INestApplication,
   options: ConfigureApplicationOptions = {},
@@ -31,8 +35,25 @@ export function configureApplication(
     express.set?.('trust proxy', environment.trustedProxies);
   }
 
+  const bodyParserApplication = application as INestApplication & BodyParserApplication;
+  bodyParserApplication.useBodyParser('json', { limit: '1mb' });
+  bodyParserApplication.useBodyParser('urlencoded', { extended: false, limit: '64kb' });
+
   application.use((request: CorrelatedRequest, response: Response, next: NextFunction): void => {
     attachCorrelationId(request, response);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    );
+    response.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=()');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    if (environment.nodeEnv === 'staging' || environment.nodeEnv === 'production') {
+      response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     next();
   });
   application.useLogger(application.get(Logger));
@@ -51,7 +72,7 @@ export function configureApplication(
     application.enableShutdownHooks();
   }
 
-  if (options.openApi ?? true) {
+  if (options.openApi ?? environment.openApiEnabled) {
     const auth = application.get<AuthRuntimeConfig>(AUTH_RUNTIME_CONFIG);
     const configuration = new DocumentBuilder()
       .setTitle('Go Digital Automobile CRM API')

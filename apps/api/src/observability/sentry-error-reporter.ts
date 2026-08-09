@@ -15,6 +15,7 @@ export class SentryErrorReporter implements ErrorReporter, OnApplicationShutdown
       Sentry.init({
         dsn: environment.sentryDsn,
         environment: environment.nodeEnv,
+        release: environment.releaseId,
         sendDefaultPii: false,
       });
     }

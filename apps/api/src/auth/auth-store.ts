@@ -147,6 +147,99 @@ export interface DeviceMetadata {
   userAgent?: string;
 }
 
+export interface MfaAuthenticatorRecord {
+  id: string;
+  userId: string;
+  status: 'ACTIVE' | 'DISABLED' | 'PENDING';
+  secretCiphertext: string;
+  secretNonce: string;
+  secretAuthTag: string;
+  secretKeyId: string;
+  lastAcceptedTimeStep?: number;
+  unusedRecoveryCodeCount: number;
+}
+
+export interface MfaLoginChallengeRecord {
+  authenticationIdentityId: string;
+  authenticatorId?: string;
+  clientType: AuthClientType;
+  consumedAt?: Date;
+  createdAt: Date;
+  device: DeviceMetadata;
+  expiresAt: Date;
+  failedAttemptCount: number;
+  id: string;
+  kind: 'ENROLLMENT' | 'VERIFICATION';
+  membershipId: string;
+  provider: 'GOOGLE' | 'PASSWORD';
+  tokenHash: string;
+  userId: string;
+}
+
+export interface CreateMfaLoginChallengeInput {
+  audit: AuthenticationAuditInput;
+  authenticationIdentityId: string;
+  authenticatorId?: string;
+  clientType: AuthClientType;
+  device: DeviceMetadata;
+  expiresAt: Date;
+  id: string;
+  kind: 'ENROLLMENT' | 'VERIFICATION';
+  membershipId: string;
+  provider: 'GOOGLE' | 'PASSWORD';
+  tokenHash: string;
+  userId: string;
+}
+
+export interface StartMfaEnrollmentInput {
+  audit: AuthenticationAuditInput;
+  authenticator: Omit<MfaAuthenticatorRecord, 'unusedRecoveryCodeCount'>;
+  challengeId: string;
+  now: Date;
+  tokenHash: string;
+}
+
+export interface CompleteMfaEnrollmentInput {
+  acceptedTimeStep: number;
+  audit: AuthenticationAuditInput;
+  authenticatorId: string;
+  challengeId: string;
+  completedAt: Date;
+  maxAttempts: number;
+  recoveryCodes: { hash: string; id: string }[];
+  tokenHash: string;
+}
+
+export interface CompleteMfaTotpInput {
+  acceptedTimeStep: number;
+  audit: AuthenticationAuditInput;
+  authenticatorId: string;
+  challengeId: string;
+  completedAt: Date;
+  maxAttempts: number;
+  tokenHash: string;
+}
+
+export interface CompleteMfaRecoveryInput {
+  audit: AuthenticationAuditInput;
+  authenticatorId: string;
+  challengeId: string;
+  codeHash: string;
+  completedAt: Date;
+  maxAttempts: number;
+  replacement: { hash: string; id: string };
+  tokenHash: string;
+  userId: string;
+}
+
+export interface RecordMfaChallengeFailureInput {
+  audit: AuthenticationAuditInput;
+  challengeId: string;
+  failedAt: Date;
+  maxAttempts: number;
+  tokenHash: string;
+}
+
 export interface CreateSessionInput {
   audit: AuthenticationAuditInput;
   authenticationIdentityId: string;
@@ -373,11 +466,19 @@ export interface AuthStore {
   consumePasswordReset(input: PasswordResetConsumeInput): Promise<PasswordResetConsumeResult>;
   createPasswordReset(input: PasswordResetIssueInput): Promise<void>;
   createExternalAuthChallenge(input: CreateExternalAuthChallengeInput): Promise<void>;
+  createMfaLoginChallenge(input: CreateMfaLoginChallengeInput): Promise<void>;
   createSession(input: CreateSessionInput): Promise<void>;
   createSupportElevation(
     input: CreateSupportElevationInput,
   ): Promise<SupportElevationContext | undefined>;
   findPasswordIdentity(email: string): Promise<PasswordIdentityRecord | undefined>;
+  getAuthenticationIdentity(identityId: string): Promise<AuthenticationIdentityRecord | undefined>;
+  getMfaAuthenticator(
+    userId: string,
+    authenticatorId: string,
+  ): Promise<MfaAuthenticatorRecord | undefined>;
+  getActiveMfaAuthenticator(userId: string): Promise<MfaAuthenticatorRecord | undefined>;
+  getMfaLoginChallenge(challengeId: string): Promise<MfaLoginChallengeRecord | undefined>;
   listAuthenticationMethods(userId: string): Promise<AuthenticationMethodRecord[]>;
   getMembership(userId: string, membershipId: string): Promise<MembershipAccessRecord | undefined>;
   getSessionClientType(userId: string, sessionId: string): Promise<AuthClientType | undefined>;
@@ -401,6 +502,7 @@ export interface AuthStore {
     policy?: LoginFailurePolicy,
   ): Promise<void>;
   recordLoginSuccess(identityId: string, authenticatedAt: Date): Promise<void>;
+  recordMfaChallengeFailure(input: RecordMfaChallengeFailureInput): Promise<void>;
   resolveGoogleLoginIdentity(
     input: ResolveGoogleLoginIdentityInput,
   ): Promise<GoogleLoginIdentityResolution>;
@@ -427,6 +529,10 @@ export interface AuthStore {
   ): Promise<boolean>;
   rotateRefreshToken(input: RotateRefreshTokenInput): Promise<RefreshRotationResult>;
   switchMembership(input: SwitchMembershipInput): Promise<SessionAccessRecord | undefined>;
+  startMfaEnrollment(input: StartMfaEnrollmentInput): Promise<MfaAuthenticatorRecord | undefined>;
+  completeMfaEnrollment(input: CompleteMfaEnrollmentInput): Promise<boolean>;
+  completeMfaTotpVerification(input: CompleteMfaTotpInput): Promise<boolean>;
+  completeMfaRecoveryVerification(input: CompleteMfaRecoveryInput): Promise<boolean>;
   touchSession(sessionId: string, seenAt: Date): Promise<void>;
   linkGoogleIdentity(input: LinkGoogleIdentityInput): Promise<LinkGoogleIdentityResult>;
   unlinkGoogleIdentity(

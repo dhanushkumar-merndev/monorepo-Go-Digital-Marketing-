@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -21,12 +22,15 @@ import type {
   GoogleCredentialInput,
   GoogleIdentityUnlinkResult,
   LoginInput,
+  MfaEnrollmentSetup,
+  MfaLoginChallenge,
   PasswordResetInput,
   SessionDevice,
   StartSupportElevationInput,
 } from './auth-types';
 import { resetFeatureUiState } from './feature-ui-reset';
 import { loginPath, safeReturnPath } from './safe-return-path';
+import { authorizationContextFingerprint, withoutSupportElevation } from './session-context';
 
 export type AuthStatus = 'anonymous' | 'authenticated' | 'error' | 'expired' | 'loading';
 
@@ -39,8 +43,19 @@ export interface AuthContextValue {
   linkGoogleIdentity(input: GoogleCredentialInput): Promise<void>;
   listAuthenticationMethods(): Promise<AuthenticationMethod[]>;
   listSessions(): Promise<SessionDevice[]>;
-  login(input: LoginInput, returnTo?: string): Promise<void>;
-  loginWithGoogle(input: GoogleCredentialInput, returnTo?: string): Promise<void>;
+  login(input: LoginInput, returnTo?: string): Promise<MfaLoginChallenge | null | undefined>;
+  loginWithGoogle(
+    input: GoogleCredentialInput,
+    returnTo?: string,
+  ): Promise<MfaLoginChallenge | null | undefined>;
+  startMfaEnrollment(challengeToken: string): Promise<MfaEnrollmentSetup>;
+  confirmMfaEnrollment(challengeToken: string, code: string, returnTo?: string): Promise<string[]>;
+  verifyMfa(
+    challengeToken: string,
+    method: 'RECOVERY_CODE' | 'TOTP',
+    code: string,
+    returnTo?: string,
+  ): Promise<string | undefined>;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
   refreshProfile(): Promise<void>;
@@ -62,6 +77,12 @@ interface AuthProviderProps {
   client?: AuthApiClient;
 }
 
+interface SessionTransitionOptions {
+  forceReset?: boolean;
+}
+
+const MAX_BROWSER_TIMEOUT_MS = 2_147_483_647;
+
 const disabledSessionCodes = new Set([
   'ACCOUNT_DISABLED',
   'ACCOUNT_INACTIVE',
@@ -76,14 +97,34 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [session, setSession] = useState<AuthSession | null>(null);
   const [error, setError] = useState<ApiClientError | null>(null);
+  const sessionRef = useRef<AuthSession | null>(null);
+  const contextVersionRef = useRef(0);
+  const supportRestoreRef = useRef<Promise<void> | null>(null);
+
+  const transitionSession = useCallback(
+    (nextSession: AuthSession | null, options: SessionTransitionOptions = {}) => {
+      const contextChanged =
+        authorizationContextFingerprint(sessionRef.current) !==
+        authorizationContextFingerprint(nextSession);
+
+      if (contextChanged || options.forceReset === true) {
+        queryClient.clear();
+        resetFeatureUiState();
+      }
+
+      sessionRef.current = nextSession;
+      contextVersionRef.current += 1;
+      setSession(nextSession);
+    },
+    [queryClient],
+  );
 
   const expireSession = useCallback(
     (reason: ApiClientError) => {
-      setSession(null);
+      client.clearAccessToken();
+      transitionSession(null, { forceReset: true });
       setError(null);
       setStatus('expired');
-      queryClient.clear();
-      resetFeatureUiState();
 
       if (typeof window === 'undefined') {
         return;
@@ -98,45 +139,131 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       const query = parameters.toString();
       router.replace(query.length === 0 ? '/session-expired' : `/session-expired?${query}`);
     },
-    [queryClient, router],
+    [client, router, transitionSession],
+  );
+
+  const restoreAgencyContext = useCallback(
+    (expectedSupportElevationId?: string): Promise<void> => {
+      if (supportRestoreRef.current !== null) return supportRestoreRef.current;
+
+      const elevatedSession = sessionRef.current;
+      const elevation = elevatedSession?.supportElevation;
+      if (
+        elevatedSession === null ||
+        elevation === null ||
+        elevation === undefined ||
+        (expectedSupportElevationId !== undefined && elevation.id !== expectedSupportElevationId)
+      ) {
+        return Promise.resolve();
+      }
+
+      const safeAgencySession = withoutSupportElevation(elevatedSession);
+      setError(null);
+      setStatus('loading');
+      transitionSession(safeAgencySession, { forceReset: true });
+      router.replace('/');
+      const restoreVersion = contextVersionRef.current;
+
+      const restoration = (async () => {
+        try {
+          const restored = await client.me();
+          if (contextVersionRef.current !== restoreVersion) return;
+          transitionSession(restored);
+          setStatus('authenticated');
+        } catch (caught) {
+          if (contextVersionRef.current !== restoreVersion) return;
+          const reason = toApiClientError(caught);
+
+          if (reason.status === 401) {
+            expireSession(reason);
+            return;
+          }
+
+          if (reason.status === 403 || reason.status === 404) {
+            // The support grant is already unusable. The locally stripped agency
+            // context contains no client authority or cached client data.
+            setError(null);
+            setStatus('authenticated');
+            return;
+          }
+
+          transitionSession(null, { forceReset: true });
+          setError(reason);
+          setStatus('error');
+        } finally {
+          supportRestoreRef.current = null;
+        }
+      })();
+
+      supportRestoreRef.current = restoration;
+      return restoration;
+    },
+    [client, expireSession, router, transitionSession],
   );
 
   useEffect(() => {
     client.setSessionExpiredHandler(expireSession);
-    return () => client.setSessionExpiredHandler(null);
-  }, [client, expireSession]);
+    client.setSupportElevationExpiredHandler(() => {
+      const elevationId = sessionRef.current?.supportElevation?.id;
+      if (elevationId !== undefined) void restoreAgencyContext(elevationId);
+    });
+    return () => {
+      client.setSessionExpiredHandler(null);
+      client.setSupportElevationExpiredHandler(null);
+    };
+  }, [client, expireSession, restoreAgencyContext]);
+
+  useEffect(() => {
+    const elevation = session?.supportElevation;
+    if (elevation === null || elevation === undefined) return;
+
+    let timeout: number | undefined;
+    const expireAtBoundary = () => {
+      const remaining = Date.parse(elevation.expiresAt) - Date.now();
+      if (!Number.isFinite(remaining) || remaining <= 0) {
+        void restoreAgencyContext(elevation.id);
+        return;
+      }
+
+      timeout = window.setTimeout(expireAtBoundary, Math.min(remaining, MAX_BROWSER_TIMEOUT_MS));
+    };
+
+    expireAtBoundary();
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [restoreAgencyContext, session?.supportElevation]);
 
   const initialize = useCallback(async () => {
     setError(null);
     setStatus('loading');
 
-    const restored = await client.restoreSession();
-    if (!restored) {
-      setSession(null);
-      setStatus('anonymous');
-      resetFeatureUiState();
-      return;
-    }
-
     try {
+      const restored = await client.restoreSession();
+      if (!restored) {
+        transitionSession(null, { forceReset: true });
+        setStatus('anonymous');
+        return;
+      }
+
       const restoredSession = await client.me();
       if (restoredSession.user.status === 'suspended') {
         expireSession(new ApiClientError('This account is suspended.', 403, 'ACCOUNT_SUSPENDED'));
         return;
       }
-      setSession(restoredSession);
+      transitionSession(restoredSession);
       setStatus('authenticated');
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) {
-        setSession(null);
+        transitionSession(null, { forceReset: true });
         setStatus('anonymous');
-        resetFeatureUiState();
         return;
       }
+      transitionSession(null, { forceReset: true });
       setError(toApiClientError(caught));
       setStatus('error');
     }
-  }, [client, expireSession]);
+  }, [client, expireSession, transitionSession]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void initialize(), 0);
@@ -144,31 +271,63 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   }, [initialize]);
 
   const finishLogin = useCallback(
-    (authenticatedSession: AuthSession, returnTo?: string) => {
+    (authenticatedSession: AuthSession, returnTo?: string, navigate = true) => {
       if (authenticatedSession.user.status === 'suspended') {
         client.clearAccessToken();
         throw new ApiClientError('This account is suspended.', 403, 'ACCOUNT_SUSPENDED');
       }
       setError(null);
-      setSession(authenticatedSession);
+      transitionSession(authenticatedSession);
       setStatus('authenticated');
-      queryClient.clear();
-      resetFeatureUiState();
-      router.replace(safeReturnPath(returnTo));
+      if (navigate) router.replace(safeReturnPath(returnTo));
     },
-    [client, queryClient, router],
+    [client, router, transitionSession],
   );
 
   const login = useCallback(
     async (input: LoginInput, returnTo?: string) => {
-      finishLogin(await client.login(input), returnTo);
+      const result = await client.login(input);
+      if ('status' in result) return result;
+      finishLogin(result, returnTo);
+      return null;
     },
     [client, finishLogin],
   );
 
   const loginWithGoogle = useCallback(
     async (input: GoogleCredentialInput, returnTo?: string) => {
-      finishLogin(await client.loginWithGoogle(input), returnTo);
+      const result = await client.loginWithGoogle(input);
+      if ('status' in result) return result;
+      finishLogin(result, returnTo);
+      return null;
+    },
+    [client, finishLogin],
+  );
+
+  const startMfaEnrollment = useCallback(
+    (challengeToken: string) => client.startMfaEnrollment(challengeToken),
+    [client],
+  );
+
+  const confirmMfaEnrollment = useCallback(
+    async (challengeToken: string, code: string, returnTo?: string) => {
+      const result = await client.confirmMfaEnrollment(challengeToken, code);
+      finishLogin(result.session, returnTo, false);
+      return result.recoveryCodes;
+    },
+    [client, finishLogin],
+  );
+
+  const verifyMfa = useCallback(
+    async (
+      challengeToken: string,
+      method: 'RECOVERY_CODE' | 'TOTP',
+      code: string,
+      returnTo?: string,
+    ) => {
+      const result = await client.verifyMfa(challengeToken, method, code);
+      finishLogin(result.session, returnTo, result.replacementRecoveryCode === undefined);
+      return result.replacementRecoveryCode;
     },
     [client, finishLogin],
   );
@@ -176,74 +335,78 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   const unlinkGoogleIdentity = useCallback(async () => {
     const result = await client.unlinkGoogleIdentity();
     if (result.currentSessionRevoked) {
-      setSession(null);
+      transitionSession(null, { forceReset: true });
       setError(null);
       setStatus('expired');
-      queryClient.clear();
-      resetFeatureUiState();
       router.replace('/session-expired');
     }
     return result;
-  }, [client, queryClient, router]);
+  }, [client, router, transitionSession]);
 
   const logout = useCallback(async () => {
     try {
       await client.logout();
     } finally {
-      setSession(null);
+      transitionSession(null, { forceReset: true });
       setError(null);
       setStatus('anonymous');
-      queryClient.clear();
-      resetFeatureUiState();
       router.replace('/login');
     }
-  }, [client, queryClient, router]);
+  }, [client, router, transitionSession]);
 
   const logoutAll = useCallback(async () => {
     try {
       await client.logoutAll();
     } finally {
-      setSession(null);
+      transitionSession(null, { forceReset: true });
       setError(null);
       setStatus('anonymous');
-      queryClient.clear();
-      resetFeatureUiState();
       router.replace('/login');
     }
-  }, [client, queryClient, router]);
+  }, [client, router, transitionSession]);
 
   const refreshProfile = useCallback(async () => {
+    const refreshVersion = contextVersionRef.current;
     const refreshed = await client.me();
-    setSession(refreshed);
+    if (contextVersionRef.current !== refreshVersion) return;
+    if (refreshed.user.status === 'suspended') {
+      expireSession(new ApiClientError('This account is suspended.', 403, 'ACCOUNT_SUSPENDED'));
+      return;
+    }
+    transitionSession(refreshed);
     setStatus('authenticated');
-  }, [client]);
+  }, [client, expireSession, transitionSession]);
 
   const switchMembership = useCallback(
     async (membershipId: string) => {
       const switched = await client.switchMembership(membershipId);
-      queryClient.clear();
-      resetFeatureUiState();
-      setSession(switched);
+      transitionSession(switched);
     },
-    [client, queryClient],
+    [client, transitionSession],
   );
 
   const startSupportElevation = useCallback(
     async (input: StartSupportElevationInput) => {
       const elevated = await client.startSupportElevation(input);
-      queryClient.clear();
-      resetFeatureUiState();
-      setSession(elevated);
+      transitionSession(elevated);
     },
-    [client, queryClient],
+    [client, transitionSession],
   );
 
   const endSupportElevation = useCallback(async () => {
-    const restored = await client.endSupportElevation();
-    queryClient.clear();
-    resetFeatureUiState();
-    setSession(restored);
-  }, [client, queryClient]);
+    const elevationId = sessionRef.current?.supportElevation?.id;
+    try {
+      const restored = await client.endSupportElevation();
+      transitionSession(restored);
+    } catch (caught) {
+      const reason = toApiClientError(caught);
+      if (elevationId !== undefined && (reason.status === 403 || reason.status === 404)) {
+        await restoreAgencyContext(elevationId);
+        return;
+      }
+      throw caught;
+    }
+  }, [client, restoreAgencyContext, transitionSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -257,6 +420,9 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       listSessions: () => client.listSessions(),
       login,
       loginWithGoogle,
+      startMfaEnrollment,
+      confirmMfaEnrollment,
+      verifyMfa,
       logout,
       logoutAll,
       refreshProfile,
@@ -277,6 +443,9 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       initialize,
       login,
       loginWithGoogle,
+      startMfaEnrollment,
+      confirmMfaEnrollment,
+      verifyMfa,
       logout,
       logoutAll,
       refreshProfile,

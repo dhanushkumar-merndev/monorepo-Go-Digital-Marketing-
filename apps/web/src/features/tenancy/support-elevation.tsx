@@ -23,7 +23,7 @@ import {
 } from '@gdm/ui/components/select';
 import { Textarea } from '@gdm/ui/components/textarea';
 import { Clock3, LifeBuoy, LoaderCircle, ShieldAlert, ShieldOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -196,18 +196,6 @@ export function SupportElevationBanner() {
   const elevation = auth.session?.supportElevation;
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (elevation === undefined || elevation === null) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(interval);
-  }, [elevation]);
-
-  const expired = useMemo(
-    () => elevation !== undefined && elevation !== null && Date.parse(elevation.expiresAt) <= now,
-    [elevation, now],
-  );
 
   if (elevation === undefined || elevation === null) return null;
 
@@ -237,14 +225,13 @@ export function SupportElevationBanner() {
           <ShieldAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
           <div className="min-w-0">
             <p className="font-semibold">
-              {expired ? 'Support access has expired' : 'Temporary support access is active'} ·{' '}
-              {elevation.clientOrganization.name}
+              Temporary support access is active · {elevation.clientOrganization.name}
             </p>
             <p className="mt-0.5 text-xs leading-5">
               Reason: {elevation.reason} ·{' '}
               <span className="inline-flex items-center gap-1">
                 <Clock3 aria-hidden="true" className="size-3" />
-                {expired ? 'Expired' : `Expires ${formatDateTime(elevation.expiresAt)}`}
+                Expires {formatDateTime(elevation.expiresAt)}
               </span>
             </p>
             {error === null ? null : <p className="mt-1 text-xs font-medium">{error}</p>}

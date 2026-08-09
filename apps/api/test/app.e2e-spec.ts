@@ -96,6 +96,15 @@ describe('API foundation (HTTP integration)', () => {
     assert.equal(response.headers['x-correlation-id'], 'test-correlation-123');
     assert.equal(response.body.correlation_id, 'test-correlation-123');
     assert.equal(response.body.service, 'go-digital-automobile-crm-api');
+    assert.equal(response.body.release_id, 'local-development');
+    assert.equal(response.headers['cache-control'], 'no-store');
+    assert.match(String(response.headers['content-security-policy']), /frame-ancestors 'none'/u);
+    assert.equal(
+      response.headers['permissions-policy'],
+      'camera=(), geolocation=(), microphone=()',
+    );
+    assert.equal(response.headers['x-content-type-options'], 'nosniff');
+    assert.equal(response.headers['x-frame-options'], 'DENY');
     assert.deepEqual(response.body.processing, {
       mode: 'disabled',
       location: 'disabled',

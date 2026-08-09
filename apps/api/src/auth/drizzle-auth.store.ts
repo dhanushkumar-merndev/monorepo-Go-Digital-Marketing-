@@ -10,13 +10,18 @@ import type {
 import { opaqueTokenHashMatches } from './opaque-token.js';
 import type {
   AuthenticationAuditInput,
+  AuthenticationIdentityRecord,
   AuthenticationMethodRecord,
   AuthStore,
   BranchRecord,
   ClientOrganizationRecord,
   ConsumeExternalAuthChallengeInput,
   ConsumedExternalAuthChallenge,
+  CompleteMfaEnrollmentInput,
+  CompleteMfaRecoveryInput,
+  CompleteMfaTotpInput,
   CreateExternalAuthChallengeInput,
+  CreateMfaLoginChallengeInput,
   CreateSessionInput,
   CreateSupportElevationInput,
   GoogleLoginIdentityResolution,
@@ -24,12 +29,15 @@ import type {
   LinkGoogleIdentityResult,
   LoginFailurePolicy,
   MembershipAccessRecord,
+  MfaAuthenticatorRecord,
+  MfaLoginChallengeRecord,
   PasswordIdentityRecord,
   PasswordResetConsumeInput,
   PasswordResetConsumeResult,
   PasswordResetIssueInput,
   PasswordResetValidationInput,
   RefreshRotationResult,
+  RecordMfaChallengeFailureInput,
   RevokeByRefreshTokenInput,
   ResolveGoogleLoginIdentityInput,
   RotateRefreshTokenInput,
@@ -37,10 +45,13 @@ import type {
   SessionResolution,
   SessionSummaryRecord,
   SwitchMembershipInput,
+  StartMfaEnrollmentInput,
   TeamRecord,
   TenantUserRecord,
   UnlinkGoogleIdentityResult,
 } from './auth-store.js';
+
+class MfaMutationConflict extends Error {}
 
 type AuditEventType = (typeof schema.authenticationAuditEventTypeEnum.enumValues)[number];
 type AuthenticationAuditInsert = typeof schema.authenticationAuditEvents.$inferInsert;
@@ -194,6 +205,415 @@ export class DrizzleAuthStore implements AuthStore {
     return consumed
       ? { clientType: clientTypeFromDatabase(consumed.clientType), nonceHash: consumed.nonceHash }
       : undefined;
+  }
+
+  async createMfaLoginChallenge(input: CreateMfaLoginChallengeInput): Promise<void> {
+    await this.connection.db.transaction(async (transaction) => {
+      await transaction.insert(schema.mfaLoginChallenges).values({
+        authenticationIdentityId: input.authenticationIdentityId,
+        ...(input.authenticatorId ? { authenticatorId: input.authenticatorId } : {}),
+        clientType: clientTypeToDatabase(input.clientType),
+        deviceId: input.device.deviceId,
+        deviceName: input.device.deviceName,
+        devicePlatform: devicePlatformToDatabase(input.device.platform),
+        expiresAt: input.expiresAt,
+        id: input.id,
+        kind: input.kind,
+        membershipId: input.membershipId,
+        provider: input.provider,
+        ...(input.device.sourceIp ? { sourceIp: input.device.sourceIp } : {}),
+        tokenHash: input.tokenHash,
+        ...(input.device.userAgent ? { userAgent: input.device.userAgent } : {}),
+        userId: input.userId,
+      });
+      await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+    });
+  }
+
+  async getAuthenticationIdentity(
+    identityId: string,
+  ): Promise<AuthenticationIdentityRecord | undefined> {
+    const [row] = await this.connection.db
+      .select({
+        email: schema.users.primaryEmailNormalized,
+        id: schema.authenticationIdentities.id,
+        status: schema.authenticationIdentities.status,
+        userDisplayName: schema.users.displayName,
+        userId: schema.users.id,
+        userStatus: schema.users.status,
+      })
+      .from(schema.authenticationIdentities)
+      .innerJoin(schema.users, eq(schema.authenticationIdentities.userId, schema.users.id))
+      .where(eq(schema.authenticationIdentities.id, identityId))
+      .limit(1);
+
+    return row;
+  }
+
+  async getMfaAuthenticator(
+    userId: string,
+    authenticatorId: string,
+  ): Promise<MfaAuthenticatorRecord | undefined> {
+    const [row] = await this.connection.db
+      .select({
+        id: schema.mfaAuthenticators.id,
+        lastAcceptedTimeStep: schema.mfaAuthenticators.lastAcceptedTimeStep,
+        secretAuthTag: schema.mfaAuthenticators.secretAuthTag,
+        secretCiphertext: schema.mfaAuthenticators.secretCiphertext,
+        secretKeyId: schema.mfaAuthenticators.secretKeyId,
+        secretNonce: schema.mfaAuthenticators.secretNonce,
+        status: schema.mfaAuthenticators.status,
+        userId: schema.mfaAuthenticators.userId,
+      })
+      .from(schema.mfaAuthenticators)
+      .where(
+        and(
+          eq(schema.mfaAuthenticators.id, authenticatorId),
+          eq(schema.mfaAuthenticators.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!row) return undefined;
+
+    const [recovery] = await this.connection.db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.mfaRecoveryCodes)
+      .where(
+        and(
+          eq(schema.mfaRecoveryCodes.authenticatorId, authenticatorId),
+          eq(schema.mfaRecoveryCodes.userId, userId),
+          isNull(schema.mfaRecoveryCodes.usedAt),
+        ),
+      );
+
+    return {
+      id: row.id,
+      ...(row.lastAcceptedTimeStep === null
+        ? {}
+        : { lastAcceptedTimeStep: row.lastAcceptedTimeStep }),
+      secretAuthTag: row.secretAuthTag,
+      secretCiphertext: row.secretCiphertext,
+      secretKeyId: row.secretKeyId,
+      secretNonce: row.secretNonce,
+      status: row.status,
+      unusedRecoveryCodeCount: Number(recovery?.count ?? 0),
+      userId: row.userId,
+    };
+  }
+
+  async getActiveMfaAuthenticator(userId: string): Promise<MfaAuthenticatorRecord | undefined> {
+    const [row] = await this.connection.db
+      .select({ id: schema.mfaAuthenticators.id })
+      .from(schema.mfaAuthenticators)
+      .where(
+        and(
+          eq(schema.mfaAuthenticators.userId, userId),
+          eq(schema.mfaAuthenticators.status, 'ACTIVE'),
+        ),
+      )
+      .limit(1);
+    return row ? this.getMfaAuthenticator(userId, row.id) : undefined;
+  }
+
+  async getMfaLoginChallenge(challengeId: string): Promise<MfaLoginChallengeRecord | undefined> {
+    const [row] = await this.connection.db
+      .select()
+      .from(schema.mfaLoginChallenges)
+      .where(eq(schema.mfaLoginChallenges.id, challengeId))
+      .limit(1);
+    if (!row) return undefined;
+
+    return {
+      authenticationIdentityId: row.authenticationIdentityId,
+      ...(row.authenticatorId ? { authenticatorId: row.authenticatorId } : {}),
+      clientType: clientTypeFromDatabase(row.clientType),
+      ...(row.consumedAt ? { consumedAt: row.consumedAt } : {}),
+      createdAt: row.createdAt,
+      device: {
+        deviceId: row.deviceId,
+        deviceName: row.deviceName,
+        platform: devicePlatformFromDatabase(row.devicePlatform),
+        ...(row.sourceIp ? { sourceIp: row.sourceIp } : {}),
+        ...(row.userAgent ? { userAgent: row.userAgent } : {}),
+      },
+      expiresAt: row.expiresAt,
+      failedAttemptCount: row.failedAttemptCount,
+      id: row.id,
+      kind: row.kind,
+      membershipId: row.membershipId,
+      provider: row.provider,
+      tokenHash: row.tokenHash,
+      userId: row.userId,
+    };
+  }
+
+  async startMfaEnrollment(
+    input: StartMfaEnrollmentInput,
+  ): Promise<MfaAuthenticatorRecord | undefined> {
+    try {
+      const authenticatorId = await this.connection.db.transaction(async (transaction) => {
+        const [challenge] = await transaction
+          .select({
+            authenticatorId: schema.mfaLoginChallenges.authenticatorId,
+            userId: schema.mfaLoginChallenges.userId,
+          })
+          .from(schema.mfaLoginChallenges)
+          .where(
+            and(
+              eq(schema.mfaLoginChallenges.id, input.challengeId),
+              eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+              eq(schema.mfaLoginChallenges.kind, 'ENROLLMENT'),
+              isNull(schema.mfaLoginChallenges.consumedAt),
+              gt(schema.mfaLoginChallenges.expiresAt, input.now),
+            ),
+          )
+          .limit(1);
+        if (!challenge || challenge.userId !== input.authenticator.userId) {
+          throw new MfaMutationConflict();
+        }
+        if (challenge.authenticatorId) return challenge.authenticatorId;
+
+        const [current] = await transaction
+          .select({ id: schema.mfaAuthenticators.id, status: schema.mfaAuthenticators.status })
+          .from(schema.mfaAuthenticators)
+          .where(
+            and(
+              eq(schema.mfaAuthenticators.userId, challenge.userId),
+              inArray(schema.mfaAuthenticators.status, ['PENDING', 'ACTIVE']),
+            ),
+          )
+          .limit(1);
+        if (current?.status === 'ACTIVE') throw new MfaMutationConflict();
+
+        const id = current?.id ?? input.authenticator.id;
+        if (!current) {
+          await transaction.insert(schema.mfaAuthenticators).values({
+            id,
+            secretAuthTag: input.authenticator.secretAuthTag,
+            secretCiphertext: input.authenticator.secretCiphertext,
+            secretKeyId: input.authenticator.secretKeyId,
+            secretNonce: input.authenticator.secretNonce,
+            status: 'PENDING',
+            userId: input.authenticator.userId,
+          });
+        }
+        const [bound] = await transaction
+          .update(schema.mfaLoginChallenges)
+          .set({ authenticatorId: id })
+          .where(
+            and(
+              eq(schema.mfaLoginChallenges.id, input.challengeId),
+              eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+              isNull(schema.mfaLoginChallenges.authenticatorId),
+              isNull(schema.mfaLoginChallenges.consumedAt),
+            ),
+          )
+          .returning({ id: schema.mfaLoginChallenges.id });
+        if (!bound) throw new MfaMutationConflict();
+        await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+        return id;
+      });
+      return this.getMfaAuthenticator(input.authenticator.userId, authenticatorId);
+    } catch (error) {
+      if (error instanceof MfaMutationConflict) return undefined;
+      throw error;
+    }
+  }
+
+  async completeMfaEnrollment(input: CompleteMfaEnrollmentInput): Promise<boolean> {
+    try {
+      return await this.connection.db.transaction(async (transaction) => {
+        const [challenge] = await transaction
+          .update(schema.mfaLoginChallenges)
+          .set({ consumedAt: input.completedAt })
+          .where(
+            and(
+              eq(schema.mfaLoginChallenges.id, input.challengeId),
+              eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+              eq(schema.mfaLoginChallenges.authenticatorId, input.authenticatorId),
+              eq(schema.mfaLoginChallenges.kind, 'ENROLLMENT'),
+              isNull(schema.mfaLoginChallenges.consumedAt),
+              gt(schema.mfaLoginChallenges.expiresAt, input.completedAt),
+              lt(schema.mfaLoginChallenges.failedAttemptCount, input.maxAttempts),
+            ),
+          )
+          .returning({ userId: schema.mfaLoginChallenges.userId });
+        if (!challenge) throw new MfaMutationConflict();
+
+        const [activated] = await transaction
+          .update(schema.mfaAuthenticators)
+          .set({
+            confirmedAt: input.completedAt,
+            lastAcceptedTimeStep: input.acceptedTimeStep,
+            status: 'ACTIVE',
+            updatedAt: input.completedAt,
+          })
+          .where(
+            and(
+              eq(schema.mfaAuthenticators.id, input.authenticatorId),
+              eq(schema.mfaAuthenticators.userId, challenge.userId),
+              eq(schema.mfaAuthenticators.status, 'PENDING'),
+            ),
+          )
+          .returning({ id: schema.mfaAuthenticators.id });
+        if (!activated) throw new MfaMutationConflict();
+
+        await transaction.insert(schema.mfaRecoveryCodes).values(
+          input.recoveryCodes.map((code) => ({
+            authenticatorId: input.authenticatorId,
+            codeHash: code.hash,
+            createdAt: input.completedAt,
+            id: code.id,
+            userId: challenge.userId,
+          })),
+        );
+        await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+        return true;
+      });
+    } catch (error) {
+      if (error instanceof MfaMutationConflict) return false;
+      throw error;
+    }
+  }
+
+  async completeMfaTotpVerification(input: CompleteMfaTotpInput): Promise<boolean> {
+    try {
+      return await this.connection.db.transaction(async (transaction) => {
+        const [challenge] = await transaction
+          .update(schema.mfaLoginChallenges)
+          .set({ consumedAt: input.completedAt })
+          .where(
+            and(
+              eq(schema.mfaLoginChallenges.id, input.challengeId),
+              eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+              eq(schema.mfaLoginChallenges.authenticatorId, input.authenticatorId),
+              eq(schema.mfaLoginChallenges.kind, 'VERIFICATION'),
+              isNull(schema.mfaLoginChallenges.consumedAt),
+              gt(schema.mfaLoginChallenges.expiresAt, input.completedAt),
+              lt(schema.mfaLoginChallenges.failedAttemptCount, input.maxAttempts),
+            ),
+          )
+          .returning({ userId: schema.mfaLoginChallenges.userId });
+        if (!challenge) throw new MfaMutationConflict();
+
+        const [updated] = await transaction
+          .update(schema.mfaAuthenticators)
+          .set({
+            lastAcceptedTimeStep: input.acceptedTimeStep,
+            updatedAt: input.completedAt,
+          })
+          .where(
+            and(
+              eq(schema.mfaAuthenticators.id, input.authenticatorId),
+              eq(schema.mfaAuthenticators.userId, challenge.userId),
+              eq(schema.mfaAuthenticators.status, 'ACTIVE'),
+              or(
+                isNull(schema.mfaAuthenticators.lastAcceptedTimeStep),
+                lt(schema.mfaAuthenticators.lastAcceptedTimeStep, input.acceptedTimeStep),
+              ),
+            ),
+          )
+          .returning({ id: schema.mfaAuthenticators.id });
+        if (!updated) throw new MfaMutationConflict();
+
+        await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+        return true;
+      });
+    } catch (error) {
+      if (error instanceof MfaMutationConflict) return false;
+      throw error;
+    }
+  }
+
+  async completeMfaRecoveryVerification(input: CompleteMfaRecoveryInput): Promise<boolean> {
+    try {
+      return await this.connection.db.transaction(async (transaction) => {
+        const [challenge] = await transaction
+          .update(schema.mfaLoginChallenges)
+          .set({ consumedAt: input.completedAt })
+          .where(
+            and(
+              eq(schema.mfaLoginChallenges.id, input.challengeId),
+              eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+              eq(schema.mfaLoginChallenges.authenticatorId, input.authenticatorId),
+              eq(schema.mfaLoginChallenges.userId, input.userId),
+              eq(schema.mfaLoginChallenges.kind, 'VERIFICATION'),
+              isNull(schema.mfaLoginChallenges.consumedAt),
+              gt(schema.mfaLoginChallenges.expiresAt, input.completedAt),
+              lt(schema.mfaLoginChallenges.failedAttemptCount, input.maxAttempts),
+            ),
+          )
+          .returning({ id: schema.mfaLoginChallenges.id });
+        if (!challenge) throw new MfaMutationConflict();
+
+        const [recovery] = await transaction
+          .select({ id: schema.mfaRecoveryCodes.id })
+          .from(schema.mfaRecoveryCodes)
+          .where(
+            and(
+              eq(schema.mfaRecoveryCodes.userId, input.userId),
+              eq(schema.mfaRecoveryCodes.authenticatorId, input.authenticatorId),
+              eq(schema.mfaRecoveryCodes.codeHash, input.codeHash),
+              isNull(schema.mfaRecoveryCodes.usedAt),
+            ),
+          )
+          .limit(1);
+        if (!recovery) throw new MfaMutationConflict();
+
+        await transaction.insert(schema.mfaRecoveryCodes).values({
+          authenticatorId: input.authenticatorId,
+          codeHash: input.replacement.hash,
+          createdAt: input.completedAt,
+          id: input.replacement.id,
+          userId: input.userId,
+        });
+        const [used] = await transaction
+          .update(schema.mfaRecoveryCodes)
+          .set({ replacedById: input.replacement.id, usedAt: input.completedAt })
+          .where(
+            and(
+              eq(schema.mfaRecoveryCodes.id, recovery.id),
+              isNull(schema.mfaRecoveryCodes.usedAt),
+            ),
+          )
+          .returning({ id: schema.mfaRecoveryCodes.id });
+        if (!used) throw new MfaMutationConflict();
+
+        await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+        return true;
+      });
+    } catch (error) {
+      if (error instanceof MfaMutationConflict) return false;
+      throw error;
+    }
+  }
+
+  async recordMfaChallengeFailure(input: RecordMfaChallengeFailureInput): Promise<void> {
+    await this.connection.db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(schema.mfaLoginChallenges)
+        .set({
+          consumedAt: sql`CASE
+            WHEN ${schema.mfaLoginChallenges.failedAttemptCount} + 1 >= ${input.maxAttempts}
+              THEN ${input.failedAt}
+            ELSE ${schema.mfaLoginChallenges.consumedAt}
+          END`,
+          failedAttemptCount: sql`${schema.mfaLoginChallenges.failedAttemptCount} + 1`,
+        })
+        .where(
+          and(
+            eq(schema.mfaLoginChallenges.id, input.challengeId),
+            eq(schema.mfaLoginChallenges.tokenHash, input.tokenHash),
+            isNull(schema.mfaLoginChallenges.consumedAt),
+            gt(schema.mfaLoginChallenges.expiresAt, input.failedAt),
+            lt(schema.mfaLoginChallenges.failedAttemptCount, input.maxAttempts),
+          ),
+        )
+        .returning({ id: schema.mfaLoginChallenges.id });
+      if (updated) {
+        await transaction.insert(schema.authenticationAuditEvents).values(auditValues(input.audit));
+      }
+    });
   }
 
   async findPasswordIdentity(email: string): Promise<PasswordIdentityRecord | undefined> {

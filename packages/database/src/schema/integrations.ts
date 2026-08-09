@@ -163,9 +163,13 @@ export const callTranscriptSuggestions = pgTable(
       name: 'call_transcript_call_tenant_fk',
     }).onDelete('restrict'),
     foreignKey({
-      columns: [table.recordingId],
-      foreignColumns: [callRecordings.id],
-      name: 'call_transcript_recording_fk',
+      columns: [table.clientOrganizationId, table.callId, table.recordingId],
+      foreignColumns: [
+        callRecordings.clientOrganizationId,
+        callRecordings.callId,
+        callRecordings.id,
+      ],
+      name: 'call_transcript_recording_call_tenant_fk',
     }).onDelete('restrict'),
     foreignKey({
       columns: [table.clientOrganizationId, table.reviewedByMembershipId],

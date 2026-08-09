@@ -1,4 +1,5 @@
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { fileURLToPath } from 'node:url';
 
 import { createDatabaseConnection } from './connection.js';
 
@@ -11,9 +12,10 @@ if (databaseUrl === undefined || databaseUrl.trim() === '') {
 }
 
 const connection = createDatabaseConnection({ url: databaseUrl, maxConnections: 1 });
+const migrationsFolder = fileURLToPath(new URL('../migrations/', import.meta.url));
 
 try {
-  await migrate(connection.db, { migrationsFolder: 'migrations' });
+  await migrate(connection.db, { migrationsFolder });
 } finally {
   await connection.close();
 }

@@ -5,6 +5,9 @@ import {
   googleLinkRequestSchema,
   googleLoginRequestSchema,
   loginRequestSchema,
+  mfaEnrollmentConfirmRequestSchema,
+  mfaEnrollmentStartRequestSchema,
+  mfaVerificationRequestSchema,
   logoutRequestSchema,
   refreshRequestSchema,
   resetPasswordRequestSchema,
@@ -18,6 +21,8 @@ import {
   type GoogleLinkRequest,
   type GoogleLoginRequest,
   type LoginRequest,
+  type MfaEnrollmentConfirmRequest,
+  type MfaEnrollmentStartRequest,
   type LogoutRequest,
   type RefreshRequest,
   type ResetPasswordRequest,
@@ -51,6 +56,53 @@ export class LoginDto implements LoginRequest {
 
   @ApiProperty({ maxLength: 1024, minLength: 1, type: String, writeOnly: true })
   declare password: string;
+}
+
+export class MfaEnrollmentStartDto implements MfaEnrollmentStartRequest {
+  static readonly schema = mfaEnrollmentStartRequestSchema;
+
+  @ApiProperty({ maxLength: 2048, type: String, writeOnly: true })
+  declare challenge_token: string;
+}
+
+export class MfaEnrollmentConfirmDto implements MfaEnrollmentConfirmRequest {
+  static readonly schema = mfaEnrollmentConfirmRequestSchema;
+
+  @ApiProperty({ maxLength: 2048, type: String, writeOnly: true })
+  declare challenge_token: string;
+
+  @ApiProperty({ pattern: '^\\d{6}$', type: String, writeOnly: true })
+  declare code: string;
+}
+
+export class MfaVerificationDto {
+  static readonly schema = mfaVerificationRequestSchema;
+
+  @ApiProperty({ maxLength: 2048, type: String, writeOnly: true })
+  declare challenge_token: string;
+
+  @ApiProperty({ type: String, writeOnly: true })
+  declare code: string;
+
+  @ApiProperty({ enum: ['TOTP', 'RECOVERY_CODE'], type: String })
+  declare method: 'RECOVERY_CODE' | 'TOTP';
+}
+
+export class MfaEnrollmentStartResponseDto {
+  @ApiProperty({ enum: ['MFA_ENROLLMENT_REQUIRED'], type: String })
+  declare status: string;
+
+  @ApiProperty({ format: 'uuid', type: String })
+  declare authenticator_id: string;
+
+  @ApiProperty({ format: 'date-time', type: String })
+  declare challenge_expires_at: string;
+
+  @ApiProperty({ type: String, writeOnly: true })
+  declare manual_secret: string;
+
+  @ApiProperty({ type: String })
+  declare otpauth_uri: string;
 }
 
 export class GoogleAuthChallengeDto implements GoogleAuthChallengeRequest {

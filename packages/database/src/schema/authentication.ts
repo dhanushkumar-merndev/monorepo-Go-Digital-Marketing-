@@ -34,6 +34,13 @@ export const externalAuthChallengePurposeEnum = pgEnum('external_auth_challenge_
   'LOGIN',
   'LINK',
 ]);
+export const mfaAuthenticatorStatusEnum = pgEnum('mfa_authenticator_status', [
+  'PENDING',
+  'ACTIVE',
+  'DISABLED',
+]);
+export const mfaChallengeKindEnum = pgEnum('mfa_challenge_kind', ['ENROLLMENT', 'VERIFICATION']);
+export const mfaLoginProviderEnum = pgEnum('mfa_login_provider', ['PASSWORD', 'GOOGLE']);
 export const authenticationAuditEventTypeEnum = pgEnum('authentication_audit_event_type', [
   'LOGIN_SUCCEEDED',
   'LOGIN_FAILED',
@@ -55,6 +62,12 @@ export const authenticationAuditEventTypeEnum = pgEnum('authentication_audit_eve
   'IDENTITY_LINKED',
   'IDENTITY_UNLINKED',
   'INVITATION_ACTIVATED',
+  'MFA_CHALLENGE_ISSUED',
+  'MFA_ENROLLMENT_STARTED',
+  'MFA_ENROLLMENT_COMPLETED',
+  'MFA_VERIFICATION_SUCCEEDED',
+  'MFA_VERIFICATION_FAILED',
+  'MFA_RECOVERY_CODE_USED',
 ]);
 
 export const authenticationIdentities = pgTable(
@@ -225,6 +238,160 @@ export const externalAuthChallenges = pgTable(
     check('external_auth_challenges_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
     check(
       'external_auth_challenges_consumed_check',
+      sql`${table.consumedAt} IS NULL OR ${table.consumedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+export const mfaAuthenticators = pgTable(
+  'mfa_authenticators',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull(),
+    status: mfaAuthenticatorStatusEnum('status').default('PENDING').notNull(),
+    secretCiphertext: text('secret_ciphertext').notNull(),
+    secretNonce: varchar('secret_nonce', { length: 64 }).notNull(),
+    secretAuthTag: varchar('secret_auth_tag', { length: 64 }).notNull(),
+    secretKeyId: varchar('secret_key_id', { length: 64 }).notNull(),
+    lastAcceptedTimeStep: integer('last_accepted_time_step'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true, mode: 'date' }),
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'mfa_authenticators_user_fk',
+    }).onDelete('restrict'),
+    unique('mfa_authenticators_user_id_unique').on(table.userId, table.id),
+    uniqueIndex('mfa_authenticators_user_current_uidx')
+      .on(table.userId)
+      .where(sql`${table.status} <> 'DISABLED'`),
+    index('mfa_authenticators_user_status_idx').on(table.userId, table.status),
+    check(
+      'mfa_authenticators_secret_check',
+      sql`char_length(${table.secretCiphertext}) >= 16
+        AND char_length(${table.secretNonce}) >= 16
+        AND char_length(${table.secretAuthTag}) >= 16
+        AND char_length(trim(${table.secretKeyId})) >= 1`,
+    ),
+    check(
+      'mfa_authenticators_time_step_check',
+      sql`${table.lastAcceptedTimeStep} IS NULL OR ${table.lastAcceptedTimeStep} >= 0`,
+    ),
+    check(
+      'mfa_authenticators_status_check',
+      sql`(
+        ${table.status} = 'PENDING'
+        AND ${table.confirmedAt} IS NULL
+        AND ${table.disabledAt} IS NULL
+      ) OR (
+        ${table.status} = 'ACTIVE'
+        AND ${table.confirmedAt} IS NOT NULL
+        AND ${table.disabledAt} IS NULL
+      ) OR (
+        ${table.status} = 'DISABLED'
+        AND ${table.disabledAt} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+export const mfaRecoveryCodes = pgTable(
+  'mfa_recovery_codes',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull(),
+    authenticatorId: uuid('authenticator_id').notNull(),
+    codeHash: varchar('code_hash', { length: 64 }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
+    replacedById: uuid('replaced_by_id').references((): AnyPgColumn => mfaRecoveryCodes.id, {
+      onDelete: 'restrict',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId, table.authenticatorId],
+      foreignColumns: [mfaAuthenticators.userId, mfaAuthenticators.id],
+      name: 'mfa_recovery_codes_user_authenticator_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('mfa_recovery_codes_hash_uidx').on(table.codeHash),
+    index('mfa_recovery_codes_authenticator_active_idx').on(table.authenticatorId, table.usedAt),
+    check(
+      'mfa_recovery_codes_hash_check',
+      sql`char_length(${table.codeHash}) = 64 AND ${table.codeHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      'mfa_recovery_codes_replacement_check',
+      sql`${table.replacedById} IS NULL OR ${table.usedAt} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const mfaLoginChallenges = pgTable(
+  'mfa_login_challenges',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    userId: uuid('user_id').notNull(),
+    authenticationIdentityId: uuid('authentication_identity_id').notNull(),
+    membershipId: uuid('membership_id').notNull(),
+    authenticatorId: uuid('authenticator_id'),
+    kind: mfaChallengeKindEnum('kind').notNull(),
+    provider: mfaLoginProviderEnum('provider').notNull(),
+    clientType: authClientTypeEnum('client_type').notNull(),
+    deviceId: varchar('device_id', { length: 128 }).notNull(),
+    deviceName: varchar('device_name', { length: 120 }).notNull(),
+    devicePlatform: devicePlatformEnum('device_platform').default('UNKNOWN').notNull(),
+    sourceIp: inet('source_ip'),
+    userAgent: text('user_agent'),
+    failedAttemptCount: integer('failed_attempt_count').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId, table.authenticationIdentityId],
+      foreignColumns: [authenticationIdentities.userId, authenticationIdentities.id],
+      name: 'mfa_login_challenges_user_identity_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.userId, table.membershipId],
+      foreignColumns: [memberships.userId, memberships.id],
+      name: 'mfa_login_challenges_user_membership_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.userId, table.authenticatorId],
+      foreignColumns: [mfaAuthenticators.userId, mfaAuthenticators.id],
+      name: 'mfa_login_challenges_user_authenticator_fk',
+    }).onDelete('restrict'),
+    uniqueIndex('mfa_login_challenges_token_hash_uidx').on(table.tokenHash),
+    index('mfa_login_challenges_active_idx').on(table.userId, table.consumedAt, table.expiresAt),
+    index('mfa_login_challenges_expiry_idx').on(table.consumedAt, table.expiresAt),
+    check(
+      'mfa_login_challenges_token_hash_check',
+      sql`char_length(${table.tokenHash}) = 64 AND ${table.tokenHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      'mfa_login_challenges_binding_check',
+      sql`${table.kind} = 'ENROLLMENT'
+        OR (${table.kind} = 'VERIFICATION' AND ${table.authenticatorId} IS NOT NULL)`,
+    ),
+    check(
+      'mfa_login_challenges_attempt_check',
+      sql`${table.failedAttemptCount} >= 0 AND ${table.failedAttemptCount} <= 10`,
+    ),
+    check(
+      'mfa_login_challenges_expiry_check',
+      sql`${table.expiresAt} > ${table.createdAt}
+        AND ${table.expiresAt} <= ${table.createdAt} + interval '10 minutes'`,
+    ),
+    check(
+      'mfa_login_challenges_consumed_check',
       sql`${table.consumedAt} IS NULL OR ${table.consumedAt} >= ${table.createdAt}`,
     ),
   ],

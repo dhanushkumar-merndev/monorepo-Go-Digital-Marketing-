@@ -11,8 +11,10 @@ web operations and an offline-aware salesperson mobile flow. Calling adds canoni
 history, outcome requirements, idempotent provider webhooks, reconciliation and private,
 consent-aware recording references. Phases 7-11 add canonical physical inventory, commercial
 booking/payment/document readiness, delivery operations, registration/RC, Customer Vehicles and
-post-sale reminders. Reports, expanded integrations and production release remain assigned to
-their later approved phases.
+post-sale reminders. Phases 12-14 add scoped reports/exports, audited provider-readiness and
+human-reviewed AI proposals, plus production release controls. The repository is a runnable local
+prototype; hosted provider, restore, signing, load/soak and dealership-pilot evidence remains
+deliberately gated.
 
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
@@ -64,6 +66,8 @@ pnpm type-check
 pnpm test
 pnpm test:integration
 pnpm build
+pnpm build:web:cloudflare
+pnpm security:audit:release
 ```
 
 Deployment entry points are also run from the root:
@@ -94,6 +98,13 @@ See [local development](docs/implementation/LOCAL_DEVELOPMENT.md),
 Supabase, Upstash, Tigris/R2 and all BullMQ worker modes.
 The [Google authentication setup](docs/implementation/GOOGLE_AUTH_SETUP.md) lists the exact web,
 Android, and iOS OAuth client configuration.
+
+Agency Admin accounts require TOTP MFA before a refresh session is created. First login performs
+encrypted enrollment and displays one-time recovery codes; subsequent logins accept a replay-safe
+TOTP or single-use recovery code. Configure independent `AUTH_MFA_*` secrets from `.env.example`.
+Release operation and evidence are defined in the
+[production release runbook](docs/implementation/runbooks/PRODUCTION_RELEASE.md) and
+[release evidence template](docs/implementation/RELEASE_EVIDENCE_TEMPLATE.md).
 
 The development seed enables `LEADS`, creates the `PUNE-INBOUND` round-robin queue and publishes
 form key `alpha-pune-website`. Public capture is

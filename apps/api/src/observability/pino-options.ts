@@ -36,6 +36,7 @@ export function createPinoHttpOptions(
       attachCorrelationId(request as CorrelatedRequest, response as unknown as Response),
     customProps: (request: IncomingMessage) => ({
       correlation_id: (request as CorrelatedRequest).correlationId,
+      release_id: environment.releaseId,
     }),
     customLogLevel: (
       _request: IncomingMessage,

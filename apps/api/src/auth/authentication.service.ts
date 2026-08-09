@@ -4,6 +4,7 @@ import type {
   ForgotPasswordResponse,
   LoginAuthenticatedResponse,
   LoginRequest,
+  LoginResponse,
   LogoutAllResponse,
   LogoutResponse,
   MeResponse,
@@ -24,6 +25,7 @@ import {
   type AuthenticationAuditInput,
   type AuthStore,
   type DeviceMetadata,
+  type MfaLoginChallengeRecord,
   type MembershipAccessRecord,
   type SessionAccessRecord,
 } from './auth-store.js';
@@ -48,8 +50,8 @@ export interface AuthRequestMetadata {
 }
 
 export interface LoginResult {
-  payload: LoginAuthenticatedResponse;
-  refreshToken: string;
+  payload: LoginResponse;
+  refreshToken?: string;
 }
 
 export interface RefreshResult {
@@ -188,19 +190,120 @@ export class AuthenticationService {
       throw authenticationFailure('MEMBERSHIP_REQUIRED', 'A membership is required.');
     }
 
+    const device = this.deviceMetadata(input, metadata);
+    if (membership.roleCode === 'AGENCY_ADMIN') {
+      const authenticator = await this.store.getActiveMfaAuthenticator(identity.userId);
+      const challengeId = randomUUID();
+      const challenge = createOpaqueToken(challengeId);
+      const expiresAt = new Date(now.getTime() + this.config.mfaChallengeTtlSeconds * 1_000);
+      await this.store.createMfaLoginChallenge({
+        audit: {
+          ...metadata,
+          ...(membership.clientOrganizationId
+            ? { clientOrganizationId: membership.clientOrganizationId }
+            : {}),
+          deviceId: device.deviceId,
+          eventType: 'MFA_CHALLENGE_ISSUED',
+          membershipId: membership.id,
+          metadata: { kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT', provider },
+          outcome: 'SUCCESS',
+          userId: identity.userId,
+        },
+        authenticationIdentityId: identity.id,
+        ...(authenticator ? { authenticatorId: authenticator.id } : {}),
+        clientType: input.client_type,
+        device,
+        expiresAt,
+        id: challengeId,
+        kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT',
+        membershipId: membership.id,
+        provider,
+        tokenHash: hashOpaqueToken(challenge.secret, this.config.mfaChallengePepper),
+        userId: identity.userId,
+      });
+
+      return {
+        payload: authenticator
+          ? {
+              challenge_expires_at: expiresAt.toISOString(),
+              challenge_token: challenge.token,
+              methods: [
+                'TOTP',
+                ...(authenticator.unusedRecoveryCodeCount > 0 ? (['RECOVERY_CODE'] as const) : []),
+              ],
+              status: 'MFA_REQUIRED',
+            }
+          : {
+              challenge_expires_at: expiresAt.toISOString(),
+              challenge_token: challenge.token,
+              status: 'MFA_ENROLLMENT_REQUIRED',
+            },
+      };
+    }
+
+    return this.issueSession(
+      identity,
+      membership,
+      activeMemberships,
+      input.client_type,
+      device,
+      metadata,
+      provider,
+    );
+  }
+
+  async completeMfaSession(
+    challenge: MfaLoginChallengeRecord,
+    metadata: AuthRequestMetadata,
+  ): Promise<{ payload: LoginAuthenticatedResponse; refreshToken: string }> {
+    const now = new Date();
+    const identity = await this.store.getAuthenticationIdentity(challenge.authenticationIdentityId);
+    const membership = await this.store.getMembership(challenge.userId, challenge.membershipId);
+    if (
+      !identity ||
+      identity.userId !== challenge.userId ||
+      identity.status !== 'ACTIVE' ||
+      identity.userStatus !== 'ACTIVE' ||
+      !membership ||
+      membership.status !== 'ACTIVE' ||
+      !organizationIsActive(membership)
+    ) {
+      throw authenticationFailure(
+        'MEMBERSHIP_INACTIVE',
+        'The MFA login context is no longer active.',
+      );
+    }
+    const memberships = (
+      await this.store.listAvailableMemberships(challenge.userId, challenge.clientType, now)
+    ).filter((candidate) => candidate.status === 'ACTIVE' && organizationIsActive(candidate));
+    return this.issueSession(
+      identity,
+      membership,
+      memberships,
+      challenge.clientType,
+      challenge.device,
+      metadata,
+      challenge.provider,
+      true,
+    );
+  }
+
+  private async issueSession(
+    identity: AuthenticationIdentityRecord,
+    membership: MembershipAccessRecord,
+    activeMemberships: MembershipAccessRecord[],
+    clientType: LoginRequest['client_type'],
+    device: DeviceMetadata,
+    metadata: AuthRequestMetadata,
+    provider: 'GOOGLE' | 'PASSWORD',
+    mfaVerified = false,
+  ): Promise<{ payload: LoginAuthenticatedResponse; refreshToken: string }> {
+    const now = new Date();
+
     const sessionId = randomUUID();
     const refreshRecordId = randomUUID();
     const refresh = createOpaqueToken(refreshRecordId);
     const expiresAt = new Date(now.getTime() + this.config.refreshTokenTtlSeconds * 1_000);
-    const device: DeviceMetadata = {
-      deviceId: input.device?.device_id ?? randomUUID(),
-      deviceName:
-        input.device?.device_name ??
-        (input.client_type === 'mobile' ? 'Android device' : 'Web browser'),
-      platform: input.device?.platform ?? (input.client_type === 'mobile' ? 'android' : 'web'),
-      ...(metadata.sourceIp ? { sourceIp: metadata.sourceIp } : {}),
-      ...(metadata.userAgent ? { userAgent: metadata.userAgent } : {}),
-    };
     const audit: AuthenticationAuditInput = {
       ...metadata,
       ...(membership.clientOrganizationId
@@ -208,7 +311,7 @@ export class AuthenticationService {
         : {}),
       deviceId: device.deviceId,
       eventType: 'LOGIN_SUCCEEDED',
-      metadata: { provider },
+      metadata: { mfa_verified: mfaVerified, provider },
       membershipId: membership.id,
       outcome: 'SUCCESS',
       sessionId,
@@ -218,7 +321,7 @@ export class AuthenticationService {
     await this.store.createSession({
       audit,
       authenticationIdentityId: identity.id,
-      clientType: input.client_type,
+      clientType,
       device,
       expiresAt,
       membershipId: membership.id,
@@ -251,7 +354,7 @@ export class AuthenticationService {
       access.token,
       access.expiresAt,
       expiresAt,
-      input.client_type === 'mobile' ? refresh.token : undefined,
+      clientType === 'mobile' ? refresh.token : undefined,
     );
 
     return {
@@ -261,6 +364,21 @@ export class AuthenticationService {
         status: 'AUTHENTICATED',
       },
       refreshToken: refresh.token,
+    };
+  }
+
+  private deviceMetadata(
+    input: Pick<LoginRequest, 'client_type' | 'device'>,
+    metadata: AuthRequestMetadata,
+  ): DeviceMetadata {
+    return {
+      deviceId: input.device?.device_id ?? randomUUID(),
+      deviceName:
+        input.device?.device_name ??
+        (input.client_type === 'mobile' ? 'Android device' : 'Web browser'),
+      platform: input.device?.platform ?? (input.client_type === 'mobile' ? 'android' : 'web'),
+      ...(metadata.sourceIp ? { sourceIp: metadata.sourceIp } : {}),
+      ...(metadata.userAgent ? { userAgent: metadata.userAgent } : {}),
     };
   }
 

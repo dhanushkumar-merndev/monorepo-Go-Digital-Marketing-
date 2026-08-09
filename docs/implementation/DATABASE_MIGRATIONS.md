@@ -262,3 +262,43 @@ events and Customer Activity. Apply forward-only after a recovery point; verify 
 119 permission codes, 21 migration integrity tests and both immutable triggers. After reminder or
 customer-activity evidence exists, rollback requires reviewed forward compensation, not history
 deletion. No shared, staging or production database was mutated during the local Phase 11 audit.
+
+## Phase 12 reporting migrations
+
+`0031_panoramic_mimic.sql` creates tenant-scoped saved report definitions, asynchronous exports and
+export audit evidence. `0032_stale_union_jack.sql` completes report scheduling and
+private export metadata. Report services snapshot the caller's authorized branch/team/assignment
+scope at request time so queued work cannot expand after a membership change.
+
+Apply forward-only after a recovery point. Verify tenant/actor foreign keys, private-object metadata,
+scope snapshots and reporting permissions before enabling scheduled exports. Rollback after export
+evidence exists requires a reviewed forward compensation or recovery-point restore.
+
+## Phase 13 integration migration
+
+`0033_fixed_silver_samurai.sql` creates tenant integration configuration, creative review and
+transcript-suggestion records without exposing encrypted provider credentials or permitting AI output
+to publish automatically. Configuration and proposed content remain subject to backend permission and
+tenant scope checks.
+
+Apply forward-only and verify provider settings use the approved allowlist. Official provider
+credentials and callback verification are external activation gates, not migration assumptions.
+
+## Phase 14 corrective and MFA migrations
+
+`0034_wet_roxanne_simpson.sql` installs missing Phase 12/13 permission rows and safe scoped-manager
+mappings, keeps tenant-wide audit-event reads privileged, and replaces the transcript recording
+reference with an exact tenant/call/recording composite foreign key. Its preflight rejects existing
+mismatched transcript evidence rather than guessing a relationship.
+
+`0035_jazzy_blonde_phantom.sql` adds MFA factor, challenge and audit enums plus tenant/actor-scoped
+authenticator, recovery-code and login-challenge tables. Secrets are encrypted by the application
+keyring; recovery codes are stored only as hashes. Uniqueness and expiry fields support replay and
+single-use enforcement.
+
+Apply `0034` and `0035` through the same migration-first release job after a recovery point. The
+36-entry journal (`0000` through `0035`) passes Drizzle metadata checks, zero-to-latest migration,
+populated Phase 1-to-3 compatibility and PGlite snapshot/restore suites. No shared database was
+mutated during the Phase 14 local audit. For production rollback, restore the reviewed recovery point
+before new evidence is accepted; afterward ship a forward compensation that preserves audit,
+authentication and integration history.

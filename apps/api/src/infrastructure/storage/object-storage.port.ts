@@ -36,6 +36,7 @@ export interface PutPrivateObjectRequest {
 
 /** Provider-neutral private object storage contract. */
 export interface ObjectStorage {
+  deletePrivateObject?(key: string): Promise<void>;
   putPrivateObject?(request: PutPrivateObjectRequest): Promise<void>;
   createUploadUrl(request: PresignUploadRequest): Promise<PresignedObjectUrl>;
   createDownloadUrl(request: PresignDownloadRequest): Promise<PresignedObjectUrl>;

@@ -1,6 +1,8 @@
 import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 import type { NextConfig } from 'next';
 
+import { buildWebSecurityHeaders } from './src/lib/security-headers';
+
 initOpenNextCloudflareForDev();
 
 const nextConfig: NextConfig = {
@@ -11,12 +13,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/(.*)',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'DENY' },
-        ],
+        headers: buildWebSecurityHeaders(process.env.NODE_ENV, process.env.NEXT_PUBLIC_API_URL),
       },
     ];
   },

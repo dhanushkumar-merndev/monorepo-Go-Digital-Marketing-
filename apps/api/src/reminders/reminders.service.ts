@@ -927,6 +927,30 @@ export class RemindersService {
     return this.queueDue(clientId(context), correlationId);
   }
 
+  async queueDueAllTenants() {
+    const tenants = await this.connection.db
+      .selectDistinct({ clientOrganizationId: schema.reminderInstances.clientOrganizationId })
+      .from(schema.reminderInstances)
+      .where(
+        and(
+          eq(schema.reminderInstances.status, 'SCHEDULED'),
+          lte(schema.reminderInstances.scheduledFor, new Date()),
+        ),
+      )
+      .limit(100);
+    const summary = { queued: 0, suppressed: 0, tenants: tenants.length };
+    const scanId = new Date().toISOString();
+    for (const tenant of tenants) {
+      const result = await this.queueDue(
+        tenant.clientOrganizationId,
+        `worker-reminder-due-scan-${scanId}`,
+      );
+      summary.queued += result.queued;
+      summary.suppressed += result.suppressed;
+    }
+    return summary;
+  }
+
   private async enqueueDispatch(outboxId: string): Promise<void> {
     if (!this.queueFactory) return;
     try {

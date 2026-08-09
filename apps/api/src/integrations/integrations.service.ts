@@ -7,13 +7,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  CreativeRequest,
-  IntegrationConnectionRequest,
-  OnboardingItemRequest,
-  ReviewCreativeRequest,
-  ReviewTranscriptSuggestionRequest,
-  TranscriptSuggestionRequest,
+import {
+  integrationConnectionRequestSchema,
+  type CreativeRequest,
+  type IntegrationConnectionRequest,
+  type OnboardingItemRequest,
+  type ReviewCreativeRequest,
+  type ReviewTranscriptSuggestionRequest,
+  type TranscriptSuggestionRequest,
 } from '@gdm/contracts';
 import { schema, type DatabaseConnection } from '@gdm/database';
 import { and, desc, eq } from 'drizzle-orm';
@@ -82,13 +83,18 @@ export class IntegrationsService {
     correlationId: string,
   ) {
     const cid = clientId(context);
+    // Validate again at the domain boundary so a future non-HTTP caller cannot
+    // persist credentials inside the generic settings JSON.
+    const validated = integrationConnectionRequestSchema.safeParse(input);
+    if (!validated.success)
+      throw invalid('Only approved public settings may be stored for this provider.');
     const [connection] = await this.connection.db
       .insert(schema.integrationConnections)
       .values({
         clientOrganizationId: cid,
-        displayName: input.display_name,
-        provider: input.provider,
-        settings: input.settings,
+        displayName: validated.data.display_name,
+        provider: validated.data.provider,
+        settings: validated.data.settings,
       })
       .onConflictDoUpdate({
         target: [
@@ -96,10 +102,10 @@ export class IntegrationsService {
           schema.integrationConnections.provider,
         ],
         set: {
-          displayName: input.display_name,
+          displayName: validated.data.display_name,
           disconnectedAt: null,
           failureSummary: null,
-          settings: input.settings,
+          settings: validated.data.settings,
           status: 'PENDING_APPROVAL',
           updatedAt: new Date(),
         },
@@ -112,7 +118,7 @@ export class IntegrationsService {
       correlationId,
       'INTEGRATION_CONNECTION_CONFIGURED',
       connection.id,
-      { provider: input.provider },
+      { provider: validated.data.provider },
     );
     return { connection: this.safeConnection(connection) };
   }
@@ -189,12 +195,13 @@ export class IntegrationsService {
   }
   async creativeRequests(context: AuthorizationContext) {
     const cid = clientId(context);
+    const assets = await this.connection.db
+      .select()
+      .from(schema.generatedCreativeAssets)
+      .where(eq(schema.generatedCreativeAssets.clientOrganizationId, cid))
+      .orderBy(desc(schema.generatedCreativeAssets.createdAt));
     return {
-      assets: await this.connection.db
-        .select()
-        .from(schema.generatedCreativeAssets)
-        .where(eq(schema.generatedCreativeAssets.clientOrganizationId, cid))
-        .orderBy(desc(schema.generatedCreativeAssets.createdAt)),
+      assets: assets.map((asset) => this.safeCreativeAsset(asset)),
     };
   }
   async requestCreative(
@@ -220,7 +227,7 @@ export class IntegrationsService {
     await this.audit(cid, context, correlationId, 'AI_CREATIVE_REQUESTED', asset.id, {
       provider: asset.provider,
     });
-    return { asset };
+    return { asset: this.safeCreativeAsset(asset) };
   }
   async reviewCreative(
     context: AuthorizationContext,
@@ -249,7 +256,7 @@ export class IntegrationsService {
     await this.audit(cid, context, correlationId, 'AI_CREATIVE_REVIEWED', id, {
       approved: input.approved,
     });
-    return { asset };
+    return { asset: this.safeCreativeAsset(asset) };
   }
   async transcriptSuggestions(context: AuthorizationContext) {
     const cid = clientId(context);
@@ -274,6 +281,7 @@ export class IntegrationsService {
         and(
           eq(schema.callRecordings.clientOrganizationId, cid),
           eq(schema.callRecordings.id, input.recording_id),
+          eq(schema.callRecordings.callId, input.call_id),
         ),
       )
       .limit(1);
@@ -326,7 +334,16 @@ export class IntegrationsService {
     return { suggestion };
   }
   private safeConnection(connection: typeof schema.integrationConnections.$inferSelect) {
-    const { credentialCiphertext: _ciphertext, credentialKeyId: _keyId, ...safe } = connection;
+    const {
+      credentialCiphertext: _ciphertext,
+      credentialKeyId: _keyId,
+      settings: _settings,
+      ...safe
+    } = connection;
+    return safe;
+  }
+  private safeCreativeAsset(asset: typeof schema.generatedCreativeAssets.$inferSelect) {
+    const { objectKey: _objectKey, ...safe } = asset;
     return safe;
   }
   private audit(

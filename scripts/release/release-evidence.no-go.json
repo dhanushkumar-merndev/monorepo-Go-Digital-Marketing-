@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "NOT_VERIFIED",
+  "applicationVersion": "NOT_VERIFIED",
+  "commitSha": "NOT_VERIFIED",
+  "environment": "production",
+  "createdAt": "NOT_VERIFIED",
+  "evidenceOwner": "NOT_VERIFIED",
+  "gates": {
+    "source_revision": { "status": "NOT_VERIFIED" },
+    "phase_dependency_consistency": { "status": "NOT_VERIFIED" },
+    "quality_gates": { "status": "NOT_VERIFIED" },
+    "dependency_scan": { "status": "NOT_VERIFIED" },
+    "container_scan": { "status": "NOT_VERIFIED" },
+    "tenant_authorization": { "status": "NOT_VERIFIED" },
+    "critical_high_security": { "status": "NOT_VERIFIED" },
+    "migration_compatibility": { "status": "NOT_VERIFIED" },
+    "backup_snapshot": { "status": "NOT_VERIFIED" },
+    "isolated_restore_drill": { "status": "NOT_VERIFIED" },
+    "rollback_plan": { "status": "NOT_VERIFIED" },
+    "load_test": { "status": "NOT_VERIFIED" },
+    "soak_test": { "status": "NOT_VERIFIED" },
+    "observability_alerts": { "status": "NOT_VERIFIED" },
+    "provider_readiness": { "status": "NOT_VERIFIED" },
+    "ai_social_human_approval": { "status": "NOT_VERIFIED" },
+    "mobile_release": { "status": "NOT_VERIFIED" },
+    "critical_journey": { "status": "NOT_VERIFIED" },
+    "pilot_acceptance": { "status": "NOT_VERIFIED" },
+    "release_signoff": { "status": "NOT_VERIFIED" }
+  }
+}

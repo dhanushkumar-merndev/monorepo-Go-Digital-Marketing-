@@ -17,7 +17,30 @@ jobs:
   quality:
     name: Quality and production builds
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: go_digital_crm
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 54322:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=go_digital_crm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       CI: true
       API_HOST: 127.0.0.1
@@ -30,6 +53,14 @@ jobs:
       REDIS_URL: redis://localhost:6379
       REDIS_CONNECT_TIMEOUT_MS: 250
       WORKER_MODE: disabled
+      RELEASE_ID: ${{ github.sha }}
+      AUTH_ACCESS_TOKEN_SECRET: ci-access-token-secret-8f1a76e7836a4fbd
+      AUTH_PASSWORD_PEPPER: ci-password-pepper-c98404afea9b41d5
+      AUTH_REFRESH_TOKEN_PEPPER: ci-refresh-token-pepper-e62a1bb749fe4703
+      GOOGLE_AUTH_WEB_CLIENT_ID: 123456789-ci.apps.googleusercontent.com
+      LEAD_PHONE_LOOKUP_PEPPER: ci-lead-phone-lookup-pepper-2d344a11
+      TEST_RIDE_OTP_PEPPER: ci-test-ride-otp-pepper-6a971f32
+      DELIVERY_OTP_PEPPER: ci-delivery-otp-pepper-c0c0cdbc
       S3_ENDPOINT: http://localhost:9000
       S3_REGION: auto
       S3_BUCKET: go-digital-crm-test
@@ -45,15 +76,15 @@ jobs:
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 123456789-ci-ios.apps.googleusercontent.com
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
 
       - name: Enable pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 11.18.0
           run_install: false
@@ -61,11 +92,36 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Capture raw high and critical production dependency audit
+        shell: bash
+        run: |
+          mkdir -p artifacts/security
+          set +e
+          pnpm run --silent security:audit:raw > artifacts/security/pnpm-audit-raw.json
+          raw_audit_status=$?
+          set -e
+          echo "Raw dependency audit exit code: ${raw_audit_status}"
+          if [ "${raw_audit_status}" -ne 0 ]; then
+            echo "::warning::The raw audit reports advisories. The release audit below may ignore only the two documented image-size optional-peer advisories."
+          fi
+
+      # These are unpatched image-size advisories entering only through
+      # Drizzle's optional Expo peer graph. The Docker build and runtime-image
+      # check below prove image-size is absent before these exact exceptions
+      # can be accepted. Any other high/critical advisory fails this step.
+      - name: Enforce release audit with exact pruned image-size peer exceptions
+        run: pnpm security:audit:release
+
       - name: Check formatting
         run: pnpm format:check
 
       - name: Check generated migration metadata
         run: pnpm db:check
+
+      - name: Apply migrations to the isolated CI database
+        run: pnpm db:migrate
+        env:
+          NODE_ENV: test
 
       - name: Lint
         run: pnpm lint
@@ -90,4 +146,134 @@ jobs:
         run: pnpm build:web:cloudflare
 
       - name: Build NestJS production image
-        run: docker build --file apps/api/Dockerfile --tag gdm-api:ci .
+        run: >-
+          docker build
+          --build-arg BUILD_VERSION=${{ github.sha }}
+          --build-arg VCS_REF=${{ github.sha }}
+          --file apps/api/Dockerfile
+          --tag gdm-api:ci
+          .
+
+      - name: Prove ignored image-size peer graph is absent from the runtime image
+        run: |
+          docker run --rm --entrypoint sh gdm-api:ci -ec '
+            if find /app/node_modules -type d -name image-size -print -quit | grep -q .; then
+              echo "image-size unexpectedly exists in the pruned runtime" >&2
+              exit 1
+            fi
+            echo "Verified: image-size and its optional Expo peer graph are absent from the pruned API runtime."
+          '
+
+      - name: Smoke-test API container liveness and readiness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          container_name=gdm-api-live-smoke
+          cleanup() {
+            docker logs "${container_name}" 2>&1 || true
+            docker rm --force "${container_name}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name "${container_name}" --network host \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --env NODE_ENV=test --env API_HOST=0.0.0.0 --env API_PORT \
+            --env LOG_LEVEL=info --env RELEASE_ID --env CORS_ORIGINS \
+            --env DATABASE_URL --env DATABASE_POOL_MAX --env REDIS_URL \
+            --env REDIS_CONNECT_TIMEOUT_MS --env S3_ENDPOINT --env S3_REGION \
+            --env S3_BUCKET --env S3_ACCESS_KEY_ID --env S3_SECRET_ACCESS_KEY \
+            --env S3_FORCE_PATH_STYLE --env AUTH_ACCESS_TOKEN_SECRET \
+            --env AUTH_PASSWORD_PEPPER --env AUTH_REFRESH_TOKEN_PEPPER \
+            --env GOOGLE_AUTH_WEB_CLIENT_ID --env LEAD_PHONE_LOOKUP_PEPPER \
+            --env TEST_RIDE_OTP_PEPPER --env DELIVERY_OTP_PEPPER \
+            --env WORKER_MODE=standalone gdm-api:ci
+
+          live=false
+          for _ in $(seq 1 45); do
+            if curl --fail --silent --show-error http://127.0.0.1:4000/v1/health/live >/tmp/gdm-live.json; then
+              live=true
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "${container_name}")" != true ]; then
+              echo 'API container exited before becoming live.' >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          [ "${live}" = true ] || { echo 'API liveness timed out.' >&2; exit 1; }
+          curl --fail --silent --show-error http://127.0.0.1:4000/v1/health/ready >/tmp/gdm-ready.json
+          grep --quiet '"status":"ok"' /tmp/gdm-live.json
+          grep --quiet '"status":"ok"' /tmp/gdm-ready.json
+
+      - name: Smoke-test standalone worker process
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          container_name=gdm-worker-process-smoke
+          cleanup() {
+            docker logs "${container_name}" 2>&1 || true
+            docker rm --force "${container_name}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name "${container_name}" --network host \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --env NODE_ENV=test --env LOG_LEVEL=info --env RELEASE_ID \
+            --env CORS_ORIGINS --env DATABASE_URL --env DATABASE_POOL_MAX \
+            --env REDIS_URL --env REDIS_CONNECT_TIMEOUT_MS --env S3_ENDPOINT \
+            --env S3_REGION --env S3_BUCKET --env S3_ACCESS_KEY_ID \
+            --env S3_SECRET_ACCESS_KEY --env S3_FORCE_PATH_STYLE \
+            --env AUTH_ACCESS_TOKEN_SECRET --env AUTH_PASSWORD_PEPPER \
+            --env AUTH_REFRESH_TOKEN_PEPPER --env GOOGLE_AUTH_WEB_CLIENT_ID \
+            --env LEAD_PHONE_LOOKUP_PEPPER --env TEST_RIDE_OTP_PEPPER \
+            --env DELIVERY_OTP_PEPPER --env WORKER_MODE=standalone \
+            gdm-api:ci node dist/worker.js
+
+          started=false
+          for _ in $(seq 1 45); do
+            if docker logs "${container_name}" 2>&1 | grep --quiet 'Standalone background worker running'; then
+              started=true
+              break
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "${container_name}")" != true ]; then
+              echo 'Worker container exited during startup.' >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          [ "${started}" = true ] || { echo 'Worker startup timed out.' >&2; exit 1; }
+          sleep 5
+          [ "$(docker inspect --format '{{.State.Running}}' "${container_name}")" = true ]
+          docker stop --time 15 "${container_name}" >/dev/null
+
+      - name: Generate API runtime SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: gdm-api:ci
+          format: spdx-json
+          output-file: artifacts/security/gdm-api.spdx.json
+          upload-artifact: false
+          dependency-snapshot: false
+
+      - name: Scan API runtime for critical and high vulnerabilities
+        id: trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: gdm-api:ci
+          format: json
+          output: artifacts/security/trivy-api.json
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: 1
+
+      - name: Upload supply-chain evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: supply-chain-evidence-${{ github.sha }}
+          path: artifacts/security
+          if-no-files-found: warn
+          retention-days: 30

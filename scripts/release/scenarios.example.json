@@ -1,0 +1,33 @@
+[
+  {
+    "name": "liveness",
+    "method": "GET",
+    "path": "/v1/health/live",
+    "weight": 1,
+    "expectedStatuses": [200]
+  },
+  {
+    "name": "lead-list",
+    "method": "GET",
+    "path": "/v1/leads?limit=25",
+    "weight": 4,
+    "expectedStatuses": [200],
+    "requiresAuth": true
+  },
+  {
+    "name": "inventory-list",
+    "method": "GET",
+    "path": "/v1/inventory/units?limit=25",
+    "weight": 2,
+    "expectedStatuses": [200],
+    "requiresAuth": true
+  },
+  {
+    "name": "conversation-list",
+    "method": "GET",
+    "path": "/v1/messaging/conversations?limit=25",
+    "weight": 2,
+    "expectedStatuses": [200],
+    "requiresAuth": true
+  }
+]

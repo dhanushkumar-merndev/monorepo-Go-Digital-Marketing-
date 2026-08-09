@@ -197,6 +197,7 @@ describe('Phase 5 messaging service integration', () => {
     });
 
     const runtime = {
+      credentialDecryptionKeys: {},
       credentialEncryptionKey: Buffer.alloc(32, 7),
       credentialKeyId: 'messaging-test',
       developmentAdapterEnabled: true,
@@ -240,6 +241,14 @@ describe('Phase 5 messaging service integration', () => {
         return { lead: { id: ctwaLeadId } };
       },
     };
+    const rateLimiter = {
+      assertWebhookAllowed: async () => undefined,
+      withOutboundPermit: async <T>(
+        _clientOrganizationId: string,
+        _provider: string,
+        operation: () => Promise<T>,
+      ): Promise<T> => operation(),
+    };
     const service = new MessagingService(
       { db } as unknown as DatabaseConnection,
       runtime,
@@ -247,6 +256,7 @@ describe('Phase 5 messaging service integration', () => {
       storage,
       new AuthorizationPolicy(),
       leads as never,
+      rateLimiter as never,
     );
     const configured = await service.configureDevelopment(
       context(),
@@ -722,6 +732,7 @@ describe('Phase 5 messaging service integration', () => {
       storage,
       new AuthorizationPolicy(),
       leads as never,
+      rateLimiter as never,
       {
         createQueue: () =>
           ({
@@ -768,5 +779,19 @@ describe('Phase 5 messaging service integration', () => {
       .from(schema.messages)
       .where(eq(schema.messages.providerMessageId, 'provider-known-async'));
     assert.equal(afterAsyncProcessing?.value, 1);
+    await db
+      .update(schema.webhookEvents)
+      .set({ rawPayloadExpiresAt: new Date('2000-01-01T00:00:00.000Z') })
+      .where(eq(schema.webhookEvents.id, queuedWebhookId));
+    assert.deepEqual(await service.processRetentionJob(), {
+      mediaDeleted: 0,
+      mediaFailed: 0,
+      webhookPayloadsRedacted: 1,
+    });
+    const [redactedWebhook] = await db
+      .select({ rawPayload: schema.webhookEvents.rawPayload })
+      .from(schema.webhookEvents)
+      .where(eq(schema.webhookEvents.id, queuedWebhookId));
+    assert.deepEqual(redactedWebhook?.rawPayload, {});
   });
 });

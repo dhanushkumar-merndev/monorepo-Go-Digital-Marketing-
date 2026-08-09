@@ -56,6 +56,14 @@ import {
   MESSAGING_RUNTIME_CONFIG,
   type MessagingRuntimeConfig,
 } from './messaging-runtime-config.js';
+import { MessagingRateLimiter } from './messaging-rate-limiter.js';
+import {
+  MESSAGING_OUTBOUND_AMBIGUITY_MS,
+  MESSAGING_WEBHOOK_MAX_EVENTS,
+  MESSAGING_WEBHOOK_MAX_RAW_BYTES,
+  MESSAGING_WEBHOOK_PROCESSING_LEASE_MS,
+  messagingRetryDelayWithJitter,
+} from './messaging-reliability.js';
 
 type Tx = Parameters<Parameters<DatabaseConnection['db']['transaction']>[0]>[0];
 type ConnectionRow = typeof schema.messagingProviderConnections.$inferSelect;
@@ -183,6 +191,7 @@ export class MessagingService {
     @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
     @Inject(AuthorizationPolicy) private readonly policy: AuthorizationPolicy,
     @Inject(LeadsService) private readonly leads: LeadsService,
+    @Inject(MessagingRateLimiter) private readonly rateLimiter: MessagingRateLimiter,
     @Optional()
     @Inject(BULLMQ_QUEUE_FACTORY)
     private readonly queueFactory?: BullMqQueueFactory,
@@ -1325,6 +1334,7 @@ export class MessagingService {
     verifyToken: string,
     challenge: string,
   ) {
+    await this.rateLimiter.assertWebhookAllowed(providerCode, connectionKey);
     if (mode !== 'subscribe') throw new UnauthorizedException('Webhook verification failed.');
     const connection = await this.connectionByKey(connectionKey);
     if (connection.provider !== providerCode.toUpperCase())
@@ -1347,12 +1357,21 @@ export class MessagingService {
     providerCode: string;
     rawBody?: string;
   }) {
+    await this.rateLimiter.assertWebhookAllowed(input.providerCode, input.connectionKey);
     const connection = await this.connectionByKey(input.connectionKey);
     if (connection.provider !== input.providerCode.toUpperCase())
       throw new UnauthorizedException('Webhook provider does not match the connection.');
     const provider = this.providers.provider(connection.provider);
     if (!provider) throw new UnauthorizedException('Webhook provider is unavailable.');
     const rawBody = input.rawBody ?? JSON.stringify(input.payload);
+    if (Buffer.byteLength(rawBody, 'utf8') > MESSAGING_WEBHOOK_MAX_RAW_BYTES) {
+      throw new BadRequestException({
+        code: 'WEBHOOK_PAYLOAD_TOO_LARGE',
+        details: [],
+        message: 'The messaging webhook payload exceeds the accepted byte budget.',
+        retryable: false,
+      });
+    }
     if (
       !(await provider.verifyWebhook({
         connection: this.providerConnection(connection),
@@ -1365,6 +1384,14 @@ export class MessagingService {
       connection: this.providerConnection(connection),
       payload: input.payload,
     });
+    if (events.length > MESSAGING_WEBHOOK_MAX_EVENTS) {
+      throw new BadRequestException({
+        code: 'WEBHOOK_EVENT_LIMIT_EXCEEDED',
+        details: [],
+        message: 'The messaging webhook contains too many events.',
+        retryable: false,
+      });
+    }
     let duplicates = 0;
     let failed = 0;
     let processed = 0;
@@ -1387,7 +1414,7 @@ export class MessagingService {
             { webhookEventId },
             {
               attempts: this.config.outboundMaxAttempts,
-              backoff: { delay: 1_000, type: 'exponential' },
+              backoff: { delay: messagingRetryDelayWithJitter(1), type: 'exponential' },
               jobId: webhookEventId,
               removeOnComplete: 1_000,
               removeOnFail: 1_000,
@@ -1492,6 +1519,76 @@ export class MessagingService {
     return { accepted: true };
   }
 
+  async processRetentionJob(): Promise<{
+    mediaDeleted: number;
+    mediaFailed: number;
+    webhookPayloadsRedacted: number;
+  }> {
+    const expiredWebhooks = await this.connection.db
+      .select({ id: schema.webhookEvents.id })
+      .from(schema.webhookEvents)
+      .where(
+        and(
+          sql`${schema.webhookEvents.provider} like 'MESSAGING:%'`,
+          sql`${schema.webhookEvents.rawPayloadExpiresAt} <= now()`,
+          sql`${schema.webhookEvents.rawPayload} <> '{}'::jsonb`,
+        ),
+      )
+      .limit(500);
+    let webhookPayloadsRedacted = 0;
+    if (expiredWebhooks.length > 0) {
+      const redacted = await this.connection.db
+        .update(schema.webhookEvents)
+        .set({ rawPayload: {} })
+        .where(
+          inArray(
+            schema.webhookEvents.id,
+            expiredWebhooks.map((row) => row.id),
+          ),
+        )
+        .returning({ id: schema.webhookEvents.id });
+      webhookPayloadsRedacted = redacted.length;
+    }
+
+    let mediaDeleted = 0;
+    let mediaFailed = 0;
+    if (this.storage.deletePrivateObject) {
+      const expiredMedia = await this.connection.db
+        .select({ id: schema.messageMedia.id, objectKey: schema.messageMedia.objectKey })
+        .from(schema.messageMedia)
+        .where(
+          and(
+            sql`${schema.messageMedia.retentionExpiresAt} <= now()`,
+            inArray(schema.messageMedia.availability, ['PENDING', 'AVAILABLE', 'UNAVAILABLE']),
+            sql`${schema.messageMedia.objectKey} is not null`,
+          ),
+        )
+        .limit(100);
+      for (const media of expiredMedia) {
+        if (!media.objectKey) continue;
+        try {
+          await this.storage.deletePrivateObject(media.objectKey);
+          await this.connection.db
+            .update(schema.messageMedia)
+            .set({
+              availability: 'EXPIRED',
+              objectKey: null,
+            })
+            .where(
+              and(
+                eq(schema.messageMedia.id, media.id),
+                eq(schema.messageMedia.objectKey, media.objectKey),
+              ),
+            );
+          mediaDeleted += 1;
+        } catch {
+          mediaFailed += 1;
+        }
+      }
+    }
+    return { mediaDeleted, mediaFailed, webhookPayloadsRedacted };
+  }
+
   async reconcileWebhooks(context: AuthorizationContext, correlationId: string) {
     const cid = clientId(context);
     const pending = await this.connection.db
@@ -1585,11 +1682,32 @@ export class MessagingService {
     } else {
       throw new Error('Messaging webhook event kind is invalid.');
     }
-    const attempt = webhook.attempts + 1;
-    await this.connection.db
+    const [claim] = await this.connection.db
       .update(schema.webhookEvents)
-      .set({ attempts: attempt, status: 'PROCESSING' })
-      .where(eq(schema.webhookEvents.id, webhook.id));
+      .set({
+        attempts: sql`${schema.webhookEvents.attempts} + 1`,
+        availableAt: new Date(Date.now() + MESSAGING_WEBHOOK_PROCESSING_LEASE_MS),
+        status: 'PROCESSING',
+      })
+      .where(
+        and(
+          eq(schema.webhookEvents.id, webhook.id),
+          sql`${schema.webhookEvents.availableAt} <= now()`,
+          inArray(schema.webhookEvents.status, ['RECEIVED', 'FAILED', 'PROCESSING']),
+        ),
+      )
+      .returning();
+    if (!claim) {
+      const [current] = await this.connection.db
+        .select({ status: schema.webhookEvents.status })
+        .from(schema.webhookEvents)
+        .where(eq(schema.webhookEvents.id, webhook.id))
+        .limit(1);
+      return current?.status === 'PROCESSED' || current?.status === 'DUPLICATE'
+        ? current.status
+        : 'FAILED';
+    }
+    const attempt = claim.attempts;
     try {
       if (event.kind === 'MESSAGE')
         await this.processInboundMessage(
@@ -1607,26 +1725,35 @@ export class MessagingService {
           processedAt: new Date(),
           status: 'PROCESSED',
         })
-        .where(eq(schema.webhookEvents.id, webhook.id));
+        .where(
+          and(eq(schema.webhookEvents.id, webhook.id), eq(schema.webhookEvents.attempts, attempt)),
+        );
       return 'PROCESSED';
     } catch (error) {
       if (isUniqueViolation(error)) {
         await this.connection.db
           .update(schema.webhookEvents)
           .set({ processedAt: new Date(), status: 'DUPLICATE' })
-          .where(eq(schema.webhookEvents.id, webhook.id));
+          .where(
+            and(
+              eq(schema.webhookEvents.id, webhook.id),
+              eq(schema.webhookEvents.attempts, attempt),
+            ),
+          );
         return 'DUPLICATE';
       }
       await this.connection.db
         .update(schema.webhookEvents)
         .set({
-          availableAt: new Date(Date.now() + Math.min(300_000, 1_000 * 2 ** attempt)),
+          availableAt: new Date(Date.now() + messagingRetryDelayWithJitter(attempt)),
           lastErrorCode: error instanceof Error ? error.name : 'PROCESSING_ERROR',
           lastErrorMessage:
             error instanceof Error ? error.message.slice(0, 1000) : 'Processing failed.',
           status: attempt >= this.config.outboundMaxAttempts ? 'DEAD_LETTER' : 'FAILED',
         })
-        .where(eq(schema.webhookEvents.id, webhook.id));
+        .where(
+          and(eq(schema.webhookEvents.id, webhook.id), eq(schema.webhookEvents.attempts, attempt)),
+        );
       return 'FAILED';
     }
   }
@@ -1966,6 +2093,7 @@ export class MessagingService {
         conversation: schema.conversations,
         media: schema.messageMedia,
         message: schema.messages,
+        outbox: schema.messageOutboundOutbox,
         template: schema.messageTemplates,
       })
       .from(schema.messages)
@@ -1990,6 +2118,13 @@ export class MessagingService {
           eq(schema.messageTemplates.id, schema.messages.templateId),
         ),
       )
+      .innerJoin(
+        schema.messageOutboundOutbox,
+        and(
+          eq(schema.messageOutboundOutbox.clientOrganizationId, cid),
+          eq(schema.messageOutboundOutbox.messageId, schema.messages.id),
+        ),
+      )
       .leftJoin(
         schema.messageMedia,
         and(
@@ -2001,6 +2136,51 @@ export class MessagingService {
       .limit(1);
     if (!row) throw notFound('Queued message was not found.');
     const provider = this.providers.provider(row.connection.provider);
+    if (
+      row.outbox.status === 'PROCESSING' &&
+      row.outbox.lockedAt &&
+      row.outbox.lockedAt.getTime() <= Date.now() - MESSAGING_OUTBOUND_AMBIGUITY_MS
+    ) {
+      const now = new Date();
+      await this.connection.db.transaction(async (tx) => {
+        await tx
+          .update(schema.messages)
+          .set({ status: 'FAILED' })
+          .where(
+            and(eq(schema.messages.clientOrganizationId, cid), eq(schema.messages.id, messageId)),
+          );
+        await tx.insert(schema.messageStatusHistory).values({
+          clientOrganizationId: cid,
+          errorCode: 'PROVIDER_ACCEPTANCE_UNKNOWN',
+          errorMessage:
+            'The provider may have accepted this send before the worker stopped. Automatic resend is blocked.',
+          messageId,
+          occurredAt: now,
+          status: 'FAILED',
+        });
+        await tx
+          .update(schema.messageOutboundOutbox)
+          .set({
+            lastErrorCode: 'PROVIDER_ACCEPTANCE_UNKNOWN',
+            lastErrorMessage: 'Manual provider reconciliation is required before retrying.',
+            lockedAt: null,
+            lockedBy: null,
+            status: 'DEAD_LETTER',
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.messageOutboundOutbox.clientOrganizationId, cid),
+              eq(schema.messageOutboundOutbox.messageId, messageId),
+              eq(schema.messageOutboundOutbox.status, 'PROCESSING'),
+            ),
+          );
+        await this.event(tx, cid, messageId, 'MESSAGE_DEAD_LETTERED', correlationId, {
+          reason: 'PROVIDER_ACCEPTANCE_UNKNOWN',
+        });
+      });
+      return;
+    }
     const [claim] = await this.connection.db
       .update(schema.messageOutboundOutbox)
       .set({
@@ -2029,23 +2209,25 @@ export class MessagingService {
         .where(
           and(eq(schema.messages.clientOrganizationId, cid), eq(schema.messages.id, messageId)),
         );
-      const result = await provider.sendMessage(this.providerConnection(row.connection), {
-        contentType: row.message.contentType as 'TEXT' | 'TEMPLATE' | 'MEDIA',
-        ...(row.media?.objectKey
-          ? { media: { mimeType: row.media.mimeType, objectKey: row.media.objectKey } }
-          : {}),
-        remoteAddress: row.conversation.remoteAddress,
-        ...(row.template
-          ? {
-              template: {
-                language: row.template.language,
-                name: row.template.name,
-                variables: row.message.templateVariables,
-              },
-            }
-          : {}),
-        ...(row.message.bodyText ? { text: row.message.bodyText } : {}),
-      });
+      const result = await this.rateLimiter.withOutboundPermit(cid, row.connection.provider, () =>
+        provider.sendMessage(this.providerConnection(row.connection), {
+          contentType: row.message.contentType as 'TEXT' | 'TEMPLATE' | 'MEDIA',
+          ...(row.media?.objectKey
+            ? { media: { mimeType: row.media.mimeType, objectKey: row.media.objectKey } }
+            : {}),
+          remoteAddress: row.conversation.remoteAddress,
+          ...(row.template
+            ? {
+                template: {
+                  language: row.template.language,
+                  name: row.template.name,
+                  variables: row.message.templateVariables,
+                },
+              }
+            : {}),
+          ...(row.message.bodyText ? { text: row.message.bodyText } : {}),
+        }),
+      );
       const now = new Date();
       await this.connection.db.transaction(async (tx) => {
         await tx
@@ -2085,7 +2267,7 @@ export class MessagingService {
       const attempts = claim.attempts;
       const terminal = attempts >= this.config.outboundMaxAttempts;
       const now = new Date();
-      const availableAt = new Date(Date.now() + Math.min(300_000, 1_000 * 2 ** attempts));
+      const availableAt = new Date(Date.now() + messagingRetryDelayWithJitter(attempts));
       await this.connection.db.transaction(async (tx) => {
         await tx
           .update(schema.messages)

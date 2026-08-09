@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseApiEnvironment } from './api.js';
 import { parseAuthEnvironment } from './auth.js';
 import { parseDeliveryEnvironment } from './delivery.js';
+import { parseLeadEnvironment } from './leads.js';
 import { parseMobileEnvironment } from './mobile.js';
 import { parseMessagingEnvironment } from './messaging.js';
 import { parseTestRideEnvironment } from './test-rides.js';
@@ -15,6 +16,26 @@ const validServerEnvironment = {
   S3_BUCKET: 'crm-test',
 };
 const googleWebClientId = '123456789-webclient.apps.googleusercontent.com';
+const hostedAuthSecrets = {
+  AUTH_ACCESS_TOKEN_SECRET: '8cc13fdb690550806979f1f8636cc04565524e00a5f17c9068dcf27f2b226f45',
+  AUTH_MFA_ACTIVE_KEY_ID: 'hosted-v1',
+  AUTH_MFA_CHALLENGE_PEPPER: '43d960ce7b117db4e1de377c94ec3d4bc5660bc0055255394f9296a2e6a6c1c7',
+  AUTH_MFA_ENCRYPTION_KEYS: '{"hosted-v1":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="}',
+  AUTH_MFA_RECOVERY_CODE_PEPPER: '7370f9e56c90f2b4a2b99f66ed02f7a2154b95d34efc4927ec54b24e5d3c936d',
+  AUTH_PASSWORD_PEPPER: 'b4342d3af85233be3d4b8ad22870a9880be1648d51011ed98db1db203b2262d8',
+  AUTH_REFRESH_TOKEN_PEPPER: 'd2bf98d6a27c8fa5882144306b466fac8977027523139969d1b8fb84a116a299',
+};
+const validHostedServerEnvironment = {
+  NODE_ENV: 'production',
+  CORS_ORIGINS: 'https://office.example.com',
+  DATABASE_URL: 'postgresql://postgres:secret@db.example.com/crm',
+  REDIS_URL: 'rediss://default:secret@redis.example.com:6379',
+  RELEASE_ID: '0123456789abcdef',
+  SENTRY_DSN: 'https://public@example.ingest.sentry.io/123',
+  TIGRIS_ACCESS_KEY_ID: 'hosted-access-key',
+  TIGRIS_BUCKET: 'crm-private',
+  TIGRIS_SECRET_ACCESS_KEY: 'hosted-secret-key',
+};
 
 describe('environment validation', () => {
   it('keeps the delivery OTP pepper backend-only and rejects the local default in production', () => {
@@ -53,10 +74,14 @@ describe('environment validation', () => {
     const key = Buffer.alloc(32, 7).toString('base64');
     expect(
       parseMessagingEnvironment({
+        MESSAGING_CREDENTIAL_DECRYPTION_KEYS: JSON.stringify({
+          'messaging-old': Buffer.alloc(32, 6).toString('base64'),
+        }),
         MESSAGING_CREDENTIAL_ENCRYPTION_KEY: key,
         NODE_ENV: 'production',
       }),
     ).toMatchObject({
+      credentialDecryptionKeys: { 'messaging-old': Buffer.alloc(32, 6) },
       credentialEncryptionKey: Buffer.alloc(32, 7),
       developmentAdapterEnabled: false,
       mediaRetentionDays: 365,
@@ -67,6 +92,23 @@ describe('environment validation', () => {
         MESSAGING_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(31).toString('base64'),
       }),
     ).toThrow(/exactly 32 bytes/u);
+    expect(() => parseMessagingEnvironment({ NODE_ENV: 'production' })).toThrow(
+      /MESSAGING_CREDENTIAL_ENCRYPTION_KEY/u,
+    );
+    expect(() =>
+      parseMessagingEnvironment({
+        MESSAGING_CREDENTIAL_DECRYPTION_KEYS: '{not-json',
+        MESSAGING_CREDENTIAL_ENCRYPTION_KEY: key,
+      }),
+    ).toThrow(/JSON object/u);
+    expect(() =>
+      parseMessagingEnvironment({
+        MESSAGING_CREDENTIAL_DECRYPTION_KEYS: JSON.stringify({
+          'messaging-v1': Buffer.alloc(32, 6).toString('base64'),
+        }),
+        MESSAGING_CREDENTIAL_ENCRYPTION_KEY: key,
+      }),
+    ).toThrow(/active messaging key ID/u);
   });
 
   it('parses API-only authentication settings without changing worker infrastructure config', () => {
@@ -113,9 +155,7 @@ describe('environment validation', () => {
     expect(() =>
       parseAuthEnvironment({
         NODE_ENV: 'production',
-        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
-        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
-        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        ...hostedAuthSecrets,
         AUTH_REFRESH_COOKIE_SAME_SITE: 'none',
         AUTH_REFRESH_COOKIE_SECURE: 'false',
       }),
@@ -124,9 +164,7 @@ describe('environment validation', () => {
     expect(
       parseAuthEnvironment({
         NODE_ENV: 'production',
-        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
-        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
-        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        ...hostedAuthSecrets,
         AUTH_REFRESH_COOKIE_SAME_SITE: 'none',
         GOOGLE_AUTH_WEB_CLIENT_ID: googleWebClientId,
       }).refreshCookieSecure,
@@ -137,20 +175,14 @@ describe('environment validation', () => {
     expect(() =>
       parseAuthEnvironment({
         NODE_ENV: 'production',
-        AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
-        AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
-        AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
+        ...hostedAuthSecrets,
         AUTH_REFRESH_COOKIE_SECURE: 'false',
       }),
     ).toThrow();
   });
 
   it('validates Google audiences and requires a web audience in hosted environments', () => {
-    const secrets = {
-      AUTH_ACCESS_TOKEN_SECRET: 'test-access-token-secret-at-least-32-characters',
-      AUTH_PASSWORD_PEPPER: 'test-password-pepper-at-least-32-characters',
-      AUTH_REFRESH_TOKEN_PEPPER: 'test-refresh-token-pepper-at-least-32-characters',
-    };
+    const secrets = hostedAuthSecrets;
     expect(() => parseAuthEnvironment({ ...secrets, NODE_ENV: 'production' })).toThrow();
     expect(() =>
       parseAuthEnvironment({
@@ -178,6 +210,63 @@ describe('environment validation', () => {
       'https://admin.example.com',
     ]);
     expect(environment.workerMode).toBe('disabled');
+  });
+
+  it('fails closed on insecure hosted transport, telemetry and release identity', () => {
+    expect(() =>
+      parseApiEnvironment({
+        ...validServerEnvironment,
+        NODE_ENV: 'production',
+        CORS_ORIGINS: 'http://localhost:3000',
+      }),
+    ).toThrow();
+
+    expect(parseApiEnvironment(validHostedServerEnvironment)).toMatchObject({
+      corsOrigins: ['https://office.example.com'],
+      openApiEnabled: false,
+      releaseId: '0123456789abcdef',
+      redisUrl: 'rediss://default:secret@redis.example.com:6379',
+    });
+    expect(
+      parseApiEnvironment({
+        ...validHostedServerEnvironment,
+        API_OPENAPI_ENABLED: 'true',
+      }).openApiEnabled,
+    ).toBe(true);
+  });
+
+  it('rejects unsafe hosted auth and Lead lookup placeholders', () => {
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: 'production',
+        AUTH_ACCESS_TOKEN_SECRET: 'local-development-access-token-secret-change-me',
+        AUTH_PASSWORD_PEPPER: 'local-development-password-pepper-change-me',
+        AUTH_REFRESH_TOKEN_PEPPER: 'local-development-refresh-token-pepper-change-me',
+        GOOGLE_AUTH_WEB_CLIENT_ID: googleWebClientId,
+      }),
+    ).toThrow(/placeholder/u);
+    expect(() => parseLeadEnvironment({ NODE_ENV: 'production' })).toThrow(
+      /LEAD_PHONE_LOOKUP_PEPPER/u,
+    );
+    expect(
+      parseLeadEnvironment({
+        NODE_ENV: 'production',
+        LEAD_PHONE_LOOKUP_PEPPER:
+          '2aec4bd792240f89b237d6cf2ed5518892b3255ddff74d407b39d1ffcd581722',
+      }).phoneLookupPepper,
+    ).toHaveLength(64);
+  });
+
+  it('accepts only exact CORS origins', () => {
+    for (const origin of [
+      'https://user:secret@office.example.com',
+      'https://office.example.com/path',
+      'https://office.example.com?tenant=unsafe',
+    ]) {
+      expect(() =>
+        parseApiEnvironment({ ...validServerEnvironment, CORS_ORIGINS: origin }),
+      ).toThrow(/CORS origin/u);
+    }
   });
 
   it('accepts only explicit IP or CIDR trusted proxies', () => {

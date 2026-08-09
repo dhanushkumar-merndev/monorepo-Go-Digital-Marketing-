@@ -24,6 +24,33 @@ const optionalCredentialSchema = z.preprocess(
 const optionalUrlSchema = z.preprocess(emptyStringToUndefined, z.url().optional());
 const DEFAULT_TIGRIS_ENDPOINT = 'https://t3.storage.dev';
 
+const hostedEnvironment = (nodeEnvironment: string): boolean =>
+  nodeEnvironment === 'staging' || nodeEnvironment === 'production';
+
+function parseCorsOrigins(value: string): string[] {
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function isExactHttpOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.username === '' &&
+      url.password === '' &&
+      url.pathname === '/' &&
+      url.search === '' &&
+      url.hash === '' &&
+      url.origin === value
+    );
+  } catch {
+    return false;
+  }
+}
+
 const trustedProxySchema = z
   .string()
   .trim()
@@ -65,6 +92,12 @@ const rawApiEnvironmentSchema = z
     API_PORT: portSchema.optional(),
     PORT: portSchema.optional(),
     API_TRUSTED_PROXIES: trustedProxyListSchema,
+    API_OPENAPI_ENABLED: z.preprocess(emptyStringToUndefined, booleanFromEnvironment.optional()),
+    RELEASE_ID: z.preprocess(emptyStringToUndefined, z.string().trim().min(7).max(128).optional()),
+    RENDER_GIT_COMMIT: z.preprocess(
+      emptyStringToUndefined,
+      z.string().trim().min(7).max(128).optional(),
+    ),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -87,6 +120,8 @@ const rawApiEnvironmentSchema = z
     SENTRY_DSN: z.preprocess(emptyStringToUndefined, z.url().optional()),
   })
   .superRefine((environment, context) => {
+    const isHosted = hostedEnvironment(environment.NODE_ENV);
+
     if (
       environment.API_PORT !== undefined &&
       environment.PORT !== undefined &&
@@ -153,6 +188,79 @@ const rawApiEnvironmentSchema = z
         message: 'S3_BUCKET is required when generic S3 object storage is selected',
       });
     }
+
+    const corsOrigins = parseCorsOrigins(environment.CORS_ORIGINS);
+    if (corsOrigins.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['CORS_ORIGINS'],
+        message: 'CORS_ORIGINS must contain at least one exact HTTP(S) origin',
+      });
+    }
+    for (const origin of corsOrigins) {
+      if (!isExactHttpOrigin(origin)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['CORS_ORIGINS'],
+          message: `CORS origin ${origin} must be an exact HTTP(S) origin without credentials, path, query or fragment`,
+        });
+        continue;
+      }
+      if (
+        isHosted &&
+        (new URL(origin).protocol !== 'https:' ||
+          ['localhost', '127.0.0.1', '::1'].includes(new URL(origin).hostname))
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['CORS_ORIGINS'],
+          message: 'Hosted CORS origins must use HTTPS and cannot target localhost',
+        });
+      }
+    }
+
+    if (isHosted && new URL(environment.REDIS_URL).protocol !== 'rediss:') {
+      context.addIssue({
+        code: 'custom',
+        path: ['REDIS_URL'],
+        message: 'Hosted environments require an encrypted rediss:// Redis connection',
+      });
+    }
+
+    const selectedStorageEndpoint = hasTigrisStorage
+      ? (environment.TIGRIS_ENDPOINT ?? DEFAULT_TIGRIS_ENDPOINT)
+      : environment.S3_ENDPOINT;
+    if (
+      isHosted &&
+      selectedStorageEndpoint !== undefined &&
+      new URL(selectedStorageEndpoint).protocol !== 'https:'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: [hasTigrisStorage ? 'TIGRIS_ENDPOINT' : 'S3_ENDPOINT'],
+        message: 'Hosted object storage endpoints must use HTTPS',
+      });
+    }
+
+    if (isHosted && environment.SENTRY_DSN === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['SENTRY_DSN'],
+        message: 'Hosted environments require SENTRY_DSN for release error reporting',
+      });
+    }
+
+    if (
+      isHosted &&
+      environment.RELEASE_ID === undefined &&
+      environment.RENDER_GIT_COMMIT === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['RELEASE_ID'],
+        message: 'Hosted environments require RELEASE_ID or RENDER_GIT_COMMIT',
+      });
+    }
   });
 
 export const apiEnvironmentSchema = rawApiEnvironmentSchema.transform((environment) => {
@@ -173,10 +281,10 @@ export const apiEnvironmentSchema = rawApiEnvironmentSchema.transform((environme
     host: environment.API_HOST,
     port: environment.API_PORT ?? environment.PORT ?? 4000,
     trustedProxies: environment.API_TRUSTED_PROXIES,
+    openApiEnabled: environment.API_OPENAPI_ENABLED ?? !hostedEnvironment(environment.NODE_ENV),
+    releaseId: environment.RELEASE_ID ?? environment.RENDER_GIT_COMMIT ?? 'local-development',
     logLevel: environment.LOG_LEVEL,
-    corsOrigins: environment.CORS_ORIGINS.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    corsOrigins: parseCorsOrigins(environment.CORS_ORIGINS),
     databaseUrl: environment.DATABASE_URL,
     databasePoolMax: environment.DATABASE_POOL_MAX,
     redisUrl: environment.REDIS_URL,

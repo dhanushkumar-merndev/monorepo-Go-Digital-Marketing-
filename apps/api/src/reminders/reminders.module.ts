@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { DatabaseInfrastructureModule } from '../infrastructure/database/database.module.js';
 import { MessagingModule } from '../messaging/messaging.module.js';
 import { RemindersController } from './reminders.controller.js';
+import { ReminderScheduler } from './reminder-scheduler.js';
 import { RemindersService } from './reminders.service.js';
 
 const REMINDER_BACKGROUND_REGISTRATION = Symbol('REMINDER_BACKGROUND_REGISTRATION');
@@ -43,9 +44,13 @@ const REMINDER_BACKGROUND_REGISTRATION = Symbol('REMINDER_BACKGROUND_REGISTRATIO
           if (typeof cid !== 'string') throw new Error('Reminder reconciliation job is invalid.');
           return reminders.reconcileDeliveryStatuses(cid);
         });
+        processors.register('reminders.dispatch-due.all', async () =>
+          reminders.queueDueAllTenants(),
+        );
         return true;
       },
     },
+    ReminderScheduler,
   ],
   exports: [RemindersService],
 })

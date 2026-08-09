@@ -137,7 +137,11 @@ export class AuthController {
 
     const result = await this.authentication.login(body, authenticationRequestMetadata(request));
 
-    if (body.client_type === 'web') {
+    if (
+      body.client_type === 'web' &&
+      result.refreshToken &&
+      result.payload.status === 'AUTHENTICATED'
+    ) {
       setRefreshCookie(
         response,
         this.config,

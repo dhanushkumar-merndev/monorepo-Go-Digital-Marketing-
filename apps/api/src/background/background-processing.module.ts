@@ -31,7 +31,7 @@ export class BackgroundProcessingModule {
           useValue: role,
         },
       ],
-      exports: [BackgroundJobProcessorRegistry, RedisInfrastructureModule],
+      exports: [BACKGROUND_RUNTIME_ROLE, BackgroundJobProcessorRegistry, RedisInfrastructureModule],
     };
   }
 }

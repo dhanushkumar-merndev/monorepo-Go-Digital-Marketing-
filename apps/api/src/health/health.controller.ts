@@ -45,6 +45,7 @@ const LIVENESS_SCHEMA = {
     'status',
     'service',
     'version',
+    'release_id',
     'environment',
     'timestamp',
     'uptime_seconds',
@@ -55,6 +56,7 @@ const LIVENESS_SCHEMA = {
     status: { type: 'string', enum: ['ok'] },
     service: { type: 'string' },
     version: { type: 'string' },
+    release_id: { type: 'string' },
     environment: {
       type: 'string',
       enum: ['development', 'test', 'staging', 'production'],

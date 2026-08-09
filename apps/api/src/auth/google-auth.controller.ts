@@ -116,7 +116,11 @@ export class GoogleAuthController {
       15 * 60_000,
     );
     const result = await this.google.login(body, authenticationRequestMetadata(request));
-    if (body.client_type === 'web') {
+    if (
+      body.client_type === 'web' &&
+      result.refreshToken &&
+      result.payload.status === 'AUTHENTICATED'
+    ) {
       setRefreshCookie(
         response,
         this.config,

@@ -196,7 +196,7 @@ describe('GoogleAuthenticationService account provisioning and sessions', () => 
 
     assert.equal(result.payload.status, 'AUTHENTICATED');
     assert.equal(typeof result.refreshToken, 'string');
-    assert.ok(result.refreshToken.length > 20);
+    assert.ok((result.refreshToken ?? '').length > 20);
     assert.equal(createdSession?.authenticationIdentityId, IDENTITY_ID);
     assert.equal(createdSession?.membershipId, MEMBERSHIP_ID);
     assert.equal(createdSession?.audit.metadata?.provider, 'GOOGLE');

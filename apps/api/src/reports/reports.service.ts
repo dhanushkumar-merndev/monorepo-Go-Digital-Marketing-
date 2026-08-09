@@ -13,11 +13,12 @@ import type {
   AuditEventQuery,
   CreateExportRequest,
   ExportListQuery,
+  PermissionCode,
   ReportRange,
 } from '@gdm/contracts';
 import { schema, type DatabaseConnection } from '@gdm/database';
 import type { Queue } from 'bullmq';
-import { and, desc, eq, gte, inArray, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { PLATFORM_BACKGROUND_QUEUE } from '../background/background-processing.lifecycle.js';
@@ -56,6 +57,37 @@ interface DashboardReport {
   };
 }
 
+const TENANT_WIDE_AUDIT_ROLES = new Set([
+  'AGENCY_ADMIN',
+  'CLIENT_ADMIN',
+  'MANAGER',
+  'SALES_MANAGER',
+]);
+
+interface ExportScopeSnapshot {
+  assignment_scope: AuthorizationContext['assignmentScope'];
+  branch_ids: string[];
+  branch_scope_mode: AuthorizationContext['branchScopeMode'];
+  department_ids: string[];
+  department_scope_mode: AuthorizationContext['departmentScopeMode'];
+  managed_team_ids: string[];
+  membership_id: string;
+  permission_codes: PermissionCode[];
+  role_code: string;
+  team_ids: string[];
+  team_scope_mode: AuthorizationContext['teamScopeMode'];
+  user_id: string;
+}
+
+type LeadRow = typeof schema.leadOpportunities.$inferSelect;
+
+interface ReportingScope {
+  accessibleBookingIds: ReadonlySet<string>;
+  accessibleLeadIds: ReadonlySet<string>;
+  allowsUnassignedBranchRecords: boolean;
+  leads: LeadRow[];
+}
+
 function zoneStart(value: string, timezone: string): Date {
   const candidate = new Date(`${value}T00:00:00.000Z`);
   try {
@@ -83,20 +115,33 @@ function zoneStart(value: string, timezone: string): Date {
     throw bad('timezone must be a valid IANA time zone.');
   }
 }
+function nextCalendarDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const next = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + 1));
+  return [
+    String(next.getUTCFullYear()).padStart(4, '0'),
+    String(next.getUTCMonth() + 1).padStart(2, '0'),
+    String(next.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
 function bounds(range: ReportRange) {
   if (range.from > range.to) throw bad('from must not be later than to.');
   const start = zoneStart(range.from, range.timezone);
-  const end = zoneStart(range.to, range.timezone);
-  end.setUTCDate(end.getUTCDate() + 1);
+  // Advance the tenant-local calendar date before converting it to UTC. Adding
+  // 24 hours in UTC produces incorrect inclusive end bounds across DST changes.
+  const end = zoneStart(nextCalendarDate(range.to), range.timezone);
   return { end, start };
 }
 function csvCell(value: unknown): string {
-  const raw =
+  let raw =
     value === null || value === undefined
       ? ''
       : typeof value === 'object'
         ? JSON.stringify(value)
         : String(value);
+  // Spreadsheet applications can interpret CSV cells beginning with these
+  // characters as formulas. Preserve the displayed value as inert text.
+  if (/^[\t\r ]*[=+\-@]/u.test(raw)) raw = `'${raw}`;
   return /[",\r\n]/.test(raw) ? `"${raw.replaceAll('"', '""')}"` : raw;
 }
 function csv(rows: Record<string, unknown>[]): Uint8Array {
@@ -231,20 +276,130 @@ export class ReportsService {
     return conditions;
   }
 
+  private ensureTenantWideAuditAccess(context: AuthorizationContext): void {
+    if (TENANT_WIDE_AUDIT_ROLES.has(context.roleCode)) return;
+    throw new ForbiddenException({
+      code: 'FORBIDDEN',
+      details: [],
+      message: 'Tenant-wide audit events require a tenant-wide administrative role.',
+      retryable: false,
+    });
+  }
+
+  private async reportingScope(
+    context: AuthorizationContext,
+    range: ReportRange,
+  ): Promise<ReportingScope> {
+    const cid = clientId(context);
+    if (range.team_id && !this.policy.canAccessTeam(context, range.team_id)) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        details: [],
+        message: 'The requested team is outside your scope.',
+        retryable: false,
+      });
+    }
+
+    let effectiveTeamIds: Set<string> | undefined;
+    if (range.team_id) effectiveTeamIds = new Set([range.team_id]);
+    else if (context.roleCode === 'TEAM_MANAGER')
+      effectiveTeamIds = new Set(context.managedTeamIds);
+    else if (context.teamScopeMode === 'SELECTED') effectiveTeamIds = new Set(context.teamIds);
+    else if (context.teamScopeMode === 'NONE') effectiveTeamIds = new Set();
+
+    let effectiveDepartmentIds: Set<string> | undefined;
+    if (context.departmentScopeMode === 'SELECTED')
+      effectiveDepartmentIds = new Set(context.departmentIds);
+    else if (context.departmentScopeMode === 'NONE') effectiveDepartmentIds = new Set();
+
+    const hierarchy = await this.connection.db
+      .select({
+        departmentId: schema.teamMemberships.departmentId,
+        membershipId: schema.teamMemberships.membershipId,
+        teamId: schema.teamMemberships.teamId,
+      })
+      .from(schema.teamMemberships)
+      .where(
+        and(
+          eq(schema.teamMemberships.clientOrganizationId, cid),
+          isNull(schema.teamMemberships.endedAt),
+        ),
+      );
+    const hierarchyByMembership = new Map<string, { departmentId: string; teamId: string }[]>();
+    for (const entry of hierarchy) {
+      const memberships = hierarchyByMembership.get(entry.membershipId) ?? [];
+      memberships.push(entry);
+      hierarchyByMembership.set(entry.membershipId, memberships);
+    }
+
+    const candidateLeads = await this.connection.db
+      .select()
+      .from(schema.leadOpportunities)
+      .where(and(...this.branchFilter(context, schema.leadOpportunities, range)));
+    const leads = candidateLeads.filter((lead) => {
+      const ownerMembershipId =
+        lead.currentProcessOwnerMembershipId ?? lead.relationshipOwnerMembershipId;
+      const ownerHierarchy = ownerMembershipId
+        ? (hierarchyByMembership.get(ownerMembershipId) ?? [])
+        : [];
+      if (effectiveTeamIds && !ownerHierarchy.some((entry) => effectiveTeamIds.has(entry.teamId)))
+        return false;
+      if (
+        effectiveDepartmentIds &&
+        !ownerHierarchy.some((entry) => effectiveDepartmentIds.has(entry.departmentId))
+      )
+        return false;
+
+      switch (context.assignmentScope) {
+        case 'ALL':
+          return true;
+        case 'TEAM': {
+          const assignmentTeams =
+            effectiveTeamIds ?? new Set([...context.managedTeamIds, ...context.teamIds]);
+          return ownerHierarchy.some((entry) => assignmentTeams.has(entry.teamId));
+        }
+        case 'OWNED':
+          return lead.relationshipOwnerId === context.userId;
+        case 'ASSIGNED':
+          return lead.currentProcessOwnerId === context.userId;
+        case 'OWNED_OR_ASSIGNED':
+          return (
+            lead.relationshipOwnerId === context.userId ||
+            lead.currentProcessOwnerId === context.userId
+          );
+        case 'NONE':
+          return false;
+      }
+    });
+    const accessibleLeadIds = new Set(leads.map((lead) => lead.id));
+    const bookingRows = accessibleLeadIds.size
+      ? await this.connection.db
+          .select({ id: schema.bookings.id, leadId: schema.bookings.leadId })
+          .from(schema.bookings)
+          .where(and(...this.branchFilter(context, schema.bookings, range)))
+      : [];
+    const accessibleBookingIds = new Set(
+      bookingRows
+        .filter((booking) => accessibleLeadIds.has(booking.leadId))
+        .map((booking) => booking.id),
+    );
+    return {
+      accessibleBookingIds,
+      accessibleLeadIds,
+      allowsUnassignedBranchRecords:
+        context.assignmentScope === 'ALL' &&
+        effectiveTeamIds === undefined &&
+        effectiveDepartmentIds === undefined,
+      leads,
+    };
+  }
+
   async dashboard(context: AuthorizationContext, range: ReportRange) {
     const { start, end } = bounds(range);
     const db = this.connection.db;
-    const leads = await db
-      .select()
-      .from(schema.leadOpportunities)
-      .where(
-        and(
-          ...this.branchFilter(context, schema.leadOpportunities, range),
-          gte(schema.leadOpportunities.capturedAt, start),
-          lt(schema.leadOpportunities.capturedAt, end),
-        ),
-      );
-    const bookings = await db
+    const scope = await this.reportingScope(context, range);
+    const leads = scope.leads.filter((lead) => lead.capturedAt >= start && lead.capturedAt < end);
+    const bookingCandidates = await db
       .select()
       .from(schema.bookings)
       .where(
@@ -254,7 +409,10 @@ export class ReportsService {
           lt(schema.bookings.createdAt, end),
         ),
       );
-    const deliveries = await db
+    const bookings = bookingCandidates.filter((booking) =>
+      scope.accessibleLeadIds.has(booking.leadId),
+    );
+    const deliveryCandidates = await db
       .select()
       .from(schema.deliveryJobs)
       .where(
@@ -264,7 +422,10 @@ export class ReportsService {
           lt(schema.deliveryJobs.scheduledFor, end),
         ),
       );
-    const registrations = await db
+    const deliveries = deliveryCandidates.filter((delivery) =>
+      scope.accessibleLeadIds.has(delivery.leadId),
+    );
+    const registrationCandidates = await db
       .select()
       .from(schema.registrationCases)
       .where(
@@ -274,8 +435,14 @@ export class ReportsService {
           lt(schema.registrationCases.createdAt, end),
         ),
       );
-    const reminders = await db
-      .select({ status: schema.reminderInstances.status })
+    const registrations = registrationCandidates.filter((registration) =>
+      scope.accessibleBookingIds.has(registration.bookingId),
+    );
+    const reminderCandidates = await db
+      .select({
+        bookingId: schema.customerVehicles.bookingId,
+        status: schema.reminderInstances.status,
+      })
       .from(schema.reminderInstances)
       .innerJoin(
         schema.customerReminderPlans,
@@ -292,6 +459,11 @@ export class ReportsService {
           lt(schema.reminderInstances.scheduledFor, end),
         ),
       );
+    const reminders = reminderCandidates.filter(
+      (reminder) =>
+        scope.allowsUnassignedBranchRecords ||
+        (reminder.bookingId !== null && scope.accessibleBookingIds.has(reminder.bookingId)),
+    );
     const group = <T extends string>(items: { status: T }[]) =>
       Object.fromEntries(
         items.reduce(
@@ -337,6 +509,7 @@ export class ReportsService {
   }
 
   async auditEvents(context: AuthorizationContext, query: AuditEventQuery) {
+    this.ensureTenantWideAuditAccess(context);
     const cid = clientId(context);
     const { start, end } = bounds(query);
     const filters = [
@@ -366,6 +539,7 @@ export class ReportsService {
     correlationId: string,
   ) {
     const cid = clientId(context);
+    if (input.kind === 'AUDIT_EVENTS') this.ensureTenantWideAuditAccess(context);
     this.branchFilter(context, schema.leadOpportunities, input.filters);
     bounds(input.filters);
     const [job] = await this.connection.db
@@ -378,11 +552,19 @@ export class ReportsService {
         kind: input.kind,
         requestedByMembershipId: context.membershipId,
         scopeSnapshot: {
-          branch_ids: [...context.branchIds],
+          assignment_scope: context.assignmentScope,
+          branch_ids: [...context.branchIds].sort(),
           branch_scope_mode: context.branchScopeMode,
+          department_ids: [...context.departmentIds].sort(),
+          department_scope_mode: context.departmentScopeMode,
+          managed_team_ids: [...context.managedTeamIds].sort(),
           membership_id: context.membershipId,
-          team_ids: [...context.managedTeamIds],
-        },
+          permission_codes: [...context.permissionCodes].sort(),
+          role_code: context.roleCode,
+          team_ids: [...context.teamIds].sort(),
+          team_scope_mode: context.teamScopeMode,
+          user_id: context.userId,
+        } satisfies ExportScopeSnapshot,
       })
       .returning();
     if (!job) throw new Error('Export job creation did not return a row.');
@@ -406,24 +588,23 @@ export class ReportsService {
         { jobId: `reports-export-${job.id}`, removeOnComplete: true },
       );
     }
-    return { export: job };
+    return { export: this.safeExportJob(job) };
   }
 
   async listExports(context: AuthorizationContext, query: ExportListQuery) {
     const cid = clientId(context);
-    return {
-      exports: await this.connection.db
-        .select()
-        .from(schema.exportJobs)
-        .where(
-          and(
-            eq(schema.exportJobs.clientOrganizationId, cid),
-            eq(schema.exportJobs.requestedByMembershipId, context.membershipId),
-          ),
-        )
-        .orderBy(desc(schema.exportJobs.createdAt))
-        .limit(query.limit),
-    };
+    const exports = await this.connection.db
+      .select()
+      .from(schema.exportJobs)
+      .where(
+        and(
+          eq(schema.exportJobs.clientOrganizationId, cid),
+          eq(schema.exportJobs.requestedByMembershipId, context.membershipId),
+        ),
+      )
+      .orderBy(desc(schema.exportJobs.createdAt))
+      .limit(query.limit);
+    return { exports: exports.map((job) => this.safeExportJob(job)) };
   }
 
   async downloadExport(context: AuthorizationContext, id: string) {
@@ -463,7 +644,97 @@ export class ReportsService {
       outcome: 'SUCCESS',
       scope: 'CLIENT',
     });
-    return { download, export: job };
+    return { download, export: this.safeExportJob(job) };
+  }
+
+  private safeExportJob(job: typeof schema.exportJobs.$inferSelect) {
+    const { objectKey: _objectKey, ...safe } = job;
+    return safe;
+  }
+
+  private restoreExportContext(job: typeof schema.exportJobs.$inferSelect): AuthorizationContext {
+    const value = job.scopeSnapshot;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new Error('Stored export scope snapshot is invalid.');
+    const scope = value as Record<string, unknown>;
+    const requiredString = (key: string): string => {
+      const item = scope[key];
+      if (typeof item !== 'string' || item.length === 0)
+        throw new Error('Stored export scope snapshot is invalid.');
+      return item;
+    };
+    const requiredStrings = (key: string): string[] => {
+      const item = scope[key];
+      if (!Array.isArray(item) || !item.every((entry) => typeof entry === 'string'))
+        throw new Error('Stored export scope snapshot is invalid.');
+      return item;
+    };
+    const scopeMode = (key: string): AuthorizationContext['branchScopeMode'] => {
+      const item = requiredString(key);
+      if (item !== 'ALL' && item !== 'SELECTED' && item !== 'NONE')
+        throw new Error('Stored export scope snapshot is invalid.');
+      return item;
+    };
+    const assignmentScope = requiredString('assignment_scope');
+    if (
+      !['ALL', 'TEAM', 'OWNED', 'ASSIGNED', 'OWNED_OR_ASSIGNED', 'NONE'].includes(assignmentScope)
+    )
+      throw new Error('Stored export scope snapshot is invalid.');
+    const membershipId = requiredString('membership_id');
+    if (membershipId !== job.requestedByMembershipId)
+      throw new Error('Stored export scope does not match its requester.');
+    return {
+      assignmentScope: assignmentScope as AuthorizationContext['assignmentScope'],
+      branchIds: new Set(requiredStrings('branch_ids')),
+      branchScopeMode: scopeMode('branch_scope_mode'),
+      clientOrganizationId: job.clientOrganizationId,
+      departmentIds: new Set(requiredStrings('department_ids')),
+      departmentScopeMode: scopeMode('department_scope_mode'),
+      managedTeamIds: new Set(requiredStrings('managed_team_ids')),
+      membershipId,
+      permissionCodes: new Set(requiredStrings('permission_codes') as PermissionCode[]),
+      roleCode: requiredString('role_code'),
+      sessionId: `export-worker:${job.id}`,
+      teamIds: new Set(requiredStrings('team_ids')),
+      teamScopeMode: scopeMode('team_scope_mode'),
+      userId: requiredString('user_id'),
+    };
+  }
+
+  private async auditRowsForExport(
+    context: AuthorizationContext,
+    range: ReportRange,
+  ): Promise<Record<string, unknown>[]> {
+    this.ensureTenantWideAuditAccess(context);
+    const cid = clientId(context);
+    const { start, end } = bounds(range);
+    const rows = await this.connection.db
+      .select({
+        action: schema.auditEvents.action,
+        actor_id: schema.auditEvents.actorId,
+        actor_type: schema.auditEvents.actorType,
+        correlation_id: schema.auditEvents.correlationId,
+        created_at: schema.auditEvents.createdAt,
+        entity_id: schema.auditEvents.entityId,
+        entity_type: schema.auditEvents.entityType,
+        new_summary: schema.auditEvents.newSummary,
+        old_summary: schema.auditEvents.oldSummary,
+        outcome: schema.auditEvents.outcome,
+        reason: schema.auditEvents.reason,
+      })
+      .from(schema.auditEvents)
+      .where(
+        and(
+          eq(schema.auditEvents.clientOrganizationId, cid),
+          gte(schema.auditEvents.createdAt, start),
+          lt(schema.auditEvents.createdAt, end),
+        ),
+      )
+      .orderBy(desc(schema.auditEvents.createdAt))
+      .limit(10_001);
+    if (rows.length > 10_000)
+      throw new Error('Audit export exceeds 10,000 rows; narrow the requested date range.');
+    return rows;
   }
 
   async processExport(id: string) {
@@ -480,31 +751,12 @@ export class ReportsService {
     try {
       if (!this.storage.putPrivateObject)
         throw new Error('Configured object storage cannot write private export objects.');
-      const scope = job.scopeSnapshot as {
-        membership_id: string;
-        branch_scope_mode: AuthorizationContext['branchScopeMode'];
-        branch_ids: string[];
-        team_ids?: string[];
-      };
-      const context: AuthorizationContext = {
-        assignmentScope: 'ALL',
-        branchIds: new Set(scope.branch_ids),
-        branchScopeMode: scope.branch_scope_mode,
-        clientOrganizationId: job.clientOrganizationId,
-        departmentIds: new Set(),
-        departmentScopeMode: 'ALL',
-        managedTeamIds: new Set(scope.team_ids ?? []),
-        membershipId: scope.membership_id,
-        permissionCodes: new Set(),
-        roleCode: 'MANAGER',
-        sessionId: 'export-worker',
-        teamIds: new Set(),
-        teamScopeMode: 'ALL',
-        userId: 'export-worker',
-      };
+      const context = this.restoreExportContext(job);
       const range = job.filters as ReportRange;
-      const report = await this.dashboard(context, range);
-      const rows = this.rowsForExport(job.kind, report, context, range);
+      const rows =
+        job.kind === 'AUDIT_EVENTS'
+          ? await this.auditRowsForExport(context, range)
+          : this.rowsForExport(job.kind, await this.dashboard(context, range), context, range);
       const body = job.format === 'CSV' ? csv(rows) : xlsx(rows);
       const extension = job.format === 'CSV' ? 'csv' : 'xlsx';
       const key = `private/${job.clientOrganizationId}/exports/${job.id}.${extension}`;
@@ -542,7 +794,6 @@ export class ReportsService {
     context: AuthorizationContext,
     range: ReportRange,
   ): Record<string, unknown>[] {
-    if (kind === 'AUDIT_EVENTS') return [];
     if (kind === 'LEAD_FUNNEL')
       return Object.entries(dashboard.metrics.funnel.by_status).map(([status, count]) => ({
         count,

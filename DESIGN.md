@@ -117,6 +117,11 @@ Authentication and provider credentials remain outside Zustand UI stores. Web se
 mobile SecureStore remain authoritative; access tokens, refresh tokens, passwords, API keys and
 provider secrets are prohibited store fields.
 
+Agency Admin authentication is a two-stage server-owned flow. Password or Google verification
+creates only a short-lived opaque MFA challenge; no refresh session exists until encrypted TOTP or
+a single-use recovery code is verified. Enrollment secrets use an active-key/previous-key AES-GCM
+keyring, accepted TOTP time steps prevent replay, and browser UI displays recovery codes once.
+
 ## Offline
 
 Durable mobile commands remain in the tenant-bound SQLite outbox. Zustand coordinates transient UI
@@ -168,3 +173,16 @@ Every future phase must read this file, use the existing AppShell and semantic t
 client-state and Unified Inbox contracts above, reuse shared components, preserve responsive and
 accessibility rules, avoid a new UI framework or duplicate primitives, and update this document only
 for durable system-wide design changes.
+
+# Release and Maintenance Architecture
+
+Production promotion is migration-first and manual. Render API/worker revisions, the Cloudflare
+OpenNext Worker and EAS mobile candidates must share an immutable release identity. PostgreSQL is
+the recovery source of truth; Redis/BullMQ accelerates work but recurring reminder and messaging
+maintenance schedules replay durable rows after interruption.
+
+Messaging ingress applies byte/event budgets and provider/connection rate limits. Webhook work uses
+atomic PostgreSQL claims with expiring leases. Outbound sends use distributed provider and
+tenant/provider concurrency permits; an interrupted send with unknown provider acceptance is
+dead-lettered for reconciliation rather than automatically duplicated. The retention sweep redacts
+expired raw webhook PII and deletes expired private media through the storage adapter.

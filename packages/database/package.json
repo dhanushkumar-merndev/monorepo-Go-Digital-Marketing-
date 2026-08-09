@@ -29,7 +29,7 @@
     "lint": "eslint .",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
     "test:coverage": "vitest run --coverage --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run src/migration.integration.test.ts",
+    "test:integration": "vitest run src/migration.integration.test.ts src/migration-compatibility.integration.test.ts src/recovery.integration.test.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

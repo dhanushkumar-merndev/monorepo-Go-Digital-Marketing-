@@ -24,14 +24,20 @@ describe('mobile Google native application configuration', () => {
   });
 
   it('binds development, preview, and production builds to separate EAS environments', () => {
+    expect(easConfig.cli.appVersionSource).toBe('remote');
     expect(easConfig.build).toEqual({
       development: {
+        channel: 'development',
         developmentClient: true,
         distribution: 'internal',
         environment: 'development',
       },
-      preview: { distribution: 'internal', environment: 'preview' },
-      production: { environment: 'production' },
+      preview: { channel: 'preview', distribution: 'internal', environment: 'preview' },
+      production: { autoIncrement: true, channel: 'production', environment: 'production' },
+    });
+    expect(easConfig.submit.production.android).toEqual({
+      releaseStatus: 'draft',
+      track: 'internal',
     });
   });
 

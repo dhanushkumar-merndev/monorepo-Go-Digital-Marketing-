@@ -9,12 +9,19 @@ services:
     dockerCommand: node dist/main.js
     healthCheckPath: /v1/health/ready
     maxShutdownDelaySeconds: 120
-    autoDeployTrigger: checksPass
+    # Production promotion is deliberately manual: take/verify the recovery
+    # point first, then run this service's idempotent pre-deploy migration.
+    autoDeployTrigger: off
+    preDeployCommand: node node_modules/@gdm/database/dist/migrate.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: API_HOST
         value: 0.0.0.0
+      - key: API_OPENAPI_ENABLED
+        value: 'false'
+      - key: API_TRUSTED_PROXIES
+        sync: false
       - key: LOG_LEVEL
         value: info
       - key: WORKER_MODE
@@ -41,6 +48,20 @@ services:
         value: '5'
       - key: AUTH_LOGIN_LOCKOUT_SECONDS
         value: '900'
+      - key: AUTH_MFA_ACTIVE_KEY_ID
+        value: mfa-v1
+      - key: AUTH_MFA_CHALLENGE_PEPPER
+        sync: false
+      - key: AUTH_MFA_CHALLENGE_TTL_SECONDS
+        value: '300'
+      - key: AUTH_MFA_ENCRYPTION_KEYS
+        sync: false
+      - key: AUTH_MFA_ISSUER
+        value: Go Digital Automobile CRM
+      - key: AUTH_MFA_MAX_ATTEMPTS
+        value: '5'
+      - key: AUTH_MFA_RECOVERY_CODE_PEPPER
+        sync: false
       - key: AUTH_SUPPORT_ELEVATION_TTL_SECONDS
         value: '900'
       - key: AUTH_REFRESH_COOKIE_NAME
@@ -53,6 +74,12 @@ services:
         sync: false
       - key: GOOGLE_AUTH_CHALLENGE_TTL_SECONDS
         value: '300'
+      - key: LEAD_PHONE_LOOKUP_PEPPER
+        sync: false
+      - key: MESSAGING_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: MESSAGING_CREDENTIAL_KEY_ID
+        value: messaging-v1
       - key: TEST_RIDE_OTP_PEPPER
         sync: false
       - key: TEST_RIDE_ACTIVE_TIMEOUT_MINUTES
@@ -61,7 +88,11 @@ services:
         value: '30'
       - key: TEST_RIDE_LOCATION_STALE_SECONDS
         value: '120'
+      - key: DELIVERY_OTP_PEPPER
+        sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_DATABASE_URL
         sync: false
       - key: DATABASE_POOL_MAX
         value: '10'
@@ -87,18 +118,45 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerCommand: node dist/worker.js
     maxShutdownDelaySeconds: 120
-    autoDeployTrigger: checksPass
+    # Promote only after the API pre-deploy migration and readiness smoke pass.
+    autoDeployTrigger: off
     envVars:
       - key: NODE_ENV
         value: production
       - key: API_HOST
         value: 0.0.0.0
+      - key: API_OPENAPI_ENABLED
+        value: 'false'
       - key: LOG_LEVEL
         value: info
       - key: WORKER_MODE
         value: standalone
       - key: CORS_ORIGINS
         sync: false
+      # Worker module imports the current shared Auth/Lead service graph. These
+      # remain backend-only and are required until worker-only modules are split.
+      - key: AUTH_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: AUTH_PASSWORD_PEPPER
+        sync: false
+      - key: AUTH_REFRESH_TOKEN_PEPPER
+        sync: false
+      - key: AUTH_MFA_ACTIVE_KEY_ID
+        value: mfa-v1
+      - key: AUTH_MFA_CHALLENGE_PEPPER
+        sync: false
+      - key: AUTH_MFA_ENCRYPTION_KEYS
+        sync: false
+      - key: AUTH_MFA_RECOVERY_CODE_PEPPER
+        sync: false
+      - key: GOOGLE_AUTH_WEB_CLIENT_ID
+        sync: false
+      - key: LEAD_PHONE_LOOKUP_PEPPER
+        sync: false
+      - key: MESSAGING_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: MESSAGING_CREDENTIAL_KEY_ID
+        value: messaging-v1
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_POOL_MAX
@@ -114,4 +172,6 @@ services:
       - key: TIGRIS_ACCESS_KEY_ID
         sync: false
       - key: TIGRIS_SECRET_ACCESS_KEY
+        sync: false
+      - key: SENTRY_DSN
         sync: false
