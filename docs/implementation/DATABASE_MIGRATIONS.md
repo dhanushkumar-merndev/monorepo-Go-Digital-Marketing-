@@ -246,3 +246,19 @@ No shared, staging or production database was mutated during the local Phase 10 
 business evidence exists, rollback means restoring the pre-Phase-10 recovery point. After a case,
 RC delivery record or Customer Vehicle event exists, use a reviewed forward compensation and retain
 the immutable history; never drop the tables or edit an applied migration to simulate rollback.
+
+## Phase 11 post-sale reminder migration
+
+`0030_yellow_mister_fear.sql` adds the ten reminder types, fixed manufacturer/model/variant/year
+rule templates, Customer Vehicle plans/preferences, idempotently materialized instances, append-only
+status events, durable dispatch outbox, command receipts and shared Customer Activity. Customer
+Vehicles gain model year, PUC, odometer and service-plan due/version fields without changing their
+Phase 10 identity or provenance rules. Six least-privilege permissions and role mappings are added.
+
+Composite foreign keys keep every plan, template, instance, customer activity and actor inside its
+tenant. Unique tenant/materialization and instance/outbox keys prevent duplicate workers or retries
+from duplicating reminders or dispatch work. PostgreSQL triggers reject updates/deletes of reminder
+events and Customer Activity. Apply forward-only after a recovery point; verify 31 journal entries,
+119 permission codes, 21 migration integrity tests and both immutable triggers. After reminder or
+customer-activity evidence exists, rollback requires reviewed forward compensation, not history
+deletion. No shared, staging or production database was mutated during the local Phase 11 audit.

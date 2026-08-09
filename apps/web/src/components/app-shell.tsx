@@ -28,6 +28,7 @@ import {
   ReceiptText,
   Truck,
   FileBadge2,
+  BellRing,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -85,6 +86,12 @@ const navigation = [
     icon: FileBadge2,
     label: 'Registration & RC',
     permission: 'registration.cases.read',
+  },
+  {
+    href: '/reminders',
+    icon: BellRing,
+    label: 'Post-sale reminders',
+    permission: 'reminders.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {

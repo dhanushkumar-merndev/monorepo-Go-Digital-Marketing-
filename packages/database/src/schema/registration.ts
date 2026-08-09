@@ -330,6 +330,12 @@ export const customerVehicles = pgTable(
     warrantyExpiresOn: date('warranty_expires_on'),
     amcExpiresOn: date('amc_expires_on'),
     rsaExpiresOn: date('rsa_expires_on'),
+    modelYear: integer('model_year'),
+    pucExpiresOn: date('puc_expires_on'),
+    currentOdometerKm: integer('current_odometer_km'),
+    servicePlanVersion: varchar('service_plan_version', { length: 64 }),
+    serviceDueOn: date('service_due_on'),
+    serviceDueKilometres: integer('service_due_kilometres'),
     version: integer('version').default(1).notNull(),
     createdByMembershipId: uuid('created_by_membership_id').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
@@ -387,6 +393,10 @@ export const customerVehicles = pgTable(
       table.createdAt,
     ),
     check('customer_vehicles_version_check', sql`${table.version} >= 1`),
+    check(
+      'customer_vehicles_odometer_check',
+      sql`${table.currentOdometerKm} is null or ${table.currentOdometerKm} >= 0`,
+    ),
     check(
       'customer_vehicles_source_check',
       sql`(${table.ownershipSource} = 'DEALERSHIP_SALE' and ${table.bookingId} is not null and ${table.deliveryJobId} is not null and ${table.inventoryUnitId} is not null) or (${table.ownershipSource} = 'EXTERNAL' and ${table.bookingId} is null and ${table.deliveryJobId} is null and ${table.registrationCaseId} is null and ${table.inventoryUnitId} is null)`,

@@ -8,6 +8,7 @@ export * from './inventory/index.js';
 export * from './commercial/index.js';
 export * from './delivery/index.js';
 export * from './registration/index.js';
+export * from './reminders/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

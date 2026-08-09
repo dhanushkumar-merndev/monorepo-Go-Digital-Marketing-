@@ -35,6 +35,8 @@ import {
   registrationSettings,
   customerVehicles,
   customerVehicleEvents,
+  customerReminderPlans,
+  customerReminderPreferences,
   paymentEntries,
   paymentVerificationEvents,
   quotationPriceComponents,
@@ -56,6 +58,10 @@ import {
   messageTemplates,
   messagingProviderConnections,
   permissions,
+  reminderDefinitions,
+  reminderEvents,
+  reminderInstances,
+  reminderRuleTemplates,
   publicLeadForms,
   rolePermissionMappings,
   reportingLines,
@@ -123,6 +129,9 @@ const ALPHA_REGISTRATION_CASE_ID = '7c000000-0000-4000-8000-000000000001';
 const ALPHA_REGISTRATION_EVENT_ID = '7d000000-0000-4000-8000-000000000001';
 const ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID = '7e000000-0000-4000-8000-000000000001';
 const ALPHA_EXTERNAL_CUSTOMER_VEHICLE_EVENT_ID = '7f000000-0000-4000-8000-000000000001';
+const ALPHA_SERVICE_REMINDER_RULE_ID = '81000000-0000-4000-8000-000000000001';
+const ALPHA_UPGRADE_REMINDER_RULE_ID = '81000000-0000-4000-8000-000000000002';
+const ALPHA_SERVICE_REMINDER_PLAN_ID = '82000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -351,7 +360,25 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'registration.settings.manage': 'Manage tenant registration SLA thresholds.',
   'customer_vehicles.read': 'Read scoped canonical customer-owned vehicles.',
   'customer_vehicles.manage': 'Create external or delivered-sale vehicles and update coverage.',
+  'reminders.read': 'Read scoped customer reminder plans, queues and append-only history.',
+  'reminders.rules.manage': 'Manage fixed tenant and vehicle-model reminder rule templates.',
+  'reminders.generate': 'Safely generate and refresh reminder plans and instances.',
+  'reminders.dispatch.manage': 'Reschedule, cancel and retry reminder delivery work.',
+  'reminders.preferences.manage': 'Capture customer reminder channel and category preferences.',
+  'customer_activities.create': 'Append feedback, complaint and escalation customer activity.',
 };
+
+const reminderOperatorPermissions = [
+  'reminders.read',
+  'reminders.generate',
+  'reminders.dispatch.manage',
+  'reminders.preferences.manage',
+  'customer_activities.create',
+] as const satisfies readonly PermissionCode[];
+const reminderManagerPermissions = [
+  ...reminderOperatorPermissions,
+  'reminders.rules.manage',
+] as const satisfies readonly PermissionCode[];
 
 const registrationReadPermissions = [
   'registration.cases.read',
@@ -581,6 +608,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
+    ...reminderManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -606,6 +634,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
+    ...reminderManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -624,6 +653,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
+    ...reminderManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -640,6 +670,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
+    ...reminderManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -658,6 +689,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...testRideSalesPermissions,
     ...inventoryReadPermissions,
     ...commercialSalesPermissions,
+    ...reminderOperatorPermissions,
   ],
   TEST_RIDE_EXECUTIVE: [
     ...accountPermissions,
@@ -690,6 +722,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...scopedOrganizationReadPermissions,
     ...commercialReadPermissions,
     ...registrationExecutivePermissions,
+    ...reminderOperatorPermissions,
   ],
   TEAM_MANAGER: [
     ...accountPermissions,
@@ -704,6 +737,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialManagerPermissions,
     ...deliveryManagerPermissions,
     ...registrationManagerPermissions,
+    ...reminderManagerPermissions,
   ],
 };
 
@@ -2187,15 +2221,34 @@ async function seed(): Promise<void> {
           engineNumber: 'LEGACYENGINE0001',
           id: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID,
           modelName: 'City Runner',
+          modelYear: 2024,
           ownershipSource: 'EXTERNAL',
+          currentOdometerKm: 8_400,
+          insuranceExpiresOn: '2026-09-30',
+          pucExpiresOn: '2026-10-15',
           purchaseDate: '2024-06-15',
           registrationNumber: 'MH12DEV1001',
           updatedAt: SEED_DATE,
           variantName: 'Petrol Manual',
           vin: 'LEGACYVIN000000001',
           warrantyExpiresOn: '2027-06-14',
+          serviceDueKilometres: 10_000,
+          serviceDueOn: '2026-09-01',
+          servicePlanVersion: 'LEGACY-CITY-2024-v1',
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: customerVehicles.id,
+          set: {
+            currentOdometerKm: 8_400,
+            insuranceExpiresOn: '2026-09-30',
+            modelYear: 2024,
+            pucExpiresOn: '2026-10-15',
+            serviceDueKilometres: 10_000,
+            serviceDueOn: '2026-09-01',
+            servicePlanVersion: 'LEGACY-CITY-2024-v1',
+            updatedAt: SEED_DATE,
+          },
+        });
       await transaction
         .insert(customerVehicleEvents)
         .values({
@@ -2342,6 +2395,18 @@ async function seed(): Promise<void> {
           id: '24000000-0000-4000-8000-000000000002',
           name: 'dealership_offer',
         },
+        {
+          bodyText: 'Your vehicle service milestone is approaching. Please contact the dealership.',
+          category: 'UTILITY' as const,
+          id: '24000000-0000-4000-8000-000000000003',
+          name: 'service_due_reminder',
+        },
+        {
+          bodyText: 'Explore upgrade and exchange options available for your vehicle.',
+          category: 'MARKETING' as const,
+          id: '24000000-0000-4000-8000-000000000004',
+          name: 'upgrade_opportunity',
+        },
       ]) {
         await transaction
           .insert(messageTemplates)
@@ -2369,6 +2434,142 @@ async function seed(): Promise<void> {
               updatedAt: SEED_DATE,
             },
           });
+      }
+      const [serviceReminderDefinition] = await transaction
+        .insert(reminderDefinitions)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          defaultCategory: 'OPERATIONAL',
+          displayName: 'Service due',
+          type: 'SERVICE_DUE',
+        })
+        .onConflictDoUpdate({
+          target: [reminderDefinitions.clientOrganizationId, reminderDefinitions.type],
+          set: { active: true, displayName: 'Service due' },
+        })
+        .returning({ id: reminderDefinitions.id });
+      const [upgradeReminderDefinition] = await transaction
+        .insert(reminderDefinitions)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          defaultCategory: 'MARKETING',
+          displayName: 'Upgrade opportunity',
+          type: 'UPGRADE_OPPORTUNITY',
+        })
+        .onConflictDoUpdate({
+          target: [reminderDefinitions.clientOrganizationId, reminderDefinitions.type],
+          set: { active: true, displayName: 'Upgrade opportunity' },
+        })
+        .returning({ id: reminderDefinitions.id });
+      if (!serviceReminderDefinition || !upgradeReminderDefinition)
+        throw new Error('Could not resolve Phase 11 reminder definitions.');
+      await transaction
+        .insert(reminderRuleTemplates)
+        .values([
+          {
+            baseDateField: 'DELIVERY_DATE',
+            category: 'OPERATIONAL',
+            channel: 'WHATSAPP',
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            createdByMembershipId: '60000000-0000-4000-8000-000000000003',
+            dueAfterDays: 180,
+            id: ALPHA_SERVICE_REMINDER_RULE_ID,
+            modelName: 'City Runner',
+            noticeDays: [30, 15, 7, 1],
+            reminderDefinitionId: serviceReminderDefinition.id,
+            templateId: '24000000-0000-4000-8000-000000000003',
+            thresholdKind: 'DATE',
+          },
+          {
+            baseDateField: 'PURCHASE_DATE',
+            category: 'MARKETING',
+            channel: 'WHATSAPP',
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            createdByMembershipId: '60000000-0000-4000-8000-000000000003',
+            dueAfterDays: 1_095,
+            id: ALPHA_UPGRADE_REMINDER_RULE_ID,
+            noticeDays: [30, 7],
+            reminderDefinitionId: upgradeReminderDefinition.id,
+            templateId: '24000000-0000-4000-8000-000000000004',
+            thresholdKind: 'DATE',
+          },
+        ])
+        .onConflictDoNothing();
+      await transaction
+        .insert(customerReminderPreferences)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          customerVehicleId: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID,
+          marketingEnabled: false,
+          operationalEnabled: true,
+          preferredChannel: 'WHATSAPP',
+          updatedByMembershipId: '60000000-0000-4000-8000-000000000003',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(customerReminderPlans)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          customerVehicleId: ALPHA_EXTERNAL_CUSTOMER_VEHICLE_ID,
+          dueAt: new Date('2026-09-01T00:00:00.000Z'),
+          id: ALPHA_SERVICE_REMINDER_PLAN_ID,
+          ruleTemplateId: ALPHA_SERVICE_REMINDER_RULE_ID,
+          ruleVersion: 1,
+          sourceVehicleVersion: 1,
+        })
+        .onConflictDoNothing();
+      for (const reminder of [
+        {
+          eventId: '84000000-0000-4000-8000-000000000001',
+          id: '83000000-0000-4000-8000-000000000001',
+          key: 'seed-service:scheduled',
+          scheduledFor: new Date('2026-08-17T00:00:00.000Z'),
+          status: 'SCHEDULED' as const,
+        },
+        {
+          eventId: '84000000-0000-4000-8000-000000000002',
+          id: '83000000-0000-4000-8000-000000000002',
+          key: 'seed-service:failed',
+          scheduledFor: new Date('2026-08-01T00:00:00.000Z'),
+          status: 'FAILED' as const,
+        },
+        {
+          eventId: '84000000-0000-4000-8000-000000000003',
+          id: '83000000-0000-4000-8000-000000000003',
+          key: 'seed-service:suppressed',
+          scheduledFor: new Date('2026-08-01T00:00:00.000Z'),
+          status: 'SUPPRESSED' as const,
+          suppressionReason: 'Development fixture demonstrating customer preference suppression.',
+        },
+      ]) {
+        await transaction
+          .insert(reminderInstances)
+          .values({
+            category: 'OPERATIONAL',
+            channel: 'WHATSAPP',
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            customerReminderPlanId: ALPHA_SERVICE_REMINDER_PLAN_ID,
+            id: reminder.id,
+            materializationKey: reminder.key,
+            retryCount: reminder.status === 'FAILED' ? 1 : 0,
+            scheduledFor: reminder.scheduledFor,
+            status: reminder.status,
+            suppressionReason: reminder.suppressionReason,
+            templateId: '24000000-0000-4000-8000-000000000003',
+          })
+          .onConflictDoNothing();
+        await transaction
+          .insert(reminderEvents)
+          .values({
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            correlationId: 'development-seed-phase-11',
+            eventType: `REMINDER_${reminder.status}`,
+            evidence: { development_fixture: true },
+            id: reminder.eventId,
+            reminderInstanceId: reminder.id,
+            toStatus: reminder.status,
+          })
+          .onConflictDoNothing();
       }
     });
   } finally {

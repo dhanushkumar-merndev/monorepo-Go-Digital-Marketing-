@@ -41,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 10 registration workflows', () => {
+describe('reviewed PostgreSQL migrations through Phase 11 customer lifecycle workflows', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -287,7 +287,7 @@ describe('reviewed PostgreSQL migrations through Phase 10 registration workflows
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(113);
+    expect(permissionCount.rows[0]?.count).toBe(119);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -315,6 +315,8 @@ describe('reviewed PostgreSQL migrations through Phase 10 registration workflows
         'delivery.active_map.read',
         'delivery.proofs.review',
         'delivery.settings.manage',
+        'reminders.rules.manage',
+        'reminders.dispatch.manage',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
@@ -1368,5 +1370,111 @@ describe('reviewed PostgreSQL migrations through Phase 10 registration workflows
     await expect(
       client.exec(`update inventory_units set status = 'AVAILABLE' where id = '${unitId}'`),
     ).rejects.toThrow(/invalid inventory transition/u);
+  });
+
+  it('enforces Phase 11 reminder idempotency, tenant ownership and immutable history', async () => {
+    const contactId = 'e0000000-0000-4000-8000-000000000001';
+    const vehicleId = 'e1000000-0000-4000-8000-000000000001';
+    const connectionId = 'e2000000-0000-4000-8000-000000000001';
+    const templateId = 'e3000000-0000-4000-8000-000000000001';
+    const ruleId = 'e5000000-0000-4000-8000-000000000001';
+    const planId = 'e6000000-0000-4000-8000-000000000001';
+    const instanceId = 'e7000000-0000-4000-8000-000000000001';
+    const eventId = 'e8000000-0000-4000-8000-000000000001';
+    await client.exec(`
+      insert into contacts (
+        id, client_organization_id, display_name, primary_phone_e164, primary_phone_lookup_hash
+      ) values (
+        '${contactId}', '${tenantId}', 'Reminder Customer', '+919900000099', '${'e'.repeat(64)}'
+      );
+      insert into customer_vehicles (
+        id, client_organization_id, branch_id, contact_id, ownership_source,
+        brand_name, model_name, variant_name, vin, created_by_membership_id
+      ) values (
+        '${vehicleId}', '${tenantId}', '${branchId}', '${contactId}', 'EXTERNAL',
+        'Reminder Brand', 'Reminder Model', 'Reminder Variant', 'REMINDER-VIN-1',
+        '${clientMembershipId}'
+      );
+      insert into messaging_provider_connections (
+        id, client_organization_id, branch_id, provider, channel, connection_key,
+        display_name, status
+      ) values (
+        '${connectionId}', '${tenantId}', '${branchId}', 'DEVELOPMENT', 'WHATSAPP',
+        'phase11-migration', 'Phase 11 migration', 'ACTIVE'
+      );
+      insert into message_templates (
+        id, client_organization_id, connection_id, name, language, category, status, body_text
+      ) values (
+        '${templateId}', '${tenantId}', '${connectionId}', 'phase11_service', 'en',
+        'UTILITY', 'APPROVED', 'Service reminder'
+      );
+      insert into reminder_definitions (
+        id, client_organization_id, type, display_name, default_category
+      ) values (
+        'e4000000-0000-4000-8000-000000000001', '${tenantId}',
+        'SERVICE_DUE', 'Service due', 'OPERATIONAL'
+      );
+    `);
+    const definition = await client.query<{ id: string }>(`
+      select id from reminder_definitions
+      where client_organization_id = '${tenantId}' and type = 'SERVICE_DUE'
+    `);
+    expect(definition.rows[0]?.id).toBeTruthy();
+    await client.exec(`
+      insert into reminder_rule_templates (
+        id, client_organization_id, reminder_definition_id, threshold_kind,
+        base_date_field, due_after_days, notice_days, category, channel,
+        template_id, created_by_membership_id
+      ) values (
+        '${ruleId}', '${tenantId}', '${definition.rows[0]?.id}', 'DATE',
+        'DELIVERY_DATE', 180, '[30,15,7,1]'::jsonb, 'OPERATIONAL', 'WHATSAPP',
+        '${templateId}', '${clientMembershipId}'
+      );
+      insert into customer_reminder_plans (
+        id, client_organization_id, customer_vehicle_id, rule_template_id,
+        due_at, source_vehicle_version, rule_version
+      ) values (
+        '${planId}', '${tenantId}', '${vehicleId}', '${ruleId}',
+        '2027-01-01T00:00:00Z', 1, 1
+      );
+      insert into reminder_instances (
+        id, client_organization_id, customer_reminder_plan_id, materialization_key,
+        scheduled_for, category, channel, template_id
+      ) values (
+        '${instanceId}', '${tenantId}', '${planId}', 'phase11-unique-key',
+        '2026-12-01T00:00:00Z', 'OPERATIONAL', 'WHATSAPP', '${templateId}'
+      );
+      insert into reminder_events (
+        id, client_organization_id, reminder_instance_id, to_status,
+        event_type, correlation_id
+      ) values (
+        '${eventId}', '${tenantId}', '${instanceId}', 'SCHEDULED',
+        'REMINDER_MATERIALIZED', 'phase11-migration-test'
+      );
+    `);
+    await expect(
+      client.exec(`
+        insert into reminder_instances (
+          client_organization_id, customer_reminder_plan_id, materialization_key,
+          scheduled_for, category, channel, template_id
+        ) values (
+          '${tenantId}', '${planId}', 'phase11-unique-key', now(),
+          'OPERATIONAL', 'WHATSAPP', '${templateId}'
+        )
+      `),
+    ).rejects.toThrow();
+    await expect(
+      client.exec(`update reminder_events set reason = 'rewrite' where id = '${eventId}'`),
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      client.exec(`
+        insert into customer_reminder_plans (
+          client_organization_id, customer_vehicle_id, rule_template_id,
+          due_at, source_vehicle_version, rule_version
+        ) values (
+          '${otherTenantId}', '${vehicleId}', '${ruleId}', now(), 1, 1
+        )
+      `),
+    ).rejects.toThrow();
   });
 });

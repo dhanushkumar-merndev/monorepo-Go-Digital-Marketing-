@@ -9,10 +9,10 @@ the lead-management foundation, and provider-neutral calling. Leads include publ
 tenant-scoped contact deduplication, assignment, lifecycle history, follow-ups/tasks, SLA escalation,
 web operations and an offline-aware salesperson mobile flow. Calling adds canonical Lead/Contact call
 history, outcome requirements, idempotent provider webhooks, reconciliation and private,
-consent-aware recording references. Phases 7-10 add canonical physical inventory, commercial
-booking/payment/document readiness, delivery operations, registration/RC and Customer Vehicles.
-Post-sale reminders, reports, expanded integrations and production release remain assigned to their
-later approved phases.
+consent-aware recording references. Phases 7-11 add canonical physical inventory, commercial
+booking/payment/document readiness, delivery operations, registration/RC, Customer Vehicles and
+post-sale reminders. Reports, expanded integrations and production release remain assigned to
+their later approved phases.
 
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
@@ -192,6 +192,16 @@ history. Customer Vehicles reuse the canonical Contact and delivered booking/uni
 explicit `EXTERNAL` ownership source; tenant booking, VIN and registration uniqueness prevent
 duplicates. Private RC copies reuse signed S3-compatible storage, metadata/checksum validation and
 audited access, and remain unverified while the fail-closed scanner is unavailable.
+
+Phase 11 adds post-sale reminder authority at `/v1/reminders` and the office workspace at
+`/reminders`. Fixed tenant/model rules schedule independent service, insurance, PUC, warranty, AMC,
+roadside-assistance, RC, appointment, exchange and upgrade reminders by date or kilometre threshold.
+Unique materialization keys make duplicate workers harmless; vehicle/rule version changes cancel
+superseded scheduled instances and append a new schedule. Operational rules require Utility
+templates, promotional rules require Marketing templates, and every due send rechecks current
+preference, consent and suppression before committing durable dispatch work. BullMQ accelerates the
+provider-neutral messaging outbox; PostgreSQL remains recoverable truth. Feedback, complaints and
+escalations append to Customer Activity without rewriting Lead history.
 
 ## Repository layout
 

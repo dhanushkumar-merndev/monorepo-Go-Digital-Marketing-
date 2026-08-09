@@ -2,94 +2,96 @@
 
 ## Completed phase
 
-Phase 10 - Registration, RC and Customer-Owned Vehicles. Strict local audit passed on 2026-08-09.
-Phase 11 has not started.
+Phase 11 - Post-Sale Reminders and Customer Lifecycle. Strict local audit passed on 2026-08-09.
+Phase 12 has not started.
 
 ## Modules created or changed
 
-| Area                                                | Actual implementation                                                                                                                                          |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/registration`               | Registration/RC states, request validation, document delivery modes, Customer Vehicle provenance and coverage contracts.                                       |
-| `packages/database/src/schema/registration.ts`      | Tenant-safe settings/cases/events, private RC metadata/delivery evidence, canonical Customer Vehicles/events and command receipts.                             |
-| `apps/api/src/registration`                         | `/v1/registration-cases` and `/v1/customer-vehicles`, assignment/scope, lifecycle, aging, corrections, private storage, closure, audit/outbox and idempotency. |
-| `apps/web/src/features/registration`                | Registration queue/aging/settings/detail/workflow/document/timeline UI and Customer Vehicle list/detail/external/coverage UI.                                  |
-| `apps/web/src/app/(app)/{registrations,customer-*}` | Four permission-gated App Router pages.                                                                                                                        |
-| `packages/database/src/seed.ts`                     | RC Executive Pune/Mumbai scope, tenant SLA settings, assigned Documents Ready case and explicit external vehicle fixture.                                      |
-| Authorization, navigation, OpenAPI, README/env/docs | Thirteen least-privilege permissions, role mappings, navigation entry, generated controller documentation and exact operations/decision/migration evidence.    |
+| Area                                           | Actual implementation                                                                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/reminders`             | Reminder type/category/threshold/status contracts and validated rule, list, preference, consent, reschedule, Vehicle-detail and Customer Activity commands.     |
+| `packages/database/src/schema/reminders.ts`    | Tenant reminder definitions/rules/plans/preferences/instances/events/dispatch outbox/receipts and additive Customer Activity.                                   |
+| `packages/database/src/schema/registration.ts` | Customer Vehicle model year, PUC, odometer and service-plan inputs retained alongside Phase 10 provenance.                                                      |
+| `apps/api/src/reminders`                       | `/v1/reminders` rule, plan, queue, history, materialize, reschedule, consent/preference, Vehicle detail and Customer Activity authority plus BullMQ processors. |
+| `apps/api/src/messaging`                       | Automated reminder-template queue boundary reuses official Messaging provider, template/consent/suppression and delivery-status authority.                      |
+| `apps/web/src/features/reminders`              | URL-state queue views, rule config, plans, reschedule control and consent/preferences workspace.                                                                |
+| `packages/database/src/seed.ts`                | Alpha approved post-sale templates/rules and deterministic schedule state fixtures.                                                                             |
 
 ## Database migration
 
-- `0029_closed_trish_tilby.sql`: four enums; registration settings/cases/events/receipts; private RC
-  documents and immutable delivery records; Customer Vehicles/events; tenant/actor/resource foreign
-  keys; booking/VIN/registration uniqueness; 13 permissions and role mappings; three immutable
-  history triggers.
+- `0030_yellow_mister_fear.sql`: seven reminder/customer-activity enums, Customer Vehicle lifecycle
+  fields, reminder definitions/rules/plans/preferences/instances/events/outbox/receipts, Customer
+  Activity, six permissions/mappings, baseline definitions for existing tenants and immutable event
+  triggers.
 
-The canonical journal has 30 entries (`0000` through `0029`). All apply from zero in PGlite and all
-20 migration integrity tests pass. No shared/staging/production migration or seed ran in Phase 10.
-Take a recovery point before apply. Once registration or vehicle evidence exists, use reviewed
-forward compensation; never delete immutable evidence or edit an applied migration.
+The journal has 31 entries (`0000` through `0030`). All apply from zero in PGlite; all 21 migration
+integrity tests pass. No shared/staging/production migration or seed ran. Take a recovery point
+before apply. Once reminder/customer activity evidence exists, use reviewed forward compensation;
+never edit an applied migration or delete immutable history.
 
 ## Routes and contracts
 
-All routes require client context, `DELIVERY_RC`, declared permission and backend object scope.
-Mutating commands require `Idempotency-Key`.
+Every route requires client context, `DELIVERY_RC`, a declared reminder/customer-activity permission
+and server branch/object scope. Mutating commands require `Idempotency-Key` except the internal
+worker operations.
 
-- `GET/POST /v1/registration-cases`, `GET /v1/registration-cases/:caseId`
-- `GET /v1/registration-cases/aging|executives|settings`, `POST .../settings`
-- `POST /v1/registration-cases/:caseId/assign|start|rto-submit|number-allotment|rc-pending`
-- `POST /v1/registration-cases/:caseId/rc-copy/initiate|complete`
-- `POST /v1/registration-cases/:caseId/share|close|reopen|corrections`
-- `POST /v1/registration-cases/documents/:documentId/review`
-- `GET /v1/registration-cases/documents/:documentId/download?purpose=...`
-- `GET /v1/customer-vehicles`, `GET /v1/customer-vehicles/:vehicleId`
-- `POST /v1/customer-vehicles/dealership|external`
-- `POST /v1/customer-vehicles/:vehicleId/coverage`
+- `GET /v1/reminders/definitions|rules|plans|instances`
+- `GET /v1/reminders/instances/:instanceId/history`
+- `POST /v1/reminders/rules`
+- `POST /v1/reminders/vehicles/:vehicleId/generate|details|preferences|consent`
+- `GET /v1/reminders/vehicles/:vehicleId/preferences`
+- `POST /v1/reminders/instances/:instanceId/reschedule`
+- `POST /v1/reminders/dispatch-due`
+- `POST /v1/reminders/contacts/:contactId/activities`
+
+Worker registrations: `reminders.materialize`, `reminders.dispatch`, and
+`reminders.delivery.reconcile`. Reminder dispatch commits PostgreSQL first, queues through BullMQ
+when available and invokes `MessagingService.queueAutomatedReminder`; it never exposes credentials
+or sends directly from the browser.
 
 ## Environment variables
 
-Phase 10 adds none. RC copy upload/download reuses existing backend S3/Tigris configuration. The
-default `FailClosedRcDocumentScanner` prevents verification/sharing/closure until a reviewed scanner
-is bound. No RTO/government provider is configured or claimed.
+Phase 11 adds none. It reuses validated messaging, Redis/BullMQ and private provider configuration.
+Rule schedules, preferences and consent references are tenant PostgreSQL data. Production template
+approval, legal notice wording/DLT registration and provider credentials are not seeded or claimed.
 
 ## Verified commands and results
 
-| Command                          | Result                                                                                         |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | Pass; all 11 workspace projects already up to date.                                            |
-| `pnpm format:check`              | Pass.                                                                                          |
-| `pnpm lint`                      | Pass; zero warnings.                                                                           |
-| `pnpm type-check`                | Pass; 13/13 tasks.                                                                             |
-| `pnpm test`                      | Pass; API 61 unit + 51 integration, mobile 86, web 71, contracts 45, config 27 and DB unit 12. |
-| `pnpm test:integration`          | Pass; API 51/51 and migrations 20/20.                                                          |
-| `pnpm db:check`                  | Pass; 30 entries through `0029`.                                                               |
-| `pnpm build`                     | Pass; 8/8 tasks, 28 Next routes and Android/iOS Expo exports.                                  |
+| Command                          | Result                                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Pass; all 11 workspaces up to date.                                                 |
+| `pnpm format:check`              | Pass.                                                                               |
+| `pnpm lint`                      | Pass; zero warnings.                                                                |
+| `pnpm type-check`                | Pass; 13/13 tasks.                                                                  |
+| `pnpm test`                      | Pass; API 61 unit + 55 integration, mobile 86, web 71, contracts 48 and DB unit 12. |
+| `pnpm test:integration`          | Pass; API 55/55 and migrations 21/21.                                               |
+| `pnpm db:check`                  | Pass; journal through `0030`.                                                       |
+| `pnpm build`                     | Pass; 8/8 production build tasks passed, with 29 web routes including `/reminders`. |
 
 ## Seed accounts and data
 
-Existing accounts remain. `registration@seed.godigital.test` is the RC Registration Executive and
-now has selected Pune plus Mumbai scope with assigned-only access. The deterministic Alpha Phase 10
-case is Documents Ready and linked to the same canonical partial-payment booking and allocated unit
-used by Phase 9, proving registration can proceed independently from delivery. The external vehicle
-fixture uses the existing Contact but has no booking/delivery/inventory lineage.
+Existing accounts remain. The Alpha external Customer Vehicle now has coverage/service lifecycle
+data. Alpha includes approved `service_due_reminder` (Utility) and `upgrade_opportunity` (Marketing)
+templates, fixed Service Due/Upgrade rules, an operational WhatsApp preference and deterministic
+scheduled, failed and suppressed reminder instances. No seed claims live customer consent or a live
+provider send.
 
 ## Known limitations and deferred work
 
-- RC verification remains intentionally blocked until a production scanner returns `CLEAN`.
-- RTO/government automation is not implemented without an approved API/provider contract.
-- Phase 11 owns reminder rules, schedules, outbound reminder execution and customer lifecycle. Phase
-  10 stores coverage dates only and sends no reminder.
-- Shared database, hosted providers, browser visual regression and deployment smoke remain external
-  Phase 14 work.
+- Actual provider delivery, delivery/read webhook reconciliation and DLT/legal consent validation
+  require approved tenant provider accounts and authority; development adapters do not represent
+  production activation.
+- The worker has processor registrations and durable recovery state; hosted periodic scheduling,
+  alerting and reconciliation smoke remain Phase 14 deployment work.
+- Phase 12 owns reporting/dashboard/export surfaces. Do not add reporting projections outside its
+  prompt.
 
-## Exact Phase 11 prerequisites and recommendations
+## Exact Phase 12 prerequisites and recommendations
 
-1. Read the PRD and `PROMPTS/11_POST_SALE_REMINDERS.md`; implement only Phase 11.
-2. Use `customer_vehicles.id` plus canonical Contact and branch relationship as reminder ownership
-   truth. Never infer a dealership sale for `ownership_source = EXTERNAL`.
-3. Consume insurance/warranty/AMC/RSA dates as inputs; do not duplicate or mutate vehicle identity.
-4. Keep registration and delivery histories immutable. Reminder execution must append its own events
-   and never rewrite a case, RC delivery record or Customer Vehicle event.
-5. Reuse consent, suppression, quiet-hours, Unified Inbox/provider-neutral messaging, audit/outbox,
-   idempotency and tenant rate/concurrency controls rather than sending directly from the client.
-6. Add Phase 11 migrations, contracts, backend policy/tests, functional role UI, seed data,
-   OpenAPI/env/docs and run the strict completion audit before its checkpoint.
+1. Read `PROMPTS/12_REPORTS_DASHBOARDS_EXPORTS.md` and implement only Phase 12.
+2. Consume Customer Activity/reminder aggregates, not Lead status rewrites or direct provider data.
+3. Preserve tenant/branch scope, sensitive-document boundaries, audit/outbox and export controls.
+4. Use only real server-authoritative query results for charts/dashboards; do not mark fabricated
+   metrics or provider health as production data.
+5. Add the required migration/contracts/API/auth/tests/UI/seed/OpenAPI/env/docs, then run the strict
+   completion audit before its checkpoint.

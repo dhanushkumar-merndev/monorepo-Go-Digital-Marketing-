@@ -1,7 +1,7 @@
 # API application
 
 NestJS modular-monolith API for the Go Digital Automobile CRM. It owns authentication, tenancy,
-authorization and the implemented dealership workflows through Phase 10.
+authorization and the implemented dealership workflows through Phase 11.
 
 ## Routes
 
@@ -16,6 +16,10 @@ authorization and the implemented dealership workflows through Phase 10.
   correction, closure and reopening authority.
 - `/v1/customer-vehicles` owns canonical delivered-sale and explicitly external customer vehicles.
   Both Phase 10 route groups require `DELIVERY_RC`, tenant/object scope and explicit permissions.
+- `/v1/reminders` owns Phase 11 fixed service-plan rules, versioned customer plans, idempotent
+  materialization, due/failed/suppressed queues, rescheduling, consent/preferences, customer
+  activity and durable messaging dispatch. It requires `DELIVERY_RC`, tenant/branch scope and
+  explicit `reminders.*` permissions.
 
 Run from the repository root:
 
@@ -32,6 +36,10 @@ adapters are bound; private proof storage uses the existing S3/Tigris settings.
 Phase 10 introduces no new environment secret. RC files reuse private S3/Tigris storage and the
 default RC scanner fails closed until a reviewed adapter is bound; no government/RTO automation is
 claimed or attempted.
+
+Phase 11 adds no environment secret. Reminder delivery uses approved Phase 5 messaging templates,
+connections, consent/suppression and provider adapters. PostgreSQL reminder outbox rows survive
+Redis failure and can be reconciled/replayed by the existing worker process.
 
 `WORKER_MODE=disabled` starts no consumers, `embedded` starts one BullMQ worker in the API, and
 `standalone` keeps the API producer-only while `pnpm dev:worker` or `pnpm start:worker` runs the

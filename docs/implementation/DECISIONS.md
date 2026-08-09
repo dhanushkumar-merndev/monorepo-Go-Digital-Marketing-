@@ -918,3 +918,63 @@
   links and unaudited download were rejected.
 - **Status:** Accepted; production scanner activation remains an external prerequisite.
 - **Affected modules:** RC document schema/service/UI, S3-compatible storage boundary and audit.
+
+## ADR-0049 - Post-sale automation uses fixed versioned rules, not a visual builder
+
+- **Date:** 2026-08-09
+- **Decision:** Store active tenant rules with explicit manufacturer/model/variant/year selectors,
+  threshold kind, date base or kilometre value, notice offsets, approved template, category and
+  version. Materialize customer plans/instances using tenant-unique schedule keys; when source
+  Vehicle/rule state changes, cancel only obsolete scheduled instances and append the replacement
+  schedule.
+- **Reason:** The PRD requires configurable schedules but explicitly excludes a visual automation
+  builder. Versioned plans make duplicate workers, retries and later vehicle corrections safe and
+  explainable.
+- **Alternatives considered:** One global one-month interval, mutable reminder rows and a generic
+  no-code workflow engine were rejected.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Reminder contracts/schema/service/worker, Customer Vehicle lifecycle data,
+  web service-plan configuration and migrations.
+
+## ADR-0050 - Reminder communication delegates to the established messaging authority
+
+- **Date:** 2026-08-09
+- **Decision:** Reminder instances first enter a PostgreSQL dispatch outbox, then BullMQ schedules
+  the worker. The worker queues an automated approved template through the Phase 5 Messaging Service
+  rather than sending from reminder code. Reminder status reconciles from the official message
+  projection.
+- **Reason:** Provider credentials, template policy, customer service-window logic, retry behavior
+  and delivery receipts must have one owner. Redis unavailability must never lose a committed
+  reminder.
+- **Alternatives considered:** Direct provider SDK calls, client-side sends and Redis-only reminder
+  queues were rejected.
+- **Status:** Accepted; live provider verification remains external.
+- **Affected modules:** Reminders Service, Messaging Service, BullMQ processors, outbox/event/audit.
+
+## ADR-0051 - Operational and marketing reminders are distinct consent categories
+
+- **Date:** 2026-08-09
+- **Decision:** Operational rules require an approved Utility template. Marketing rules require an
+  approved Marketing template, an enabled reminder preference, latest granted channel/category
+  opt-in and no current ALL/MARKETING suppression. Consent withdrawal, denial or suppression records
+  an immutable `SUPPRESSED` result rather than attempting delivery.
+- **Reason:** Preferences are not consent, and promotional sends must stop promptly while legitimate
+  operational service/RC reminders retain their separate policy path.
+- **Alternatives considered:** One generic "opted in" flag, treating templates as interchangeable
+  and recording a failed provider send after suppression were rejected.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Reminder contracts/service/UI, messaging consent/suppression, dispatch
+  events and customer activity.
+
+## ADR-0052 - Customer lifecycle activity is additive to Lead history
+
+- **Date:** 2026-08-09
+- **Decision:** Feedback, complaints, escalations and reminder timeline entries are append-only
+  `customer_activities` linked to canonical Contact and optional Customer Vehicle. They do not
+  mutate Phase 3 Lead lifecycle/status history.
+- **Reason:** A customer can own several vehicles and have post-sale experiences after the original
+  sales opportunity is closed. Preserving separate aggregates avoids falsifying sales attribution.
+- **Alternatives considered:** Reopening/changing the Lead, per-reminder free-text notes and mutable
+  customer timeline rows were rejected.
+- **Status:** Accepted and migration-enforced for immutable history.
+- **Affected modules:** Customer Activity schema/API, reminders, audit/outbox and lifecycle UI.

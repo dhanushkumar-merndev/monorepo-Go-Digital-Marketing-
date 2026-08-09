@@ -717,6 +717,130 @@ export class MessagingService {
     return { message: this.presentMessage(updated!, template?.name ?? null, []), replayed: false };
   }
 
+  /**
+   * Queue an automated reminder through the same approved-template message outbox used by the
+   * Unified Inbox. Consent, suppression, provider connection and retry behavior remain owned here.
+   */
+  async queueAutomatedReminder(input: {
+    category: 'MARKETING' | 'OPERATIONAL';
+    clientOrganizationId: string;
+    contactId: string;
+    correlationId: string;
+    idempotencyKey: string;
+    templateId: string;
+    variables: Record<string, string>;
+  }): Promise<{ messageId: string; replayed: boolean }> {
+    const expectedCategory = input.category === 'MARKETING' ? 'MARKETING' : 'UTILITY';
+    const [row] = await this.connection.db
+      .select({ conversation: schema.conversations, template: schema.messageTemplates })
+      .from(schema.messageTemplates)
+      .innerJoin(
+        schema.conversations,
+        and(
+          eq(schema.conversations.clientOrganizationId, input.clientOrganizationId),
+          eq(schema.conversations.connectionId, schema.messageTemplates.connectionId),
+          eq(schema.conversations.contactId, input.contactId),
+          eq(schema.conversations.status, 'OPEN'),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.messageTemplates.clientOrganizationId, input.clientOrganizationId),
+          eq(schema.messageTemplates.id, input.templateId),
+          eq(schema.messageTemplates.category, expectedCategory),
+        ),
+      )
+      .orderBy(desc(schema.conversations.lastMessageAt), desc(schema.conversations.createdAt))
+      .limit(1);
+    if (!row)
+      throw notFound(
+        `No open conversation is connected to the selected ${expectedCategory.toLowerCase()} template.`,
+      );
+    if (!row.conversation.conversationOwnerId || !row.conversation.conversationOwnerMembershipId)
+      throw conflict(
+        'CONVERSATION_OWNER_REQUIRED',
+        'Automated reminders require an assigned conversation owner for attribution.',
+      );
+    this.assertTemplateVariables(row.template.bodyText, input.variables);
+    await this.assertOutboundAllowed(row.conversation, row.template);
+    const requestFingerprint = fingerprint({
+      category: input.category,
+      contactId: input.contactId,
+      templateId: input.templateId,
+      variables: input.variables,
+    });
+    const [existing] = await this.connection.db
+      .select({ id: schema.messages.id, requestFingerprint: schema.messages.requestFingerprint })
+      .from(schema.messages)
+      .where(
+        and(
+          eq(schema.messages.clientOrganizationId, input.clientOrganizationId),
+          eq(schema.messages.clientIdempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      if (existing.requestFingerprint !== requestFingerprint)
+        throw conflict('IDEMPOTENCY_KEY_REUSED', 'The reminder delivery key was reused.');
+      return { messageId: existing.id, replayed: true };
+    }
+    const now = new Date();
+    const message = await this.connection.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(schema.messages)
+        .values({
+          clientIdempotencyKey: input.idempotencyKey,
+          clientOrganizationId: input.clientOrganizationId,
+          contentType: 'TEMPLATE',
+          conversationId: row.conversation.id,
+          direction: 'OUTBOUND',
+          providerOccurredAt: now,
+          requestFingerprint,
+          senderMembershipId: row.conversation.conversationOwnerMembershipId,
+          senderUserId: row.conversation.conversationOwnerId,
+          status: 'QUEUED',
+          templateId: row.template.id,
+          templateVariables: input.variables,
+        })
+        .returning({ id: schema.messages.id });
+      await tx.insert(schema.messageStatusHistory).values({
+        clientOrganizationId: input.clientOrganizationId,
+        messageId: created!.id,
+        occurredAt: now,
+        status: 'QUEUED',
+      });
+      await tx.insert(schema.messageOutboundOutbox).values({
+        clientOrganizationId: input.clientOrganizationId,
+        messageId: created!.id,
+      });
+      await tx
+        .update(schema.conversations)
+        .set({
+          lastMessageAt: now,
+          lastOutboundAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.conversations.clientOrganizationId, input.clientOrganizationId),
+            eq(schema.conversations.id, row.conversation.id),
+          ),
+        );
+      await this.event(
+        tx,
+        input.clientOrganizationId,
+        created!.id,
+        'REMINDER_MESSAGE_QUEUED',
+        input.correlationId,
+        {
+          reminder_delivery_key: input.idempotencyKey,
+        },
+      );
+      return created!;
+    });
+    return { messageId: message.id, replayed: false };
+  }
+
   async addInternalNote(
     context: AuthorizationContext,
     conversationId: string,
