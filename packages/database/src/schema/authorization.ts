@@ -104,6 +104,24 @@ export const PERMISSION_CODES = [
   'inventory.allocations.reallocate',
   'inventory.transfers.manage',
   'inventory.corrections.manage',
+  'commercial.bookings.read',
+  'commercial.bookings.manage',
+  'commercial.bookings.cancel',
+  'commercial.quotations.manage',
+  'commercial.discounts.approve',
+  'commercial.payments.record',
+  'commercial.payments.verify',
+  'commercial.payments.correct',
+  'commercial.finance.manage',
+  'commercial.insurance.manage',
+  'commercial.exchange.manage',
+  'commercial.exchange.approve',
+  'commercial.invoices.manage',
+  'commercial.documents.read',
+  'commercial.documents.upload',
+  'commercial.documents.verify',
+  'commercial.readiness.read',
+  'commercial.settings.manage',
 ] as const;
 
 // Retained only so Drizzle recognizes the pre-Phase-4 PostgreSQL enum while the
@@ -114,7 +132,8 @@ const legacyPermissionCodes = PERMISSION_CODES.filter(
     !code.startsWith('telephony.') &&
     !code.startsWith('messaging.') &&
     !code.startsWith('test_rides.') &&
-    !code.startsWith('inventory.'),
+    !code.startsWith('inventory.') &&
+    !code.startsWith('commercial.'),
 ) as unknown as [string, ...string[]];
 
 export const canonicalRoleCodeEnum = pgEnum('canonical_role_code', CANONICAL_ROLE_CODES);

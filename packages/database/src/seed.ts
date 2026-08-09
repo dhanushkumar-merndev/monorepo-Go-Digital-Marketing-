@@ -21,6 +21,16 @@ import {
   departments,
   demoVehicleBookings,
   contacts,
+  bookingItems,
+  bookings,
+  commercialSettings,
+  financeCaseEvents,
+  financeCases,
+  paymentEntries,
+  paymentVerificationEvents,
+  quotationPriceComponents,
+  quotationVersions,
+  quotations,
   leadSettings,
   leadOpportunities,
   inventoryBrands,
@@ -87,6 +97,13 @@ const ALPHA_INVENTORY_VARIANT_ID = '2c000000-0000-4000-8000-000000000001';
 const ALPHA_INVENTORY_COLOUR_ID = '2d000000-0000-4000-8000-000000000001';
 const ALPHA_DEMO_INVENTORY_UNIT_ID = '2e000000-0000-4000-8000-000000000001';
 const ALPHA_DEMO_INVENTORY_HISTORY_ID = '2f000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_QUOTATION_ID = '71000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_QUOTATION_VERSION_ID = '72000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_BOOKING_ID = '73000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_PAYMENT_ID = '74000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_PAYMENT_EVENT_ID = '75000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_FINANCE_ID = '76000000-0000-4000-8000-000000000001';
+const ALPHA_COMMERCIAL_FINANCE_EVENT_ID = '77000000-0000-4000-8000-000000000001';
 
 const roleIdByCode = Object.fromEntries(
   CANONICAL_ROLE_CODES.map((code, index) => [
@@ -266,7 +283,62 @@ const permissionDescriptions: Record<PermissionCode, string> = {
   'inventory.allocations.reallocate': 'Approve reasoned VIN reallocation between physical units.',
   'inventory.transfers.manage': 'Start and finish immutable branch transfers.',
   'inventory.corrections.manage': 'Perform controlled blocked, cancelled or removed corrections.',
+  'commercial.bookings.read': 'Read branch-scoped commercial bookings and derived balances.',
+  'commercial.bookings.manage': 'Create confirmed bookings from approved quotation versions.',
+  'commercial.bookings.cancel':
+    'Cancel a booking with approval, settlement and notification evidence.',
+  'commercial.quotations.manage':
+    'Create and revise versioned quotations using minor-unit amounts.',
+  'commercial.discounts.approve':
+    'Approve or reject discounts above the effective tenant threshold.',
+  'commercial.payments.record':
+    'Append payment entries and proof references without verifying them.',
+  'commercial.payments.verify': 'Verify or reject payment evidence.',
+  'commercial.payments.correct': 'Post an append-only payment reversal with approval evidence.',
+  'commercial.finance.manage': 'Track finance application, approval and disbursement separately.',
+  'commercial.insurance.manage': 'Track insurance quotation, payment and policy readiness.',
+  'commercial.exchange.manage': 'Create and inspect used-vehicle exchange cases.',
+  'commercial.exchange.approve': 'Approve or reject exchange valuation evidence.',
+  'commercial.invoices.manage': 'Record immutable invoice references for bookings.',
+  'commercial.documents.read': 'Request audited private access to scoped booking documents.',
+  'commercial.documents.upload':
+    'Initiate and complete validated private booking-document uploads.',
+  'commercial.documents.verify': 'Approve or reject uploaded booking documents with reason.',
+  'commercial.readiness.read': 'Evaluate the server-authoritative delivery-readiness checklist.',
+  'commercial.settings.manage': 'Manage versioned commercial thresholds and readiness policy.',
 };
+
+const commercialReadPermissions = [
+  'commercial.bookings.read',
+  'commercial.documents.read',
+  'commercial.readiness.read',
+] as const satisfies readonly PermissionCode[];
+const commercialSalesPermissions = [
+  ...commercialReadPermissions,
+  'commercial.quotations.manage',
+  'commercial.bookings.manage',
+] as const satisfies readonly PermissionCode[];
+const commercialBillingPermissions = [
+  ...commercialReadPermissions,
+  'commercial.bookings.manage',
+  'commercial.bookings.cancel',
+  'commercial.payments.record',
+  'commercial.payments.verify',
+  'commercial.finance.manage',
+  'commercial.insurance.manage',
+  'commercial.exchange.manage',
+  'commercial.invoices.manage',
+  'commercial.documents.upload',
+  'commercial.documents.verify',
+] as const satisfies readonly PermissionCode[];
+const commercialManagerPermissions = [
+  ...commercialBillingPermissions,
+  'commercial.quotations.manage',
+  'commercial.discounts.approve',
+  'commercial.payments.correct',
+  'commercial.exchange.approve',
+  'commercial.settings.manage',
+] as const satisfies readonly PermissionCode[];
 
 const inventoryReadPermissions = [
   'inventory.catalogue.read',
@@ -419,6 +491,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingManagerPermissions,
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
+    ...commercialManagerPermissions,
   ],
   CLIENT_ADMIN: [
     ...accountPermissions,
@@ -441,6 +514,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingManagerPermissions,
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
+    ...commercialManagerPermissions,
   ],
   MANAGER: [
     ...accountPermissions,
@@ -456,6 +530,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingManagerPermissions,
     ...testRideManagerPermissions,
     ...inventoryManagerPermissions,
+    ...commercialManagerPermissions,
   ],
   SALES_MANAGER: [
     ...accountPermissions,
@@ -469,6 +544,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingManagerPermissions,
     ...testRideManagerPermissions,
     ...inventoryReadPermissions,
+    ...commercialManagerPermissions,
   ],
   TELECALLER: [
     ...accountPermissions,
@@ -486,6 +562,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingAgentPermissions,
     ...testRideSalesPermissions,
     ...inventoryReadPermissions,
+    ...commercialSalesPermissions,
   ],
   TEST_RIDE_EXECUTIVE: [
     ...accountPermissions,
@@ -497,14 +574,24 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...inventoryOperatorPermissions,
+    ...commercialReadPermissions,
   ],
   BILLING_DOCUMENTATION_EXECUTIVE: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...inventoryReadPermissions,
+    ...commercialBillingPermissions,
   ],
-  DELIVERY_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
-  RC_REGISTRATION_EXECUTIVE: [...accountPermissions, ...scopedOrganizationReadPermissions],
+  DELIVERY_EXECUTIVE: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...commercialReadPermissions,
+  ],
+  RC_REGISTRATION_EXECUTIVE: [
+    ...accountPermissions,
+    ...scopedOrganizationReadPermissions,
+    ...commercialReadPermissions,
+  ],
   TEAM_MANAGER: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
@@ -515,6 +602,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...messagingTeamManagerPermissions,
     ...testRideManagerPermissions,
     ...inventoryReadPermissions,
+    ...commercialManagerPermissions,
   ],
 };
 
@@ -1002,7 +1090,8 @@ async function seed(): Promise<void> {
               (module === 'TELEPHONY' ||
                 module === 'INBOX' ||
                 module === 'TEST_RIDES' ||
-                module === 'INVENTORY'));
+                module === 'INVENTORY' ||
+                module === 'BOOKING_BILLING'));
           await transaction
             .insert(clientModuleFlags)
             .values({
@@ -1568,6 +1657,201 @@ async function seed(): Promise<void> {
           target: leadOpportunities.id,
           set: { status: 'TEST_RIDE_BOOKED', updatedAt: SEED_DATE },
         });
+      await transaction
+        .insert(commercialSettings)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          currency: 'INR',
+          deliveryPaymentGateBasisPoints: 5_000,
+          discountApprovalThresholdMinor: 100_000,
+          effectiveAt: SEED_DATE,
+          requireFinanceDisbursement: true,
+          requireInsurance: true,
+          requireInvoice: true,
+          requiredDocumentTypes: ['BOOKING_FORM', 'IDENTITY_PROOF', 'ADDRESS_PROOF'],
+          updatedAt: SEED_DATE,
+          updatedByMembershipId: '60000000-0000-4000-8000-000000000003',
+        })
+        .onConflictDoUpdate({
+          target: commercialSettings.clientOrganizationId,
+          set: {
+            deliveryPaymentGateBasisPoints: 5_000,
+            discountApprovalThresholdMinor: 100_000,
+            requiredDocumentTypes: ['BOOKING_FORM', 'IDENTITY_PROOF', 'ADDRESS_PROOF'],
+            updatedAt: SEED_DATE,
+          },
+        });
+      await transaction
+        .insert(quotations)
+        .values({
+          approvalStatus: 'NOT_REQUIRED',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000006',
+          createdByUserId: '50000000-0000-4000-8000-000000000006',
+          currency: 'INR',
+          currentVersion: 1,
+          discountMinor: 50_000,
+          expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+          id: ALPHA_COMMERCIAL_QUOTATION_ID,
+          leadId: ALPHA_TEST_RIDE_LEAD_ID,
+          payableMinor: 2_950_000,
+          quotationReference: 'QT-DEV-2026-0001',
+          status: 'ACTIVE',
+          totalMinor: 3_000_000,
+          updatedAt: SEED_DATE,
+          vehicleConfiguration: 'Demo EV ZX / Arctic White / Development fixture',
+        })
+        .onConflictDoUpdate({
+          target: quotations.id,
+          set: { status: 'ACTIVE', updatedAt: SEED_DATE },
+        });
+      await transaction
+        .insert(quotationVersions)
+        .values({
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000006',
+          createdByUserId: '50000000-0000-4000-8000-000000000006',
+          currency: 'INR',
+          discountMinor: 50_000,
+          expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+          id: ALPHA_COMMERCIAL_QUOTATION_VERSION_ID,
+          notes: 'Development fixture quotation.',
+          payableMinor: 2_950_000,
+          quotationId: ALPHA_COMMERCIAL_QUOTATION_ID,
+          reason: 'Initial quotation',
+          totalMinor: 3_000_000,
+          vehicleConfiguration: 'Demo EV ZX / Arctic White / Development fixture',
+          version: 1,
+        })
+        .onConflictDoNothing();
+      for (const component of [
+        {
+          amountMinor: 2_800_000,
+          category: 'EX_SHOWROOM',
+          code: 'EX_SHOWROOM',
+          label: 'Ex-showroom price',
+        },
+        { amountMinor: 200_000, category: 'RTO', code: 'RTO', label: 'Registration and road tax' },
+        {
+          amountMinor: 50_000,
+          category: 'DISCOUNT',
+          code: 'DISCOUNT',
+          label: 'Approved development discount',
+        },
+      ]) {
+        await transaction
+          .insert(quotationPriceComponents)
+          .values({
+            ...component,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            quotationVersionId: ALPHA_COMMERCIAL_QUOTATION_VERSION_ID,
+          })
+          .onConflictDoNothing();
+      }
+      await transaction
+        .insert(bookings)
+        .values({
+          bookingReference: 'BK-DEV-2026-0001',
+          branchId: ALPHA_PUNE_BRANCH_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          contactId: ALPHA_TEST_RIDE_CONTACT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000006',
+          createdByUserId: '50000000-0000-4000-8000-000000000006',
+          currency: 'INR',
+          customerConfirmedAt: SEED_DATE,
+          expectedDeliveryAt: new Date('2026-09-15T00:00:00.000Z'),
+          id: ALPHA_COMMERCIAL_BOOKING_ID,
+          leadId: ALPHA_TEST_RIDE_LEAD_ID,
+          payableMinor: 2_950_000,
+          paymentType: 'FINANCE',
+          quotationId: ALPHA_COMMERCIAL_QUOTATION_ID,
+          quotationVersion: 1,
+          status: 'CONFIRMED',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoUpdate({ target: bookings.id, set: { updatedAt: SEED_DATE } });
+      for (const item of [
+        { amountMinor: 2_800_000, code: 'EX_SHOWROOM', description: 'Ex-showroom price' },
+        { amountMinor: 200_000, code: 'RTO', description: 'Registration and road tax' },
+        { amountMinor: 50_000, code: 'DISCOUNT', description: 'Approved development discount' },
+      ]) {
+        await transaction
+          .insert(bookingItems)
+          .values({
+            ...item,
+            bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+            clientOrganizationId: ALPHA_CLIENT_ID,
+            quantity: 1,
+          })
+          .onConflictDoNothing();
+      }
+      await transaction
+        .insert(paymentEntries)
+        .values({
+          amountMinor: 250_000,
+          bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000009',
+          createdByUserId: '50000000-0000-4000-8000-000000000009',
+          currency: 'INR',
+          id: ALPHA_COMMERCIAL_PAYMENT_ID,
+          kind: 'PAYMENT',
+          method: 'UPI',
+          paymentReference: 'PAY-DEV-2026-0001',
+          receivedAt: SEED_DATE,
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(paymentVerificationEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000009',
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          fromStatus: 'PENDING_VERIFICATION',
+          id: ALPHA_COMMERCIAL_PAYMENT_EVENT_ID,
+          paymentEntryId: ALPHA_COMMERCIAL_PAYMENT_ID,
+          reason: 'Development seed verified receipt.',
+          toStatus: 'VERIFIED',
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(financeCases)
+        .values({
+          appliedAmountMinor: 2_700_000,
+          bookingId: ALPHA_COMMERCIAL_BOOKING_ID,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          createdAt: SEED_DATE,
+          createdByMembershipId: '60000000-0000-4000-8000-000000000006',
+          currency: 'INR',
+          downPaymentMinor: 250_000,
+          id: ALPHA_COMMERCIAL_FINANCE_ID,
+          partnerName: 'Development Finance Partner',
+          providerReference: 'FIN-DEV-2026-0001',
+          status: 'APPLIED',
+          updatedAt: SEED_DATE,
+        })
+        .onConflictDoNothing();
+      await transaction
+        .insert(financeCaseEvents)
+        .values({
+          actorMembershipId: '60000000-0000-4000-8000-000000000006',
+          amountMinor: 2_700_000,
+          clientOrganizationId: ALPHA_CLIENT_ID,
+          financeCaseId: ALPHA_COMMERCIAL_FINANCE_ID,
+          fromStatus: null,
+          id: ALPHA_COMMERCIAL_FINANCE_EVENT_ID,
+          occurredAt: SEED_DATE,
+          providerReference: 'FIN-DEV-2026-0001',
+          reason: 'Development seed application.',
+          toStatus: 'APPLIED',
+        })
+        .onConflictDoNothing();
       await transaction
         .insert(testRideJobs)
         .values({

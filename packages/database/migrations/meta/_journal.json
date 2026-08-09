@@ -169,6 +169,27 @@
       "when": 1786218262846,
       "tag": "0023_fast_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786247926370,
+      "tag": "0024_brave_white_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786248657269,
+      "tag": "0025_aberrant_shen",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786251485941,
+      "tag": "0026_goofy_changeling",
+      "breakpoints": true
     }
   ]
 }

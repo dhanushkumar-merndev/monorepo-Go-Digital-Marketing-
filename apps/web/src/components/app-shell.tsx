@@ -25,6 +25,7 @@ import {
   MessagesSquare,
   MapPinned,
   Warehouse,
+  ReceiptText,
   UserRound,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -64,6 +65,12 @@ const navigation = [
     icon: Warehouse,
     label: 'Inventory',
     permission: 'inventory.units.read',
+  },
+  {
+    href: '/bookings',
+    icon: ReceiptText,
+    label: 'Bookings',
+    permission: 'commercial.bookings.read',
   },
   { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {

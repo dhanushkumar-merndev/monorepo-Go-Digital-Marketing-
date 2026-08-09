@@ -785,6 +785,45 @@ export class InventoryService {
       const unit = await this.lockAndGetUnit(tx, context, cid, unitId);
       this.assertVersion(unit, input.expected_version);
       this.assertStatus(unit, ['AVAILABLE', 'RESERVED']);
+      const [bookingBillingFlag] = await tx
+        .select({ enabled: schema.clientModuleFlags.enabled })
+        .from(schema.clientModuleFlags)
+        .where(
+          and(
+            eq(schema.clientModuleFlags.clientOrganizationId, cid),
+            eq(schema.clientModuleFlags.module, 'BOOKING_BILLING'),
+          ),
+        )
+        .limit(1);
+      let canonicalBookingId: string | null = null;
+      if (bookingBillingFlag?.enabled) {
+        const [booking] = await tx
+          .select()
+          .from(schema.bookings)
+          .where(
+            and(
+              eq(schema.bookings.clientOrganizationId, cid),
+              eq(schema.bookings.bookingReference, input.booking_reference),
+            ),
+          )
+          .limit(1);
+        if (!booking || booking.status !== 'CONFIRMED')
+          throw conflict(
+            'CANONICAL_BOOKING_REQUIRED',
+            'An active canonical booking is required for allocation.',
+          );
+        if (booking.branchId !== unit.branchId)
+          throw conflict(
+            'BOOKING_BRANCH_MISMATCH',
+            'The booking and physical unit must belong to the same branch.',
+          );
+        if (booking.selectedInventoryUnitId && booking.selectedInventoryUnitId !== unit.id)
+          throw conflict(
+            'BOOKING_ALREADY_ALLOCATED',
+            'The booking already points to another physical unit.',
+          );
+        canonicalBookingId = booking.id;
+      }
       let reservationId: string | null = null;
       if (unit.status === 'RESERVED') {
         const [reservation] = await tx
@@ -823,6 +862,7 @@ export class InventoryService {
         .values({
           allocatedByMembershipId: context.membershipId,
           allocatedByUserId: context.userId,
+          bookingId: canonicalBookingId,
           bookingReference: input.booking_reference,
           clientOrganizationId: cid,
           inventoryUnitId: unitId,
@@ -840,6 +880,17 @@ export class InventoryService {
             status: 'CONVERTED',
           })
           .where(eq(schema.inventoryReservations.id, reservationId));
+      }
+      if (canonicalBookingId) {
+        await tx
+          .update(schema.bookings)
+          .set({ selectedInventoryUnitId: unit.id, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.bookings.clientOrganizationId, cid),
+              eq(schema.bookings.id, canonicalBookingId),
+            ),
+          );
       }
       const updated = await this.updateUnit(tx, unit, 'ALLOCATED', {});
       await this.recordTransition(

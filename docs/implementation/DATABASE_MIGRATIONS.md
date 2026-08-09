@@ -196,3 +196,32 @@ boundaries, backend validation, retry/status behavior, UI-state ownership and do
 It does not alter the Phase 5 table shape or the canonical journal through
 `0016_steady_may_parker.sql`. The existing generic channel enum remains a dormant extension boundary;
 it does not activate SMS, email, Instagram Direct or Facebook Messenger.
+
+## Phase 8 commercial migrations
+
+`0024_brave_white_queen.sql` creates the Phase 8 commercial domain: tenant commercial settings,
+quotation projections plus immutable versions/components, discount approvals, booking snapshots,
+append-only payment/reversal and verification evidence, finance and exchange event histories,
+insurance, invoices, private document versions/verification/download events, readiness evaluations
+and idempotency receipts. It installs 18 permissions with least-privilege role mappings. Composite
+tenant and actor foreign keys prevent cross-tenant linkage. Database triggers reject mutation or
+deletion of payment, quote version/component, booking item, invoice, finance/exchange event,
+document-event and readiness history.
+
+The same migration adds nullable `inventory_allocations.booking_id`. Its compatibility update links
+only an exact tenant plus booking-reference match and leaves unmatched legacy references nullable;
+it never invents a booking or rewrites an allocation ID. New allocations validate the canonical
+confirmed booking when `BOOKING_BILLING` is enabled. Payment proof references use a tenant-aware
+foreign key to a private commercial document version.
+
+`0025_aberrant_shen.sql` adds the explicit nullable finance disbursement timestamp so Approved and
+Disbursed remain separate operational milestones. `0026_goofy_changeling.sql` adds a unique index on
+tenant, quotation and quotation version, preventing duplicate bookings from the same accepted offer.
+
+Apply all three forward-only migrations together before enabling `BOOKING_BILLING`. Take a
+recoverable backup first and verify there are no duplicate tenant/quotation/version booking rows
+before applying `0026` if any pre-release Phase 8 database was used. The complete 27-entry journal
+passes Drizzle check and 18 zero-to-latest PGlite integrity tests. No shared database was mutated in
+the Phase 8 local checkpoint. Once payment, booking or document evidence exists, rollback means
+restoring the pre-Phase-8 recovery point or a reviewed forward compensation; never delete immutable
+commercial/audit history or edit an already-applied migration.

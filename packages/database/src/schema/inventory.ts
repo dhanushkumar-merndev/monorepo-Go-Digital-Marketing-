@@ -341,6 +341,7 @@ export const inventoryAllocations = pgTable(
     clientOrganizationId: uuid('client_organization_id').notNull(),
     inventoryUnitId: uuid('inventory_unit_id').notNull(),
     bookingReference: varchar('booking_reference', { length: 120 }).notNull(),
+    bookingId: uuid('booking_id'),
     status: inventoryAllocationStatusEnum('status').default('ACTIVE').notNull(),
     readinessAsserted: boolean('readiness_asserted').notNull(),
     reason: text('reason').notNull(),
@@ -386,6 +387,7 @@ export const inventoryAllocations = pgTable(
       table.status,
       table.allocatedAt,
     ),
+    index('inventory_allocations_booking_id_idx').on(table.clientOrganizationId, table.bookingId),
     check('inventory_allocations_readiness_check', sql`${table.readinessAsserted} = true`),
   ],
 );

@@ -740,3 +740,58 @@
 - **Status:** Accepted.
 - **Affected modules:** Phase 3 Lead service/timeline, Phase 5 conversations/participants/assignments,
   inbound webhook processing, web/mobile customer context.
+
+## ADR-0037 — Commercial money is integer status evidence, not a payment ledger
+
+- **Date:** 2026-08-09
+- **Decision:** Store every commercial amount as a bounded BIGINT minor-unit integer. A payment entry
+  starts Pending and affects balance only after a separately permissioned append-only verification
+  event. Corrections append one linked reversal; the original entry is never edited or deleted.
+- **Reason:** The CRM must report operational payment status without processing customer money or
+  pretending to be the accounting ledger. Append-only evidence preserves attribution and permits a
+  deterministic verified balance that cannot become negative.
+- **Alternatives considered:** Floating point, a mutable `paid_amount`, proof-implies-paid, editing the
+  original receipt and integrating a provider without approval were rejected for correctness,
+  auditability and scope.
+- **Status:** Accepted and tested.
+- **Affected modules:** Commercial contracts/schema/service, migration `0024`, booking UI and tests.
+
+## ADR-0038 — Quotation versions are immutable and booking consumes one exact approved version
+
+- **Date:** 2026-08-09
+- **Decision:** Keep quotation projection fields for current workflow state while retaining immutable
+  version and price-component rows. Tenant settings determine discount approval. One exact active
+  Approved/Not Required quotation version may create one booking, whose items are an immutable
+  snapshot.
+- **Reason:** Users need revisions and approvals without retroactively changing a customer offer or
+  an already confirmed booking.
+- **Alternatives considered:** Updating quotation rows in place, hard-coded thresholds, copying only
+  a total and allowing multiple bookings from one version were rejected.
+- **Status:** Accepted and database-enforced through `0026_goofy_changeling.sql`.
+- **Affected modules:** Commercial settings, quotation/booking schema/service/contracts and web flow.
+
+## ADR-0039 — Commercial documents reuse private object storage and fail closed on scanning
+
+- **Date:** 2026-08-09
+- **Decision:** Store only tenant-bound document/version metadata in PostgreSQL, use short-lived
+  signed PUT/GET URLs, audit every download and require `CLEAN` from a provider-neutral scanner
+  before approval. The default adapter returns unavailable and leaves the document pending.
+- **Reason:** MIME/extension/size/checksum checks and private storage do not establish malware safety.
+  Missing external configuration must visibly block readiness rather than silently approve content.
+- **Alternatives considered:** Public URLs, database blobs, client-supplied scan flags and treating
+  upload completion as approval were rejected.
+- **Status:** Accepted; production scanner activation remains an external prerequisite.
+- **Affected modules:** Commercial document schema/service/UI, S3 adapter boundary, `.env.example`.
+
+## ADR-0040 — Delivery readiness is a fresh append-only server evaluation
+
+- **Date:** 2026-08-09
+- **Decision:** Compute each readiness result from canonical booking, active allocation, verified
+  payment threshold, finance, invoice, insurance, customer confirmation and approved configured
+  document records, retaining explicit items in an immutable evaluation row.
+- **Reason:** A client assertion or mutable boolean can become stale and cannot explain why delivery
+  is blocked. Phase 9 can add PDI/registration/handover conditions without rewriting Phase 8 history.
+- **Alternatives considered:** `readiness_asserted` from Inventory, a cached boolean on Booking and
+  inferred payment proof were rejected.
+- **Status:** Accepted and tested fail-closed.
+- **Affected modules:** Commercial service/schema/contracts/UI and canonical Inventory allocation link.

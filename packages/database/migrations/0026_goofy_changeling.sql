@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "bookings_quotation_version_uidx" ON "bookings" USING btree ("client_organization_id","quotation_id","quotation_version");

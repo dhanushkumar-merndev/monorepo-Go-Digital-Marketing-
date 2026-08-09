@@ -1,0 +1,1 @@
+ALTER TABLE "finance_cases" ADD COLUMN "disbursed_at" timestamp with time zone;

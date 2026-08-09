@@ -5,6 +5,7 @@ export * from './telephony/index.js';
 export * from './messaging/index.js';
 export * from './test-rides/index.js';
 export * from './inventory/index.js';
+export * from './commercial/index.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

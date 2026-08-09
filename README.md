@@ -157,6 +157,19 @@ and are linked additively to a matching canonical unit. Alpha seed enables `INVE
 client environment variable; reservation expiry is supplied by the validated command and released
 by the safe 60-second API monitor or the authorized idempotent reconciliation route.
 
+Phase 8 adds the commercial authority at `/v1/commercial` and the office workspace at `/bookings`.
+Quotations retain immutable versions and price components, tenant-configured thresholds control
+discount approval, and bookings snapshot the exact approved quotation version. Payment rows are
+append-only evidence: uploads and pending entries never count as paid, verification is separately
+permissioned, overpayment is rejected, and corrections use linked reversals. Finance approval and
+disbursement are separate milestones. Delivery readiness is computed from canonical booking,
+allocation, verified payment, finance, invoice, insurance, customer-confirmation and approved
+document records. Commercial objects use integer minor currency units and tenant/branch composite
+foreign keys. Private document upload/download uses the existing S3-compatible adapter and signed
+URLs; the default malware-scanner adapter fails closed, so approval remains blocked with
+`PENDING_EXTERNAL_SCAN` until a reviewed production scanner is configured. Alpha development seed
+enables `BOOKING_BILLING` and includes one partial-payment finance booking for UI/API validation.
+
 ## Repository layout
 
 ```text

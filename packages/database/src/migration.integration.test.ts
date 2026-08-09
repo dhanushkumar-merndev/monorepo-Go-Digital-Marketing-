@@ -41,7 +41,7 @@ const googleIdentityId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446753';
 const googleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446783';
 const secondGoogleSessionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446784';
 
-describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
+describe('reviewed PostgreSQL migrations through Phase 8 commercial workflows', () => {
   let client: PGlite;
 
   beforeAll(async () => {
@@ -126,8 +126,8 @@ describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
       ) values (
         '${rotationId}', '${clientSessionId}', 1, repeat('a', 64), now() + interval '30 days'
       );
-    `);
-  });
+      `);
+  }, 30_000);
 
   afterAll(async () => {
     await client.close();
@@ -271,7 +271,7 @@ describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
     `);
 
     expect(roleCount.rows[0]?.count).toBe(12);
-    expect(permissionCount.rows[0]?.count).toBe(70);
+    expect(permissionCount.rows[0]?.count).toBe(88);
     expect(agencyPermissions.rows.map((row) => row.code)).toEqual(
       expect.arrayContaining([
         'organization.clients.read',
@@ -293,6 +293,9 @@ describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
         'inventory.allocations.reallocate',
         'inventory.corrections.manage',
         'inventory.units.sensitive.read',
+        'commercial.discounts.approve',
+        'commercial.payments.verify',
+        'commercial.settings.manage',
       ]),
     );
     expect(forbiddenMobileAdminMappings.rows[0]?.count).toBe(0);
@@ -369,6 +372,14 @@ describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
         ?.permissions.has('inventory.allocations.manage'),
     ).toBe(false);
     expect(roleFamilies.get('MANAGER')?.permissions.has('inventory.corrections.manage')).toBe(true);
+    expect(
+      roleFamilies
+        .get('BILLING_DOCUMENTATION_EXECUTIVE')
+        ?.permissions.has('commercial.payments.verify'),
+    ).toBe(true);
+    expect(roleFamilies.get('SALESPERSON')?.permissions.has('commercial.discounts.approve')).toBe(
+      false,
+    );
   });
 
   it('keeps Phase 6 jobs tenant-consistent and binds each location sample to its session identity', async () => {
@@ -460,6 +471,89 @@ describe('reviewed PostgreSQL migrations through Phase 7 inventory', () => {
         )
       `),
     ).resolves.toBeDefined();
+  });
+
+  it('enforces Phase 8 tenant keys and immutable commercial evidence', async () => {
+    const contactId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c01';
+    const leadId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c02';
+    const quotationId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c03';
+    const versionId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c04';
+    const bookingId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c05';
+    const paymentId = '018f25a7-6dc0-7d4a-b7c6-6ba6f7446c06';
+    await client.exec(`
+      insert into contacts (
+        id, client_organization_id, display_name, primary_phone_e164,
+        primary_phone_lookup_hash
+      ) values (
+        '${contactId}', '${tenantId}', 'Commercial Customer', '+919876543219', repeat('9', 64)
+      );
+      insert into lead_opportunities (
+        id, client_organization_id, contact_id, branch_id, source, entry_method,
+        vehicle_interest, status, sla_due_at, sla_warning_at
+      ) values (
+        '${leadId}', '${tenantId}', '${contactId}', '${branchId}', 'WEBSITE', 'MANUAL',
+        'Model Commercial', 'NEGOTIATION', now() + interval '15 minutes',
+        now() + interval '10 minutes'
+      );
+      insert into commercial_settings (
+        client_organization_id, currency, discount_approval_threshold_minor,
+        delivery_payment_gate_basis_points
+      ) values ('${tenantId}', 'INR', 10000, 5000);
+      insert into quotations (
+        id, client_organization_id, branch_id, contact_id, lead_id,
+        quotation_reference, status, approval_status, current_version, currency,
+        total_minor, discount_minor, payable_minor, vehicle_configuration, expires_at,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${quotationId}', '${tenantId}', '${branchId}', '${contactId}', '${leadId}',
+        'QT-MIGRATION-1', 'ACTIVE', 'NOT_REQUIRED', 1, 'INR', 100000, 0, 100000,
+        'Model Commercial', now() + interval '1 day', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into quotation_versions (
+        id, client_organization_id, quotation_id, version, currency, total_minor,
+        discount_minor, payable_minor, vehicle_configuration, expires_at,
+        created_by_user_id, created_by_membership_id
+      ) values (
+        '${versionId}', '${tenantId}', '${quotationId}', 1, 'INR', 100000, 0, 100000,
+        'Model Commercial', now() + interval '1 day', '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into bookings (
+        id, client_organization_id, branch_id, contact_id, lead_id, quotation_id,
+        quotation_version, booking_reference, payment_type, currency, payable_minor,
+        customer_confirmed_at, created_by_user_id, created_by_membership_id
+      ) values (
+        '${bookingId}', '${tenantId}', '${branchId}', '${contactId}', '${leadId}',
+        '${quotationId}', 1, 'BK-MIGRATION-1', 'FULL', 'INR', 100000, now(),
+        '${clientUserId}', '${clientMembershipId}'
+      );
+      insert into payment_entries (
+        id, client_organization_id, booking_id, amount_minor, currency, method,
+        payment_reference, received_at, created_by_user_id, created_by_membership_id
+      ) values (
+        '${paymentId}', '${tenantId}', '${bookingId}', 50000, 'INR', 'UPI',
+        'PAY-MIGRATION-1', now(), '${clientUserId}', '${clientMembershipId}'
+      );
+    `);
+
+    await expect(
+      client.exec(`update payment_entries set amount_minor = 1 where id = '${paymentId}'`),
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      client.exec(`delete from quotation_versions where id = '${versionId}'`),
+    ).rejects.toThrow(/append-only/u);
+    await expect(
+      client.exec(`
+        insert into bookings (
+          client_organization_id, branch_id, contact_id, lead_id, quotation_id,
+          quotation_version, booking_reference, payment_type, currency, payable_minor,
+          customer_confirmed_at, created_by_user_id, created_by_membership_id
+        ) values (
+          '${otherTenantId}', '${otherBranchId}', '${contactId}', '${leadId}', '${quotationId}',
+          1, 'BK-CROSS-TENANT', 'FULL', 'INR', 100000, now(),
+          '${clientUserId}', '${clientMembershipId}'
+        )
+      `),
+    ).rejects.toThrow();
   });
 
   it('keeps call evidence tenant-scoped and enforces completed-call outcome requirements', async () => {

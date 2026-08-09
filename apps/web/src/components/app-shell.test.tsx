@@ -61,4 +61,18 @@ describe('AppShell permission-aware navigation', () => {
     );
     expect(screen.getByRole('link', { name: 'Inventory' })).toBeInTheDocument();
   });
+
+  it('shows bookings only with the commercial booking read permission', () => {
+    render(
+      <AuthContext.Provider
+        value={testAuthContext({
+          session: testAuthSession('BILLING_DOCUMENTATION_EXECUTIVE', ['commercial.bookings.read']),
+        })}
+      >
+        <AppShell>Commercial content</AppShell>
+      </AuthContext.Provider>,
+    );
+    expect(screen.getByRole('link', { name: 'Bookings' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Inventory' })).not.toBeInTheDocument();
+  });
 });

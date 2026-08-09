@@ -1,9 +1,16 @@
 # Known Issues
 
-The 2026-08-09 Phase 7 implementation/audit has no known source-level Phase 7 acceptance blocker.
-Final command and test-database migration evidence is in `PHASE_STATUS.md`. Physical-device,
+The 2026-08-09 Phase 8 implementation/audit has no known Critical/High or source-level acceptance
+blocker. Final local command and migration evidence is in `PHASE_STATUS.md`. Physical-device,
 provider, retention-operations and hosted-release items below must not be represented as locally
 verified.
+
+## Phase 8 commercial release issues
+
+| Open issue                                                    | Severity | Impact                                                                                                                                                                             | Reproduction or evidence                                                                                                           | Workaround                                                                                                                                                                                                      | Owning phase               | Resolution status               |
+| ------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------- |
+| No approved malware-scanner adapter for commercial documents  | Medium   | Private upload/download works, but an uploaded document remains `PENDING_EXTERNAL_SCAN` and cannot become Approved; a required document therefore keeps delivery readiness blocked | `FailClosedDocumentSecurityScanner` returns `UNAVAILABLE`; `verifyDocument` rejects approval unless the current version is `CLEAN` | Bind a reviewed tenant-safe scanner/quarantine adapter, test clean/rejected/unavailable paths and keep objects private before enabling document-dependent delivery                                              | Phase 8 / storage security | Open, intentionally fail-closed |
+| Phase 8 migrations and seed have not run on a shared database | Medium   | Local PGlite proves the 27-entry chain, but real Supabase execution/backups/operational permissions remain unverified for Phase 8                                                  | `pnpm db:migrate` is recorded as Not run in `PHASE_STATUS.md`; no shared seed was authorized                                       | Take a recovery-point backup, run one migration worker in staging, verify 27 journal rows/18 commercial permissions/tenant constraints, then execute the development seed only on an approved disposable target | Phase 8 release validation | Open external validation        |
 
 ## Phase 2 recovery validation issues
 
