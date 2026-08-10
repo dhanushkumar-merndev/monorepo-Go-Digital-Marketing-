@@ -60,6 +60,47 @@
   ::selection {
     background: color-mix(in srgb, var(--primary) 18%, transparent);
   }
+
+  /* One scrollbar treatment for every scroll container in the app. Firefox and
+     Chrome 121+ honour the standard properties; older WebKit falls back to the
+     pseudo-elements below. Both are never active at once, so they cannot
+     disagree. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  @supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+      width: var(--scrollbar-size);
+      height: var(--scrollbar-size);
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background-color: var(--scrollbar-thumb);
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+  }
+
+  /* Dark surfaces opt into a lighter thumb so it stays visible. */
+  [data-scrollbar='sidebar'] {
+    --scrollbar-thumb: var(--sidebar-scrollbar-thumb);
+    --scrollbar-thumb-hover: var(--sidebar-scrollbar-thumb-hover);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

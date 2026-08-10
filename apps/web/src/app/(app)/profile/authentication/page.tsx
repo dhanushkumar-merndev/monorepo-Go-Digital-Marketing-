@@ -1,7 +1,5 @@
-import { AuthenticationMethodsScreen } from '@/features/auth/authentication-methods';
-
-export const metadata = { title: 'Sign-in methods' };
+import { redirect } from 'next/navigation';
 
 export default function AuthenticationMethodsPage() {
-  return <AuthenticationMethodsScreen />;
+  redirect('/?settings=methods');
 }

@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core';
 import { CANONICAL_ROLE_CODES, type CanonicalRoleCode, type PermissionCode } from '@gdm/contracts';
 import { AccessTokenService } from '../src/auth/access-token.service.js';
 import type { SessionAccessRecord } from '../src/auth/auth-store.js';
+import type { SupabaseAuthService } from '../src/auth/supabase-auth.service.js';
 import { AuthenticationGuard } from '../src/authorization/authentication.guard.js';
 import { AuthorizationPolicy } from '../src/authorization/authorization-policy.js';
 import type { ClientModuleAccessService } from '../src/authorization/client-module-access.service.js';
@@ -216,5 +217,47 @@ describe('AuthenticationGuard role and scope enforcement', () => {
       (error: unknown) => exceptionCode(error) === 'SCOPE_DENIED',
     );
     assert.equal(audited, true);
+  });
+
+  it('explains when a valid Supabase account is not linked to a CRM user', async () => {
+    const supabaseUserId = randomUUID();
+    const supabaseSessionId = randomUUID();
+    const store = authStoreStub({
+      ensureSupabaseSession: () => Promise.resolve(undefined),
+    });
+    const guard = new AuthenticationGuard(
+      new Reflector(),
+      new AccessTokenService(TEST_AUTH_CONFIG),
+      store,
+      new AuthorizationPolicy(),
+      { assertEnabled: () => Promise.resolve() } as unknown as ClientModuleAccessService,
+      {
+        enabled: true,
+        verify: () =>
+          Promise.resolve({
+            assuranceLevel: 'aal1',
+            expiresAt: new Date(Date.now() + 60_000),
+            sessionId: supabaseSessionId,
+            userId: supabaseUserId,
+          }),
+      } as unknown as SupabaseAuthService,
+    );
+    const handler = (): undefined => undefined;
+    Reflect.defineMetadata(REQUIRED_PERMISSIONS_KEY, ['account.profile.read'], handler);
+
+    await assert.rejects(
+      guard.canActivate(
+        executionContext(
+          {
+            headers: { authorization: 'Bearer supabase-access-token' },
+            method: 'GET',
+            params: {},
+            url: '/v1/me',
+          },
+          handler,
+        ),
+      ),
+      (error: unknown) => exceptionCode(error) === 'CRM_ACCOUNT_NOT_LINKED',
+    );
   });
 });

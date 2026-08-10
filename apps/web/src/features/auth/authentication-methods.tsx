@@ -29,8 +29,9 @@ import {
   Unlink,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import {
   googleLinkErrorMessage,
   googleUnlinkErrorMessage,
@@ -40,8 +41,9 @@ import { GoogleIdentityButton } from './google-identity-services';
 import { useAuth } from './auth-provider';
 import { hasPermission, type AuthenticationMethod, type GoogleCredentialInput } from './auth-types';
 
-export function AuthenticationMethodsScreen() {
+export function AuthenticationMethodsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const auth = useAuth();
+  const supabase = getSupabaseBrowserClient();
   const [message, setMessage] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<AuthenticationErrorMessage | null>(null);
   const methodsQuery = useQuery({
@@ -49,6 +51,10 @@ export function AuthenticationMethodsScreen() {
     queryKey: ['auth', 'methods'],
   });
   const canManage = auth.session !== null && hasPermission(auth.session, 'account.profile.update');
+
+  if (supabase !== null) {
+    return <SupabaseAuthenticationMethodsScreen canManage={canManage} embedded={embedded} />;
+  }
 
   async function connectGoogle(input: GoogleCredentialInput) {
     setMessage(null);
@@ -71,26 +77,27 @@ export function AuthenticationMethodsScreen() {
   const googleMethod = methods.find((method) => method.provider === 'GOOGLE');
 
   return (
-    <div className="space-y-8">
-      <section aria-labelledby="authentication-methods-heading">
-        <Link className={buttonVariants({ size: 'sm', variant: 'ghost' })} href="/profile">
-          <ArrowLeft aria-hidden="true" data-icon="inline-start" />
-          Back to profile
-        </Link>
-        <Badge className="mt-5" variant="secondary">
-          Account security
-        </Badge>
-        <h1
-          className="mt-3 text-3xl font-semibold tracking-tight"
-          id="authentication-methods-heading"
-        >
-          Sign-in methods
-        </h1>
-        <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
-          Connect or review the methods that can authenticate your CRM account. Connecting Google
-          never creates a new client membership.
-        </p>
-      </section>
+    <div className={embedded ? 'space-y-5' : 'space-y-8'}>
+      {embedded ? null : (
+        <section aria-labelledby="authentication-methods-heading">
+          <Link className={buttonVariants({ size: 'sm', variant: 'ghost' })} href="/profile">
+            <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+            Back to profile
+          </Link>
+          <Badge className="mt-5" variant="secondary">
+            Account security
+          </Badge>
+          <h1
+            className="mt-3 text-3xl font-semibold tracking-tight"
+            id="authentication-methods-heading"
+          >
+            Sign-in methods
+          </h1>
+          <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
+            Review and manage the ways you can sign in to your account.
+          </p>
+        </section>
+      )}
 
       <div aria-live="polite" className="space-y-3">
         {message === null ? null : (
@@ -154,10 +161,7 @@ export function AuthenticationMethodsScreen() {
               <Link2 aria-hidden="true" className="text-primary size-4" />
               Connect Google
             </CardTitle>
-            <CardDescription>
-              Choose the Google identity to connect to this already-authenticated CRM account.
-              Matching email text alone never links accounts.
-            </CardDescription>
+            <CardDescription>Add your Google account as another way to sign in.</CardDescription>
           </CardHeader>
           <CardContent className="max-w-sm space-y-4">
             <GoogleIdentityButton
@@ -181,6 +185,182 @@ export function AuthenticationMethodsScreen() {
         </Alert>
       ) : null}
     </div>
+  );
+}
+
+function SupabaseAuthenticationMethodsScreen({
+  canManage,
+  embedded,
+}: {
+  canManage: boolean;
+  embedded: boolean;
+}) {
+  const [email, setEmail] = useState<string | null>(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const supabase = getSupabaseBrowserClient();
+
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getUser().then(({ data, error: userError }) => {
+      if (userError || !data.user) {
+        setError('Your sign-in session is unavailable. Sign in again to manage your account.');
+        return;
+      }
+      setEmail(data.user.email ?? null);
+      setGoogleConnected(
+        data.user.identities?.some((identity) => identity.provider === 'google') ?? false,
+      );
+    });
+  }, [supabase]);
+
+  async function connectGoogle() {
+    if (!supabase) return;
+    setError(null);
+    const { error: linkError } = await supabase.auth.linkIdentity({
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=account-settings`,
+      },
+      provider: 'google',
+    });
+    if (linkError) setError(linkError.message);
+  }
+
+  return (
+    <div className={embedded ? 'space-y-5' : 'space-y-8'}>
+      {embedded ? null : (
+        <section aria-labelledby="authentication-methods-heading">
+          <Link className={buttonVariants({ size: 'sm', variant: 'ghost' })} href="/profile">
+            <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+            Back to profile
+          </Link>
+          <h1
+            className="mt-5 text-3xl font-semibold tracking-tight"
+            id="authentication-methods-heading"
+          >
+            Sign-in methods
+          </h1>
+          <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
+            Review and manage the ways you can sign in to your account.
+          </p>
+        </section>
+      )}
+      {error ? (
+        <Alert variant="destructive">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>Google connection unavailable</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <SupabaseMethodCard
+          allowPasswordReset={canManage}
+          connected
+          title="Email and password"
+          {...(email ? { email } : {})}
+        />
+        <SupabaseMethodCard connected={googleConnected} title="Google" />
+      </div>
+      {embedded ? null : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck aria-hidden="true" className="text-primary size-4" />
+              Two-step verification
+            </CardTitle>
+            <CardDescription>
+              Every CRM role must use an authenticator app. A six-digit code is required after both
+              Google and password sign-in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {canManage ? (
+              <Link href="/auth/mfa?returnTo=%2F%3Fsettings%3Dmfa">
+                <Button>
+                  <ShieldCheck data-icon="inline-start" />
+                  Configure two-step verification
+                </Button>
+              </Link>
+            ) : (
+              <Button disabled>
+                <ShieldCheck data-icon="inline-start" />
+                Configure two-step verification
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {!googleConnected && canManage ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Link2 aria-hidden="true" className="text-primary size-4" />
+              Connect Google
+            </CardTitle>
+            <CardDescription>Add Google as another way to sign in.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => void connectGoogle()}>
+              <Link2 data-icon="inline-start" />
+              Continue with Google
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function SupabaseMethodCard({
+  allowPasswordReset = false,
+  connected,
+  email,
+  title,
+}: {
+  allowPasswordReset?: boolean;
+  connected: boolean;
+  email?: string;
+  title: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound aria-hidden="true" className="text-primary size-4" />
+              {title}
+            </CardTitle>
+            <CardDescription className="mt-1.5">
+              {title === 'Google'
+                ? 'Use your Google account to sign in.'
+                : 'Use your email and password to sign in.'}
+            </CardDescription>
+          </div>
+          <StatusBadge tone={connected ? 'success' : 'neutral'}>
+            {connected ? 'Connected' : 'Not connected'}
+          </StatusBadge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {email ? (
+          <dl className="divide-border divide-y text-sm">
+            <MethodRow label="Account" value={email} />
+          </dl>
+        ) : (
+          <p className="text-muted-foreground text-sm">This method is not connected.</p>
+        )}
+        {allowPasswordReset && email ? (
+          <Link
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            href="/forgot-password"
+          >
+            <KeyRound aria-hidden="true" data-icon="inline-start" />
+            Update password
+          </Link>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -209,7 +389,9 @@ function AuthenticationMethodCard({
               {google ? 'Google' : 'Email and password'}
             </CardTitle>
             <CardDescription className="mt-1.5">
-              {google ? 'Verified Google identity' : 'CRM-managed password authentication'}
+              {google
+                ? 'Use your Google account to sign in.'
+                : 'Use your email and password to sign in.'}
             </CardDescription>
           </div>
           <StatusBadge tone={method.connected ? 'success' : 'neutral'}>
@@ -243,6 +425,15 @@ function AuthenticationMethodCard({
               </p>
             )}
           </div>
+        ) : null}
+        {!google && method.connected && canManage ? (
+          <Link
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            href="/forgot-password"
+          >
+            <KeyRound aria-hidden="true" data-icon="inline-start" />
+            Update password
+          </Link>
         ) : null}
       </CardContent>
     </Card>

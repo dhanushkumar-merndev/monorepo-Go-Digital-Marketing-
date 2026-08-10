@@ -1,6 +1,7 @@
 /* Administrative command methods are intentionally small transaction boundaries. */
 /* eslint-disable @typescript-eslint/explicit-function-return-type, @typescript-eslint/no-non-null-assertion */
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -8,6 +9,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type {
+  AgencyDashboardQuery,
+  AgencyDashboardResponse,
   AssignTeamMemberRequest,
   CreateBranchRequest,
   CreateClientRequest,
@@ -30,7 +33,7 @@ import type {
   UpdateTeamRequest,
 } from '@gdm/contracts';
 import { type DatabaseConnection, schema } from '@gdm/database';
-import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 
@@ -54,7 +57,77 @@ const integrations = [
   'EMAIL',
   'SMS',
 ] as const;
+const inProgressLeadStatuses = [
+  'CONTACT_ATTEMPT',
+  'ACCEPTED',
+  'CONTACTED',
+  'INTERESTED',
+  'FOLLOW_UP',
+  'SHOWROOM_VISIT',
+  'TEST_RIDE_REQUESTED',
+  'TEST_RIDE_BOOKED',
+  'TEST_RIDE_COMPLETED',
+  'NEGOTIATION',
+  'REOPENED',
+] as const;
 type Tx = Parameters<Parameters<DatabaseConnection['db']['transaction']>[0]>[0];
+
+function nextCalendarDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const next = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + 1));
+  return [
+    String(next.getUTCFullYear()).padStart(4, '0'),
+    String(next.getUTCMonth() + 1).padStart(2, '0'),
+    String(next.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function agencyDashboardBounds(range: AgencyDashboardQuery): { end: Date; start: Date } {
+  if (range.from > range.to)
+    throw new BadRequestException({
+      code: 'VALIDATION_ERROR',
+      details: [],
+      message: 'from must not be later than to.',
+      retryable: false,
+    });
+  const inTimezone = (value: string): Date => {
+    const candidate = new Date(`${value}T00:00:00.000Z`);
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        day: '2-digit',
+        hour: '2-digit',
+        hourCycle: 'h23',
+        minute: '2-digit',
+        month: '2-digit',
+        second: '2-digit',
+        timeZone: range.timezone,
+        year: 'numeric',
+      }).formatToParts(candidate);
+      const part = (type: string) => Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+      const observed = Date.UTC(
+        part('year'),
+        part('month') - 1,
+        part('day'),
+        part('hour'),
+        part('minute'),
+        part('second'),
+      );
+      return new Date(candidate.getTime() - (observed - candidate.getTime()));
+    } catch {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        details: [],
+        message: 'timezone must be a valid IANA time zone.',
+        retryable: false,
+      });
+    }
+  };
+  return { end: inTimezone(nextCalendarDate(range.to)), start: inTimezone(range.from) };
+}
+
+function conversionRate(converted: number, received: number): number {
+  return received === 0 ? 0 : Math.round((converted / received) * 1_000) / 10;
+}
 
 function clientId(context: AuthorizationContext): string {
   if (!context.clientOrganizationId)
@@ -76,6 +149,111 @@ function conflict(message: string): ConflictException {
 @Injectable()
 export class AdministrationService {
   constructor(@Inject(DATABASE_CONNECTION) private readonly connection: DatabaseConnection) {}
+
+  async agencyDashboard(
+    context: AuthorizationContext,
+    query: AgencyDashboardQuery,
+  ): Promise<AgencyDashboardResponse> {
+    if (!context.agencyId || context.clientOrganizationId)
+      throw new ForbiddenException({
+        code: 'SCOPE_DENIED',
+        details: [],
+        message: 'An agency platform context is required.',
+        retryable: false,
+      });
+
+    const { end, start } = agencyDashboardBounds(query);
+    const lead = schema.leadOpportunities;
+    const client = schema.clientOrganizations;
+    const rows = await this.connection.db
+      .select({
+        agencyId: client.agencyId,
+        clientId: client.id,
+        converted: sql<number>`count(${lead.id}) filter (where ${lead.status} = 'BOOKING_CONFIRMED')::integer`,
+        displayName: client.displayName,
+        inProgress: sql<number>`count(${lead.id}) filter (where ${inArray(lead.status, [...inProgressLeadStatuses])})::integer`,
+        leadsReceived: sql<number>`count(${lead.id})::integer`,
+        legalName: client.legalName,
+        lost: sql<number>`count(${lead.id}) filter (where ${lead.status} = 'LOST')::integer`,
+        newLeads: sql<number>`count(${lead.id}) filter (where ${lead.status} = 'NEW')::integer`,
+        pendingReview: sql<number>`count(${lead.id}) filter (where ${lead.status} = 'PENDING_REVIEW')::integer`,
+        rejected: sql<number>`count(${lead.id}) filter (where ${lead.status} = 'REJECTED')::integer`,
+        status: client.status,
+        timezone: client.timezone,
+      })
+      .from(client)
+      .leftJoin(
+        lead,
+        and(
+          eq(lead.clientOrganizationId, client.id),
+          gte(lead.capturedAt, start),
+          lt(lead.capturedAt, end),
+        ),
+      )
+      .where(eq(client.agencyId, context.agencyId))
+      .groupBy(client.id)
+      .orderBy(asc(client.displayName));
+
+    const clients = rows.map((row) => {
+      const received = Number(row.leadsReceived);
+      const converted = Number(row.converted);
+      return {
+        client_organization: {
+          agency_id: row.agencyId,
+          display_name: row.displayName,
+          id: row.clientId,
+          legal_name: row.legalName,
+          status: row.status,
+          timezone: row.timezone,
+        },
+        converted,
+        conversion_rate: conversionRate(converted, received),
+        in_progress: Number(row.inProgress),
+        leads_received: received,
+        lost: Number(row.lost),
+        new: Number(row.newLeads),
+        pending_review: Number(row.pendingReview),
+        rejected: Number(row.rejected),
+      };
+    });
+    const totals = clients.reduce(
+      (summary, item) => ({
+        client_organizations: summary.client_organizations + 1,
+        converted: summary.converted + item.converted,
+        in_progress: summary.in_progress + item.in_progress,
+        leads_received: summary.leads_received + item.leads_received,
+        lost: summary.lost + item.lost,
+        new: summary.new + item.new,
+        pending_review: summary.pending_review + item.pending_review,
+        rejected: summary.rejected + item.rejected,
+      }),
+      {
+        client_organizations: 0,
+        converted: 0,
+        in_progress: 0,
+        leads_received: 0,
+        lost: 0,
+        new: 0,
+        pending_review: 0,
+        rejected: 0,
+      },
+    );
+
+    return {
+      clients,
+      range: {
+        end_at: end.toISOString(),
+        from: query.from,
+        start_at: start.toISOString(),
+        timezone: query.timezone,
+        to: query.to,
+      },
+      totals: {
+        ...totals,
+        conversion_rate: conversionRate(totals.converted, totals.leads_received),
+      },
+    };
+  }
 
   private async audit(
     tx: Tx,
@@ -265,7 +443,11 @@ export class AdministrationService {
       await this.audit(
         tx,
         context,
-        body.status === 'SUSPENDED' ? 'CLIENT_SUSPENDED' : 'CLIENT_REACTIVATED',
+        body.status === 'SUSPENDED'
+          ? 'CLIENT_SUSPENDED'
+          : before.status === 'PENDING'
+            ? 'CLIENT_ACTIVATED'
+            : 'CLIENT_REACTIVATED',
         'client_organization',
         id,
         { status: before.status },

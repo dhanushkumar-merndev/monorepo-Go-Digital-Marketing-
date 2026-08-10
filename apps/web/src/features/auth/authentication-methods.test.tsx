@@ -65,6 +65,10 @@ describe('AuthenticationMethodsScreen', () => {
 
     expect(await screen.findByText('Email and password')).toBeInTheDocument();
     expect(screen.getByText('asha@gmail.com')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Update password' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
     expect(screen.getByRole('button', { name: 'Disconnect Google' })).toBeDisabled();
     expect(screen.getByText(/Connect another valid sign-in method/)).toBeInTheDocument();
   });

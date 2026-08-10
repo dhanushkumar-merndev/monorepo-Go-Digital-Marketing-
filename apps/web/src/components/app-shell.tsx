@@ -1,7 +1,13 @@
 'use client';
 
 import { Badge } from '@gdm/ui/components/badge';
-import { Button } from '@gdm/ui/components/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@gdm/ui/components/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -13,9 +19,7 @@ import {
 import { Separator } from '@gdm/ui/components/separator';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
 import {
-  CarFront,
   Home,
-  Laptop2,
   ListChecks,
   LoaderCircle,
   LogOut,
@@ -30,13 +34,18 @@ import {
   FileBadge2,
   BellRing,
   ChartNoAxesCombined,
+  EllipsisVertical,
   PlugZap,
-  UserRound,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 
+import {
+  AccountSettingsDialog,
+  type AccountSettingsSection,
+} from '@/features/auth/account-settings-dialog';
 import { useAuth } from '@/features/auth/auth-provider';
 import { hasPermission } from '@/features/auth/auth-types';
 import {
@@ -51,63 +60,82 @@ interface AppShellProps {
 
 const navigation = [
   { href: '/', icon: Home, label: 'Overview' },
-  { href: '/leads', icon: ListChecks, label: 'Leads', permission: 'leads.read' },
-  { href: '/telephony', icon: PhoneCall, label: 'Calling', permission: 'telephony.calls.read' },
+  {
+    href: '/leads',
+    icon: ListChecks,
+    label: 'Leads',
+    permission: 'leads.read',
+    clientOperational: true,
+  },
+  {
+    href: '/telephony',
+    icon: PhoneCall,
+    label: 'Calling',
+    permission: 'telephony.calls.read',
+    clientOperational: true,
+  },
   {
     href: '/inbox',
     icon: MessagesSquare,
     label: 'Inbox',
     permission: 'messaging.conversations.read',
+    clientOperational: true,
   },
   {
     href: '/test-rides',
     icon: MapPinned,
     label: 'Test rides',
     permission: 'test_rides.read',
+    clientOperational: true,
   },
   {
     href: '/inventory',
     icon: Warehouse,
     label: 'Inventory',
     permission: 'inventory.units.read',
+    clientOperational: true,
   },
   {
     href: '/bookings',
     icon: ReceiptText,
     label: 'Bookings',
     permission: 'commercial.bookings.read',
+    clientOperational: true,
   },
   {
     href: '/deliveries',
     icon: Truck,
     label: 'Deliveries',
     permission: 'delivery.jobs.read',
+    clientOperational: true,
   },
   {
     href: '/registrations',
     icon: FileBadge2,
     label: 'Registration & RC',
     permission: 'registration.cases.read',
+    clientOperational: true,
   },
   {
     href: '/reminders',
     icon: BellRing,
     label: 'Post-sale reminders',
     permission: 'reminders.read',
+    clientOperational: true,
   },
   {
     href: '/reports',
     icon: ChartNoAxesCombined,
     label: 'Reports & audit',
     permission: 'reports.read',
+    clientOperational: true,
   },
-  { href: '/integrations', icon: PlugZap, label: 'Integrations', permission: 'integrations.read' },
-  { href: '/profile', icon: UserRound, label: 'Profile', permission: 'account.profile.read' },
   {
-    href: '/sessions',
-    icon: Laptop2,
-    label: 'Active sessions',
-    permission: 'account.sessions.read',
+    href: '/integrations',
+    icon: PlugZap,
+    label: 'Integrations',
+    permission: 'integrations.read',
+    clientOperational: true,
   },
   {
     href: '/administration',
@@ -117,18 +145,37 @@ const navigation = [
   },
 ] as const;
 
+const avatarTones = [
+  'bg-sky-600 text-white',
+  'bg-violet-600 text-white',
+  'bg-emerald-600 text-white',
+  'bg-rose-600 text-white',
+  'bg-amber-600 text-white',
+  'bg-cyan-700 text-white',
+] as const;
+
+function avatarTone(seed: string): (typeof avatarTones)[number] {
+  let hash = 0;
+  for (const character of seed) hash = (hash * 31 + (character.codePointAt(0) ?? 0)) | 0;
+  return avatarTones[Math.abs(hash) % avatarTones.length] ?? avatarTones[0];
+}
+
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <span
-        aria-hidden="true"
-        className="bg-primary text-primary-foreground grid size-10 shrink-0 place-items-center rounded-xl shadow-[var(--shadow-sm)]"
-      >
-        <CarFront className="size-5" strokeWidth={2} />
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-white shadow-[var(--shadow-sm)]">
+        <Image
+          alt="Go Digital Marketing logo"
+          className="size-10 object-cover"
+          height={40}
+          priority
+          src="/logo.png"
+          width={40}
+        />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold">Go Digital</span>
-        <span className="text-muted-foreground block truncate text-xs">Automobile CRM</span>
+        <span className="block text-sm leading-5 font-semibold">Go Digital Marketing</span>
+        <span className="text-muted-foreground block truncate text-xs">Agency platform</span>
       </span>
     </div>
   );
@@ -155,6 +202,16 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   const membership = session.currentMembership;
+  const platformOnly = membership.roleCode === 'AGENCY_ADMIN' && session.supportElevation === null;
+  const workspaceName =
+    session.supportElevation?.clientOrganization.name ??
+    (platformOnly ? 'Platform workspace' : membership.clientOrganization.name);
+  const workspaceLabel =
+    session.supportElevation === null
+      ? platformOnly
+        ? 'Platform access'
+        : membership.roleName
+      : 'Temporary support access';
 
   return (
     <div className="min-h-screen bg-[var(--canvas)] md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
@@ -170,27 +227,18 @@ export function AppShell({ children }: AppShellProps) {
           <Brand />
         </div>
         <div className="border-b border-[var(--sidebar-border)] p-4">
-          <TenantSelector />
+          <WorkspaceContext />
         </div>
-        <nav aria-label="Primary navigation" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        <nav
+          aria-label="Primary navigation"
+          className="flex-1 space-y-1 overflow-y-auto px-3 py-4"
+          data-scrollbar="sidebar"
+        >
           <NavigationLinks onNavigate={() => undefined} pathname={pathname} />
           <SupportElevationControl />
         </nav>
         <div className="border-t border-[var(--sidebar-border)] p-4">
-          <UserSummary />
-          <Button
-            className="mt-3 w-full justify-start text-[var(--sidebar-foreground)] hover:bg-white/10 hover:text-white"
-            disabled={loggingOut}
-            onClick={() => void logout()}
-            variant="ghost"
-          >
-            {loggingOut ? (
-              <LoaderCircle aria-hidden="true" className="animate-spin" data-icon="inline-start" />
-            ) : (
-              <LogOut aria-hidden="true" data-icon="inline-start" />
-            )}
-            {loggingOut ? 'Signing out' : 'Sign out'}
-          </Button>
+          <UserSummary loggingOut={loggingOut} onLogout={() => void logout()} />
         </div>
       </aside>
 
@@ -201,14 +249,18 @@ export function AppShell({ children }: AppShellProps) {
               <Brand />
             </div>
             <div className="hidden min-w-0 md:block">
-              <p className="truncate text-sm font-semibold">{membership.clientOrganization.name}</p>
-              <p className="text-muted-foreground truncate text-xs">{membership.roleName}</p>
+              <p className="truncate text-sm font-semibold">{workspaceName}</p>
+              <p className="text-muted-foreground truncate text-xs">{workspaceLabel}</p>
             </div>
             <div className="flex items-center gap-2">
               {session.supportElevation === null ? (
-                <StatusBadge tone="success">Standard access</StatusBadge>
+                <StatusBadge tone="success">
+                  {session.currentMembership.roleCode === 'AGENCY_ADMIN'
+                    ? 'Agency mode'
+                    : 'Client access'}
+                </StatusBadge>
               ) : (
-                <StatusBadge tone="warning">Support elevated</StatusBadge>
+                <StatusBadge tone="warning">Client support active</StatusBadge>
               )}
               <Dialog onOpenChange={setMobileOpen} open={mobileOpen}>
                 <DialogTrigger
@@ -223,7 +275,7 @@ export function AppShell({ children }: AppShellProps) {
                     <DialogDescription>Signed in as {session.user.displayName}.</DialogDescription>
                   </DialogHeader>
                   <div className="mt-6">
-                    <TenantSelector presentation="full" />
+                    <WorkspaceContext presentation="full" />
                   </div>
                   <Separator className="my-5" />
                   <nav aria-label="Mobile navigation" className="space-y-1">
@@ -232,24 +284,7 @@ export function AppShell({ children }: AppShellProps) {
                   </nav>
                   <div className="mt-auto pt-6">
                     <Separator className="mb-5" />
-                    <UserSummary />
-                    <Button
-                      className="mt-3 w-full justify-start"
-                      disabled={loggingOut}
-                      onClick={() => void logout()}
-                      variant="outline"
-                    >
-                      {loggingOut ? (
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="animate-spin"
-                          data-icon="inline-start"
-                        />
-                      ) : (
-                        <LogOut aria-hidden="true" data-icon="inline-start" />
-                      )}
-                      {loggingOut ? 'Signing out' : 'Sign out'}
-                    </Button>
+                    <UserSummary loggingOut={loggingOut} onLogout={() => void logout()} />
                   </div>
                 </DialogContent>
               </Dialog>
@@ -269,10 +304,13 @@ export function AppShell({ children }: AppShellProps) {
 
 function NavigationLinks({ onNavigate, pathname }: { onNavigate(): void; pathname: string }) {
   const session = useAuth().session;
+  const platformOnly =
+    session?.currentMembership?.roleCode === 'AGENCY_ADMIN' && session.supportElevation === null;
   return navigation.map((item) => {
     if ('permission' in item && (session === null || !hasPermission(session, item.permission))) {
       return null;
     }
+    if ('clientOperational' in item && item.clientOperational && platformOnly) return null;
     const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
     const Icon = item.icon;
     return (
@@ -294,20 +332,47 @@ function NavigationLinks({ onNavigate, pathname }: { onNavigate(): void; pathnam
   });
 }
 
-function UserSummary() {
+function WorkspaceContext({ presentation = 'compact' }: { presentation?: 'compact' | 'full' }) {
   const session = useAuth().session;
+  if (session === null || session.currentMembership === null) return null;
+
+  const support = session.supportElevation;
+  const isAgencyAdmin = session.currentMembership.roleCode === 'AGENCY_ADMIN';
+  if (!isAgencyAdmin) return <TenantSelector presentation={presentation} />;
+
+  const label = support === null ? 'Platform workspace' : 'Support client';
+  const name = support === null ? 'Agency dashboard' : support.clientOrganization.name;
+  return (
+    <div className="min-w-0">
+      <p className="text-muted-foreground text-[0.6875rem] font-medium tracking-wide uppercase">
+        {label}
+      </p>
+      <p className="truncate text-sm font-semibold">{name}</p>
+    </div>
+  );
+}
+
+function UserSummary({ loggingOut, onLogout }: { loggingOut: boolean; onLogout(): void }) {
+  const session = useAuth().session;
+  const requestedSection = accountSettingsSectionFromLocation();
+  const [settingsOpen, setSettingsOpen] = useState(requestedSection !== null);
+  const [settingsSection, setSettingsSection] = useState<AccountSettingsSection>(
+    requestedSection ?? 'profile',
+  );
+
   if (session === null || session.currentMembership === null) return null;
   const initials = session.user.displayName
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
+  const tone = avatarTone(session.user.email);
 
   return (
     <div className="flex min-w-0 items-center gap-3">
       <span
         aria-hidden="true"
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-white/12 text-xs font-semibold text-white"
+        className={`grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold ${tone}`}
       >
         {initials || 'U'}
       </span>
@@ -315,9 +380,77 @@ function UserSummary() {
         <p className="truncate text-sm font-semibold">{session.user.displayName}</p>
         <p className="truncate text-xs text-[var(--sidebar-muted)]">{session.user.email}</p>
       </div>
-      <Badge className="max-w-24 truncate" variant="outline">
-        {session.currentMembership.roleName}
-      </Badge>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Open account menu"
+          className="hover:bg-muted/20 grid size-8 shrink-0 place-items-center rounded-md text-current"
+        >
+          <EllipsisVertical aria-hidden="true" className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72" side="right">
+          <div className="flex items-start gap-3 px-2.5 py-2">
+            <span
+              aria-hidden="true"
+              className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-semibold ${tone}`}
+            >
+              {initials || 'U'}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{session.user.displayName}</p>
+              <p className="text-muted-foreground truncate text-xs">{session.user.email}</p>
+              <Badge className="mt-2" variant="secondary">
+                {session.currentMembership.roleName}
+              </Badge>
+            </div>
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              setSettingsSection('profile');
+              setSettingsOpen(true);
+            }}
+          >
+            <Settings2 aria-hidden="true" />
+            Account settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+            disabled={loggingOut}
+            onClick={onLogout}
+          >
+            {loggingOut ? (
+              <LoaderCircle aria-hidden="true" className="animate-spin" />
+            ) : (
+              <LogOut aria-hidden="true" />
+            )}
+            {loggingOut ? 'Signing out' : 'Sign out'}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AccountSettingsDialog
+        initialSection={settingsSection}
+        key={settingsSection}
+        onOpenChange={(nextOpen) => {
+          setSettingsOpen(nextOpen);
+          if (!nextOpen && window.location.search.includes('settings=')) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('settings');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+          }
+        }}
+        open={settingsOpen}
+      />
     </div>
   );
+}
+
+function accountSettingsSectionFromLocation(): AccountSettingsSection | null {
+  if (typeof window === 'undefined') return null;
+  const requestedSection = new URLSearchParams(window.location.search).get('settings');
+  return requestedSection === 'profile' ||
+    requestedSection === 'methods' ||
+    requestedSection === 'mfa' ||
+    requestedSection === 'sessions'
+    ? requestedSection
+    : null;
 }

@@ -8,6 +8,8 @@ import { Building2, KeyRound, Network, ShieldCheck, UsersRound } from 'lucide-re
 import type { ReactNode } from 'react';
 
 import { FoundationStatus } from '@/components/foundation-status';
+import { AgencyKpiDashboard } from '@/features/administration/agency-kpi-dashboard';
+import { hasPermission } from '@/features/auth/auth-types';
 import { useAuth } from '@/features/auth/auth-provider';
 
 export default function SecureOverviewPage() {
@@ -15,6 +17,12 @@ export default function SecureOverviewPage() {
   const membership = session?.currentMembership;
 
   if (session === null || membership === undefined || membership === null) return null;
+
+  const platformOnly = membership.roleCode === 'AGENCY_ADMIN' && session.supportElevation === null;
+
+  if (platformOnly) {
+    return <PlatformOverview displayName={session.user.displayName} />;
+  }
 
   return (
     <div className="space-y-8">
@@ -124,6 +132,77 @@ export default function SecureOverviewPage() {
           </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Live API health; no dealership workflow or integration status is fabricated here.
+          </p>
+        </div>
+        <div className="max-w-2xl">
+          <FoundationStatus />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PlatformOverview({ displayName }: { displayName: string }) {
+  const session = useAuth().session;
+  const canManageClients = session !== null && hasPermission(session, 'platform.clients.manage');
+
+  return (
+    <div className="space-y-7">
+      <section aria-labelledby="overview-heading" className="space-y-2">
+        <Badge variant="secondary">Agency platform</Badge>
+        <div className="space-y-1">
+          <h1 className="text-3xl font-semibold tracking-tight text-balance" id="overview-heading">
+            Agency overview
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Welcome, {displayName}. Monitor client performance and manage secure platform access.
+          </p>
+        </div>
+      </section>
+
+      <AgencyKpiDashboard />
+
+      <section aria-labelledby="platform-access-heading" className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold" id="platform-access-heading">
+            Platform controls
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Manage client lifecycle from Administration. Client operations remain unavailable in
+            this platform context.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <AccessCard
+            description={
+              canManageClients
+                ? 'Create, suspend and reactivate client organizations.'
+                : 'Client lifecycle permission is not assigned.'
+            }
+            icon={<Building2 aria-hidden="true" className="size-4" />}
+            title="Client organizations"
+          />
+          <AccessCard
+            description="Request reasoned, time-limited support access before viewing a client’s records."
+            icon={<ShieldCheck aria-hidden="true" className="size-4" />}
+            title="Support access"
+          />
+          <AccessCard
+            description="Platform actions and temporary access are retained in the immutable audit trail."
+            icon={<KeyRound aria-hidden="true" className="size-4" />}
+            title="Audit & security"
+          />
+        </div>
+      </section>
+
+      <section aria-labelledby="connectivity-heading" className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold" id="connectivity-heading">
+            Platform connectivity
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Live API health. Support tickets and credential inventory require dedicated platform
+            APIs before they can be displayed safely.
           </p>
         </div>
         <div className="max-w-2xl">

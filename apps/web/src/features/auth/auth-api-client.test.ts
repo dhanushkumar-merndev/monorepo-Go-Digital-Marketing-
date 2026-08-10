@@ -204,6 +204,103 @@ describe('AuthApiClient', () => {
     expect(onExpired).toHaveBeenCalledWith(expect.objectContaining({ code: 'SESSION_REVOKED' }));
   });
 
+  it('does not treat a generic authentication failure as an expired session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => authError('UNAUTHENTICATED')),
+    );
+    const onExpired = vi.fn();
+    const client = new AuthApiClient();
+    client.setAccessToken(accessToken);
+    client.setSessionExpiredHandler(onExpired);
+
+    await expect(client.request('/me')).rejects.toMatchObject({
+      code: 'UNAUTHENTICATED',
+      status: 401,
+    });
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it('keeps a profile error inline while a new sign-in is being completed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => authError('SESSION_REVOKED')),
+    );
+    const onExpired = vi.fn();
+    const client = new AuthApiClient();
+    client.setAccessToken(accessToken);
+    client.setSessionExpiredHandler(onExpired);
+
+    await expect(client.request('/me', {}, { notifySessionExpired: false })).rejects.toMatchObject({
+      code: 'SESSION_REVOKED',
+      status: 401,
+    });
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it('uses the current Supabase browser session for protected requests', async () => {
+    const browserAccessToken = 'b'.repeat(48);
+    const getSession = vi.fn(async () => ({
+      data: { session: { access_token: browserAccessToken } },
+    }));
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${browserAccessToken}`);
+      return jsonResponse({ ok: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new AuthApiClient();
+    Object.defineProperty(client, 'supabase', { value: { auth: { getSession } } });
+    client.setAccessToken('stale-access-token');
+
+    await expect(client.request<{ ok: boolean }>('/me')).resolves.toEqual({ ok: true });
+    expect(getSession).toHaveBeenCalledOnce();
+  });
+
+  it('does not route an unlinked Supabase account to the session-expired screen', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => authError('CRM_ACCOUNT_NOT_LINKED')),
+    );
+    const onExpired = vi.fn();
+    const client = new AuthApiClient();
+    client.setAccessToken(accessToken);
+    client.setSessionExpiredHandler(onExpired);
+
+    await expect(client.request('/me')).rejects.toMatchObject({
+      code: 'CRM_ACCOUNT_NOT_LINKED',
+      status: 401,
+    });
+    expect(onExpired).not.toHaveBeenCalled();
+  });
+
+  it('uses a clear label for an older session that has no saved device details', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          sessions: [
+            {
+              client_type: 'web',
+              created_at: now,
+              current: false,
+              device_id: null,
+              device_name: null,
+              device_platform: 'unknown',
+              expires_at: later,
+              id: sessionId,
+              last_seen_at: now,
+              revoked_at: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(new AuthApiClient().listSessions()).resolves.toEqual([
+      expect.objectContaining({ deviceName: 'Previous web session' }),
+    ]);
+  });
+
   it('signals an expired support context on a protected 403 before rejecting the request', async () => {
     vi.stubGlobal(
       'fetch',

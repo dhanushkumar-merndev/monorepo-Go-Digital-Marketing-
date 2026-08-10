@@ -99,6 +99,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   const [error, setError] = useState<ApiClientError | null>(null);
   const sessionRef = useRef<AuthSession | null>(null);
   const contextVersionRef = useRef(0);
+  const authenticationAttemptRef = useRef(false);
   const supportRestoreRef = useRef<Promise<void> | null>(null);
 
   const transitionSession = useCallback(
@@ -121,6 +122,11 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
 
   const expireSession = useCallback(
     (reason: ApiClientError) => {
+      // A stale initialization request can finish after a fresh password/Google
+      // attempt starts. The active attempt owns its error UI and must not be
+      // replaced by the session-ended route from that older request.
+      if (authenticationAttemptRef.current) return;
+
       client.clearAccessToken();
       transitionSession(null, { forceReset: true });
       setError(null);
@@ -235,11 +241,13 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
   }, [restoreAgencyContext, session?.supportElevation]);
 
   const initialize = useCallback(async () => {
+    const initializationVersion = contextVersionRef.current;
     setError(null);
     setStatus('loading');
 
     try {
       const restored = await client.restoreSession();
+      if (contextVersionRef.current !== initializationVersion) return;
       if (!restored) {
         transitionSession(null, { forceReset: true });
         setStatus('anonymous');
@@ -247,6 +255,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       }
 
       const restoredSession = await client.me();
+      if (contextVersionRef.current !== initializationVersion) return;
       if (restoredSession.user.status === 'suspended') {
         expireSession(new ApiClientError('This account is suspended.', 403, 'ACCOUNT_SUSPENDED'));
         return;
@@ -254,6 +263,7 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
       transitionSession(restoredSession);
       setStatus('authenticated');
     } catch (caught) {
+      if (contextVersionRef.current !== initializationVersion) return;
       if (caught instanceof ApiClientError && caught.status === 401) {
         transitionSession(null, { forceReset: true });
         setStatus('anonymous');
@@ -286,20 +296,41 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
 
   const login = useCallback(
     async (input: LoginInput, returnTo?: string) => {
-      const result = await client.login(input);
-      if ('status' in result) return result;
-      finishLogin(result, returnTo);
-      return null;
+      authenticationAttemptRef.current = true;
+      contextVersionRef.current += 1;
+      try {
+        const result = await client.login(input);
+        if ('status' in result) return result;
+        finishLogin(result, `/auth/mfa?returnTo=${encodeURIComponent(safeReturnPath(returnTo))}`);
+        return null;
+      } catch (caught) {
+        const reason = toApiClientError(caught);
+        if (reason.code === 'MFA_REQUIRED') {
+          transitionSession(null, { forceReset: true });
+          setStatus('anonymous');
+          router.replace(`/auth/mfa?returnTo=${encodeURIComponent(safeReturnPath(returnTo))}`);
+          return null;
+        }
+        throw caught;
+      } finally {
+        authenticationAttemptRef.current = false;
+      }
     },
-    [client, finishLogin],
+    [client, finishLogin, router, transitionSession],
   );
 
   const loginWithGoogle = useCallback(
     async (input: GoogleCredentialInput, returnTo?: string) => {
-      const result = await client.loginWithGoogle(input);
-      if ('status' in result) return result;
-      finishLogin(result, returnTo);
-      return null;
+      authenticationAttemptRef.current = true;
+      contextVersionRef.current += 1;
+      try {
+        const result = await client.loginWithGoogle(input);
+        if ('status' in result) return result;
+        finishLogin(result, returnTo);
+        return null;
+      } finally {
+        authenticationAttemptRef.current = false;
+      }
     },
     [client, finishLogin],
   );

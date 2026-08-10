@@ -1,4 +1,5 @@
 import { publicEnvironment } from '@/lib/env';
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import {
   authenticationMethodsResponseSchema,
   createSupportElevationRequestSchema,
@@ -55,12 +56,28 @@ interface ApiErrorBody {
   };
 }
 
+function logTemporaryGoogleSignInDiagnostic(
+  event: string,
+  details: Record<string, boolean | string | null>,
+): void {
+  if (process.env.NODE_ENV !== 'development') return;
+  // TEMPORARY Google/Supabase sign-in diagnostic. Remove after the current
+  // development sign-in investigation. Never include tokens, nonces, or user data.
+  // eslint-disable-next-line no-console -- Intentionally temporary development-only diagnostic.
+  console.info(`[Temporary Google sign-in diagnostic] ${event}`, details);
+}
+
 interface RequestOptions {
   allowRefresh?: boolean;
   authenticated?: boolean;
+  notifySessionExpired?: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
+
+function isEndedSessionError(error: ApiClientError): boolean {
+  return error.code === 'SESSION_EXPIRED' || error.code === 'SESSION_REVOKED';
+}
 
 export class ApiClientError extends Error {
   constructor(
@@ -78,6 +95,7 @@ export class ApiClientError extends Error {
 
 export class AuthApiClient {
   private accessToken: string | null = null;
+  private readonly supabase = getSupabaseBrowserClient();
   private expiredNotified = false;
   private refreshPromise: Promise<boolean> | null = null;
   private sessionExpiredHandler: ((reason: ApiClientError) => void) | null = null;
@@ -102,22 +120,35 @@ export class AuthApiClient {
 
   async request<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<T> {
     const authenticated = options.authenticated ?? true;
+    const notifySessionExpired = options.notifySessionExpired ?? true;
     const response = await this.fetch(path, init, authenticated);
 
     if (response.status === 401 && authenticated) {
       const reason = await this.errorFromResponse(response.clone());
+
+      if (reason.code === 'CRM_ACCOUNT_NOT_LINKED') {
+        this.clearAccessToken();
+        if (this.supabase) await this.supabase.auth.signOut();
+        return this.parseResponse<T>(response);
+      }
+
       const canRefresh = reason.code === 'SESSION_EXPIRED' && (options.allowRefresh ?? true);
 
       if (canRefresh && (await this.refreshAccessToken())) {
         const retriedResponse = await this.fetch(path, init, true);
         if (retriedResponse.status === 401) {
-          this.notifySessionExpired(await this.errorFromResponse(retriedResponse.clone()));
+          const retriedReason = await this.errorFromResponse(retriedResponse.clone());
+          if (notifySessionExpired && isEndedSessionError(retriedReason)) {
+            this.notifySessionExpired(retriedReason);
+          }
         }
         await this.notifySupportElevationExpired(retriedResponse);
         return this.parseResponse<T>(retriedResponse);
       }
 
-      this.notifySessionExpired(reason);
+      if (notifySessionExpired && isEndedSessionError(reason)) {
+        this.notifySessionExpired(reason);
+      }
     }
 
     if (authenticated) await this.notifySupportElevationExpired(response);
@@ -126,10 +157,27 @@ export class AuthApiClient {
   }
 
   async restoreSession(): Promise<boolean> {
+    if (this.supabase) {
+      const { data } = await this.supabase.auth.getSession();
+      if (!data.session) return false;
+      this.setAccessToken(data.session.access_token);
+      return true;
+    }
     return this.refreshAccessToken();
   }
 
   async login(input: LoginInput): Promise<AuthSession | MfaLoginChallenge> {
+    if (this.supabase) {
+      const { data, error } = await this.supabase.auth.signInWithPassword({
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+      });
+      if (error || !data.session) {
+        throw new ApiClientError('The email or password is incorrect.', 401, 'INVALID_CREDENTIALS');
+      }
+      this.setAccessToken(data.session.access_token);
+      return this.me({ notifySessionExpired: false });
+    }
     const response = loginResponseSchema.parse(
       await this.request<unknown>(
         '/auth/login',
@@ -166,6 +214,30 @@ export class AuthApiClient {
   }
 
   async loginWithGoogle(input: GoogleCredentialInput): Promise<AuthSession | MfaLoginChallenge> {
+    if (this.supabase) {
+      logTemporaryGoogleSignInDiagnostic('Google credential received', {
+        has_challenge_id: input.challengeId.length > 0,
+        has_nonce: Boolean(input.nonce),
+      });
+      const { data, error } = await this.supabase.auth.signInWithIdToken({
+        ...(input.nonce ? { nonce: input.nonce } : {}),
+        provider: 'google',
+        token: input.idToken,
+      });
+      logTemporaryGoogleSignInDiagnostic('Supabase Google sign-in response', {
+        error_code: error?.code ?? null,
+        has_session: Boolean(data.session),
+      });
+      if (error || !data.session) {
+        throw new ApiClientError(
+          error?.message ?? 'Google did not return a usable sign-in session.',
+          401,
+          'GOOGLE_AUTH_FAILED',
+        );
+      }
+      this.setAccessToken(data.session.access_token);
+      return this.me({ notifySessionExpired: false });
+    }
     const request = googleLoginRequestSchema.parse({
       challenge_id: input.challengeId,
       client_type: 'web',
@@ -217,7 +289,10 @@ export class AuthApiClient {
       ),
     );
     this.consumeAccessToken(response);
-    return { recoveryCodes: response.recovery_codes, session: await this.me() };
+    return {
+      recoveryCodes: response.recovery_codes,
+      session: await this.me({ notifySessionExpired: false }),
+    };
   }
 
   async verifyMfa(
@@ -237,7 +312,7 @@ export class AuthApiClient {
       ...(response.replacement_recovery_code
         ? { replacementRecoveryCode: response.replacement_recovery_code }
         : {}),
-      session: await this.me(),
+      session: await this.me({ notifySessionExpired: false }),
     };
   }
 
@@ -287,14 +362,14 @@ export class AuthApiClient {
     };
   }
 
-  async me(): Promise<AuthSession> {
+  async me(options: Pick<RequestOptions, 'notifySessionExpired'> = {}): Promise<AuthSession> {
     const session = normalizeAuthSession(
-      meResponseSchema.parse(await this.request<unknown>('/me')),
+      meResponseSchema.parse(await this.request<unknown>('/me', {}, options)),
     );
 
     if (session.permissions.includes('platform.support_elevation.manage')) {
       const response = clientOrganizationListResponseSchema.parse(
-        await this.request<unknown>('/clients'),
+        await this.request<unknown>('/clients', {}, options),
       );
       session.supportTargets = response.client_organizations
         .filter((client) => client.status === 'ACTIVE')
@@ -314,6 +389,7 @@ export class AuthApiClient {
         ),
       );
     } finally {
+      if (this.supabase) await this.supabase.auth.signOut();
       this.clearAccessToken();
     }
   }
@@ -328,6 +404,7 @@ export class AuthApiClient {
         ),
       );
     } finally {
+      if (this.supabase) await this.supabase.auth.signOut({ scope: 'global' });
       this.clearAccessToken();
     }
   }
@@ -413,6 +490,19 @@ export class AuthApiClient {
 
     this.refreshPromise = (async () => {
       try {
+        if (this.supabase) {
+          const { data } = await this.supabase.auth.getSession();
+          if (!data.session) return false;
+          const expiresSoon =
+            data.session.expires_at === undefined ||
+            data.session.expires_at * 1_000 - Date.now() < 30_000;
+          const refreshed = expiresSoon
+            ? await this.supabase.auth.refreshSession()
+            : { data, error: null };
+          if (refreshed.error || !refreshed.data.session) return false;
+          this.setAccessToken(refreshed.data.session.access_token);
+          return true;
+        }
         const response = await this.fetch(
           '/auth/refresh',
           { body: JSON.stringify({}), method: 'POST' },
@@ -477,7 +567,7 @@ export class AuthApiClient {
   ): Promise<AuthSession | MfaLoginChallenge> {
     if (response.status === 'AUTHENTICATED') {
       this.consumeAccessToken(response);
-      return this.me();
+      return this.me({ notifySessionExpired: false });
     }
     return {
       challengeExpiresAt: response.challenge_expires_at,
@@ -488,6 +578,16 @@ export class AuthApiClient {
   }
 
   private async fetch(path: string, init: RequestInit, authenticated: boolean): Promise<Response> {
+    // Supabase persists its browser session independently of this in-memory client.
+    // Re-read it before a protected request so a completed OAuth callback cannot race
+    // with an earlier expired-session request and leave /me without a bearer token.
+    if (authenticated && this.supabase) {
+      const { data } = await this.supabase.auth.getSession();
+      if (data.session && data.session.access_token !== this.accessToken) {
+        this.setAccessToken(data.session.access_token);
+      }
+    }
+
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
 
@@ -697,9 +797,7 @@ function normalizeSessionDevice(value: unknown): SessionDevice {
   const result: SessionDevice = {
     createdAt: requiredString(record, 'created_at', 'createdAt'),
     current: record.current === true || record.is_current === true || record.isCurrent === true,
-    deviceName:
-      readString(record, 'device_name', 'deviceName') ??
-      humanizeCode(readString(record, 'device_platform', 'devicePlatform') ?? 'unknown device'),
+    deviceName: readString(record, 'device_name', 'deviceName') ?? fallbackSessionName(record),
     expiresAt: requiredString(record, 'expires_at', 'expiresAt'),
     id: requiredString(record, 'id', 'session_id', 'sessionId'),
     lastSeenAt: requiredString(record, 'last_seen_at', 'lastSeenAt', 'updated_at', 'updatedAt'),
@@ -711,6 +809,12 @@ function normalizeSessionDevice(value: unknown): SessionDevice {
   if (revokedAt !== undefined) result.revokedAt = revokedAt;
   if (userAgent !== undefined) result.userAgent = userAgent;
   return result;
+}
+
+function fallbackSessionName(record: Record<string, unknown>): string {
+  const platform = readString(record, 'device_platform', 'devicePlatform');
+  if (platform && platform.toLowerCase() !== 'unknown') return humanizeCode(platform);
+  return 'Previous web session';
 }
 
 function normalizeGoogleChallenge(value: unknown): GoogleAuthChallenge {

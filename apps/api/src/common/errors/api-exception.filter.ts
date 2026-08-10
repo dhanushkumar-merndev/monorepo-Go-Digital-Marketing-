@@ -46,6 +46,54 @@ function statusCodeFor(exception: unknown): number {
     : HttpStatus.INTERNAL_SERVER_ERROR;
 }
 
+const MAX_LOGGED_DATABASE_TEXT = 500;
+
+/**
+ * A DrizzleQueryError's own message is only "Failed query", so a bare
+ * exception_type tells an operator nothing. The actionable Postgres fields sit
+ * on its cause. Bound params and the driver's `detail` are deliberately left
+ * out: both echo row values, and these tables carry token hashes and MFA
+ * secrets.
+ */
+function databaseErrorContext(exception: unknown): Record<string, string> {
+  if (!(exception instanceof Error)) {
+    return {};
+  }
+
+  const context: Record<string, string> = {};
+  const { query } = exception as { query?: unknown };
+
+  if (typeof query === 'string') {
+    context.db_query = query.slice(0, MAX_LOGGED_DATABASE_TEXT);
+  }
+
+  const cause: unknown = exception.cause;
+
+  if (!isRecord(cause)) {
+    return context;
+  }
+
+  const fields: Record<string, unknown> = {
+    db_code: cause.code,
+    db_column: cause.column_name,
+    db_constraint: cause.constraint_name,
+    db_routine: cause.routine,
+    db_table: cause.table_name,
+  };
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (typeof value === 'string') {
+      context[key] = value;
+    }
+  }
+
+  if (cause instanceof Error) {
+    context.db_message = cause.message.slice(0, MAX_LOGGED_DATABASE_TEXT);
+  }
+
+  return context;
+}
+
 function defaultMessage(statusCode: number): string {
   if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
     return 'An unexpected error occurred.';
@@ -153,6 +201,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
       method: request.method,
       path,
       status_code: statusCode,
+      ...databaseErrorContext(exception),
     };
 
     if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {

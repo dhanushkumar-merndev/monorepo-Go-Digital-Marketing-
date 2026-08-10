@@ -9,6 +9,12 @@ export function googleLoginErrorMessage(error: unknown): AuthenticationErrorMess
   const code = error instanceof ApiClientError ? error.code : undefined;
 
   switch (code) {
+    case 'CRM_ACCOUNT_NOT_LINKED':
+      return {
+        description:
+          'This Google account is not linked to a Go Digital CRM account. Contact your agency administrator to request access or link your account.',
+        title: 'Google account not linked',
+      };
     case 'GOOGLE_ACCOUNT_NOT_INVITED':
       return {
         description:

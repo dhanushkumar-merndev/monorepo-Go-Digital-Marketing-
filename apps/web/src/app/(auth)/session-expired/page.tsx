@@ -1,9 +1,8 @@
 import { Alert, AlertDescription, AlertTitle } from '@gdm/ui/components/alert';
-import { buttonVariants } from '@gdm/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@gdm/ui/components/card';
-import { ClockAlert, LogIn, UserX } from 'lucide-react';
-import Link from 'next/link';
+import { ClockAlert, UserX } from 'lucide-react';
 
+import { ClearSessionSignInButton } from '@/features/auth/clear-session-sign-in-button';
 import { safeReturnPath } from '@/features/auth/safe-return-path';
 
 export const metadata = { title: 'Session ended' };
@@ -49,10 +48,10 @@ export default async function SessionExpiredPage({
               : 'The local access token and cached protected queries have been cleared.'}
           </AlertDescription>
         </Alert>
-        <Link className={buttonVariants({ className: 'w-full' })} href={loginHref}>
-          <LogIn aria-hidden="true" data-icon="inline-start" />
-          {disabled ? 'Return to sign in' : 'Sign in again'}
-        </Link>
+        <ClearSessionSignInButton
+          href={loginHref}
+          label={disabled ? 'Return to sign in' : 'Sign in again'}
+        />
       </CardContent>
     </Card>
   );

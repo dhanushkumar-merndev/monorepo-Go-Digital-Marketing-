@@ -94,6 +94,212 @@ describe('Phase 2 administration business rules', () => {
       .from(schema.auditEvents)
       .where(eq(schema.auditEvents.action, 'CLIENT_CREATED'));
     assert.equal(audit?.newSummary?.status, 'PENDING');
+
+    await service.setClientStatus(agencyContext(), result.client_organization.id, {
+      reason: 'Agency approved the client for onboarding.',
+      status: 'ACTIVE',
+    });
+    const [activationAudit] = await database.db
+      .select()
+      .from(schema.auditEvents)
+      .where(eq(schema.auditEvents.action, 'CLIENT_ACTIVATED'));
+    assert.equal(activationAudit?.oldSummary?.status, 'PENDING');
+    assert.equal(activationAudit?.newSummary?.status, 'ACTIVE');
+  });
+
+  it('returns date-bound lead KPIs for only the authenticated agency clients', async () => {
+    database = await createMigratedPGliteTestDatabase();
+    const otherAgencyId = '10000000-0000-4000-8000-000000000099';
+    const secondClientId = '20000000-0000-4000-8000-000000000002';
+    const outsideClientId = '20000000-0000-4000-8000-000000000099';
+    const firstBranchId = '30000000-0000-4000-8000-000000000001';
+    const secondBranchId = '30000000-0000-4000-8000-000000000002';
+    const outsideBranchId = '30000000-0000-4000-8000-000000000099';
+    const firstContactId = '40000000-0000-4000-8000-000000000001';
+    const secondContactId = '40000000-0000-4000-8000-000000000002';
+    const outsideContactId = '40000000-0000-4000-8000-000000000099';
+    const capturedAt = new Date('2026-08-05T06:00:00.000Z');
+    const slaWarningAt = new Date('2026-08-05T06:10:00.000Z');
+    const slaDueAt = new Date('2026-08-05T06:15:00.000Z');
+
+    await database.db.insert(schema.agencies).values([
+      { id: agencyId, code: 'GDM', legalName: 'Go Digital', displayName: 'Go Digital' },
+      {
+        id: otherAgencyId,
+        code: 'OTHER',
+        legalName: 'Other Agency',
+        displayName: 'Other Agency',
+      },
+    ]);
+    await database.db.insert(schema.clientOrganizations).values([
+      {
+        agencyId,
+        code: 'NORTHSTAR',
+        displayName: 'Northstar Motors',
+        id: clientId,
+        legalName: 'Northstar Motors Private Limited',
+        status: 'ACTIVE',
+      },
+      {
+        agencyId,
+        code: 'SOUTHSIDE',
+        displayName: 'Southside Motors',
+        id: secondClientId,
+        legalName: 'Southside Motors Private Limited',
+        status: 'PENDING',
+      },
+      {
+        agencyId: otherAgencyId,
+        code: 'OUTSIDE',
+        displayName: 'Outside Motors',
+        id: outsideClientId,
+        legalName: 'Outside Motors Private Limited',
+        status: 'ACTIVE',
+      },
+    ]);
+    await database.db.insert(schema.branches).values([
+      { clientOrganizationId: clientId, code: 'MAIN', id: firstBranchId, name: 'Main' },
+      { clientOrganizationId: secondClientId, code: 'MAIN', id: secondBranchId, name: 'Main' },
+      { clientOrganizationId: outsideClientId, code: 'MAIN', id: outsideBranchId, name: 'Main' },
+    ]);
+    await database.db.insert(schema.contacts).values([
+      {
+        clientOrganizationId: clientId,
+        displayName: 'Northstar Lead',
+        id: firstContactId,
+        primaryPhoneE164: '+919900000001',
+        primaryPhoneLookupHash: 'northstar-hash',
+      },
+      {
+        clientOrganizationId: secondClientId,
+        displayName: 'Southside Lead',
+        id: secondContactId,
+        primaryPhoneE164: '+919900000002',
+        primaryPhoneLookupHash: 'southside-hash',
+      },
+      {
+        clientOrganizationId: outsideClientId,
+        displayName: 'Outside Lead',
+        id: outsideContactId,
+        primaryPhoneE164: '+919900000099',
+        primaryPhoneLookupHash: 'outside-hash',
+      },
+    ]);
+
+    const lead = (
+      id: string,
+      tenantId: string,
+      branchId: string,
+      contactId: string,
+      status: 'BOOKING_CONFIRMED' | 'LOST' | 'NEGOTIATION' | 'NEW' | 'PENDING_REVIEW' | 'REJECTED',
+      at = capturedAt,
+    ): typeof schema.leadOpportunities.$inferInsert => ({
+      branchId,
+      capturedAt: at,
+      clientOrganizationId: tenantId,
+      contactId,
+      entryMethod: 'MANUAL' as const,
+      id,
+      slaDueAt,
+      slaWarningAt,
+      source: 'WALK_IN' as const,
+      status,
+      vehicleInterest: 'SUV',
+    });
+    await database.db
+      .insert(schema.leadOpportunities)
+      .values([
+        lead(
+          '90000000-0000-4000-8000-000000000001',
+          clientId,
+          firstBranchId,
+          firstContactId,
+          'NEW',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000002',
+          clientId,
+          firstBranchId,
+          firstContactId,
+          'PENDING_REVIEW',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000003',
+          clientId,
+          firstBranchId,
+          firstContactId,
+          'NEGOTIATION',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000004',
+          clientId,
+          firstBranchId,
+          firstContactId,
+          'BOOKING_CONFIRMED',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000005',
+          secondClientId,
+          secondBranchId,
+          secondContactId,
+          'LOST',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000006',
+          secondClientId,
+          secondBranchId,
+          secondContactId,
+          'REJECTED',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000007',
+          outsideClientId,
+          outsideBranchId,
+          outsideContactId,
+          'NEW',
+        ),
+        lead(
+          '90000000-0000-4000-8000-000000000008',
+          clientId,
+          firstBranchId,
+          firstContactId,
+          'BOOKING_CONFIRMED',
+          new Date('2026-07-01T06:00:00.000Z'),
+        ),
+      ]);
+
+    const service = new AdministrationService({ db: database.db } as unknown as DatabaseConnection);
+    const result = await service.agencyDashboard(agencyContext(), {
+      from: '2026-08-01',
+      timezone: 'Asia/Kolkata',
+      to: '2026-08-31',
+    });
+
+    assert.equal(result.clients.length, 2);
+    assert.equal(result.totals.leads_received, 6);
+    assert.equal(result.totals.converted, 1);
+    assert.equal(result.totals.new, 1);
+    assert.equal(result.totals.pending_review, 1);
+    assert.equal(result.totals.in_progress, 1);
+    assert.equal(result.totals.lost, 1);
+    assert.equal(result.totals.rejected, 1);
+    assert.equal(result.totals.conversion_rate, 16.7);
+    assert.equal(result.clients[0]?.client_organization.display_name, 'Northstar Motors');
+    assert.equal(result.clients[0]?.leads_received, 4);
+    assert.equal(result.clients[0]?.conversion_rate, 25);
+    assert.equal(
+      result.clients.some((item) => item.client_organization.id === outsideClientId),
+      false,
+    );
+    await assert.rejects(
+      () =>
+        service.agencyDashboard(clientContext(), {
+          from: '2026-08-01',
+          timezone: 'Asia/Kolkata',
+          to: '2026-08-31',
+        }),
+      /agency platform context/i,
+    );
   });
 
   it('does not allow removal of an active client’s final Client Admin', async () => {

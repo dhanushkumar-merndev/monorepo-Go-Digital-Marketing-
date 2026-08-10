@@ -37,6 +37,11 @@ describe('GoogleIdentityButton', () => {
     configuration = undefined;
     initialize.mockClear();
     renderButton.mockClear();
+    // The component only feature-detects the key, so a stub stands in for FedCM support.
+    Object.defineProperty(window, 'IdentityCredential', {
+      configurable: true,
+      value: {},
+    });
     window.google = {
       accounts: {
         id: {
@@ -51,9 +56,10 @@ describe('GoogleIdentityButton', () => {
   afterEach(() => {
     cleanup();
     delete window.google;
+    Reflect.deleteProperty(window, 'IdentityCredential');
   });
 
-  it('uses an API nonce and sends only the returned credential with its challenge ID', async () => {
+  it('hashes the API nonce for Google and returns its original value with the credential', async () => {
     const createChallenge = vi.fn(async () => ({
       challengeId: '11111111-1111-4111-8111-111111111111',
       expiresAt: '2099-08-03T13:00:00.000Z',
@@ -67,6 +73,11 @@ describe('GoogleIdentityButton', () => {
         onCredential={onCredential}
       />,
     );
+    const googleButtonContainer = screen.getByLabelText('Sign in with Google');
+    Object.defineProperty(googleButtonContainer.parentElement, 'clientWidth', {
+      configurable: true,
+      value: 396,
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Load GIS test script' }));
 
@@ -75,13 +86,13 @@ describe('GoogleIdentityButton', () => {
       auto_select: false,
       button_auto_select: false,
       client_id: '123456789-web.apps.googleusercontent.com',
-      nonce: 'server-issued-google-nonce',
+      nonce: 'b0f91b7faea6df435b32f66617f3244fe740121b7bf8fc531c0e812c0023bd79',
       use_fedcm_for_button: true,
       ux_mode: 'popup',
     });
     expect(renderButton).toHaveBeenCalledWith(
       expect.any(HTMLElement),
-      expect.objectContaining({ text: 'signin_with', type: 'standard' }),
+      expect.objectContaining({ text: 'signin_with', type: 'standard', width: 396 }),
     );
 
     await act(async () => configuration?.callback({ credential: 'signed-google-id-token' }));
@@ -89,7 +100,53 @@ describe('GoogleIdentityButton', () => {
     expect(onCredential).toHaveBeenCalledWith({
       challengeId: '11111111-1111-4111-8111-111111111111',
       idToken: 'signed-google-id-token',
+      nonce: 'server-issued-google-nonce',
     });
+  });
+
+  it('does not request FedCM in browsers that cannot provide it', async () => {
+    Reflect.deleteProperty(window, 'IdentityCredential');
+    render(
+      <GoogleIdentityButton
+        clientId="123456789-web.apps.googleusercontent.com"
+        createChallenge={async () => ({
+          challengeId: '11111111-1111-4111-8111-111111111111',
+          expiresAt: '2099-08-03T13:00:00.000Z',
+          nonce: 'server-issued-google-nonce',
+        })}
+        onCredential={async () => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load GIS test script' }));
+
+    await waitFor(() => expect(initialize).toHaveBeenCalledTimes(1));
+    expect(configuration?.use_fedcm_for_button).toBe(false);
+  });
+
+  it('reuses a live challenge rather than re-initializing GIS', async () => {
+    const createChallenge = vi.fn(async () => ({
+      challengeId: '11111111-1111-4111-8111-111111111111',
+      expiresAt: '2099-08-03T13:00:00.000Z',
+      nonce: 'server-issued-google-nonce',
+    }));
+    const onCredential = vi.fn(async () => undefined);
+    const properties = {
+      clientId: '123456789-web.apps.googleusercontent.com',
+      createChallenge,
+      onCredential,
+    };
+    const { rerender } = render(<GoogleIdentityButton {...properties} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load GIS test script' }));
+    await waitFor(() => expect(renderButton).toHaveBeenCalledTimes(1));
+
+    rerender(<GoogleIdentityButton {...properties} disabled />);
+    rerender(<GoogleIdentityButton {...properties} disabled={false} />);
+    await waitFor(() => expect(renderButton).toHaveBeenCalledTimes(2));
+
+    expect(createChallenge).toHaveBeenCalledTimes(1);
+    expect(initialize).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when GIS returns no credential', async () => {

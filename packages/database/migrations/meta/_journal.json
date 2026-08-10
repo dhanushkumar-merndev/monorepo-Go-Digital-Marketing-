@@ -253,6 +253,13 @@
       "when": 1786290287097,
       "tag": "0035_jazzy_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786345028140,
+      "tag": "0036_talented_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

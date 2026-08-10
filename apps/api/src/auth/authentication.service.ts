@@ -212,6 +212,7 @@ export class AuthenticationService {
         authenticationIdentityId: identity.id,
         ...(authenticator ? { authenticatorId: authenticator.id } : {}),
         clientType: input.client_type,
+        createdAt: now,
         device,
         expiresAt,
         id: challengeId,

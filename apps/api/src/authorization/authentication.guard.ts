@@ -11,7 +11,8 @@ import type { PermissionCode } from '@gdm/contracts';
 import type { Request } from 'express';
 import { AccessTokenService } from '../auth/access-token.service.js';
 import { AUTH_STORE, type AuthStore, type SessionResolution } from '../auth/auth-store.js';
-import { authenticationRequestMetadata } from '../auth/request-metadata.js';
+import { SupabaseAuthService } from '../auth/supabase-auth.service.js';
+import { authenticationRequestMetadata, browserDeviceMetadata } from '../auth/request-metadata.js';
 import type { AuthenticatedRequest, AuthorizationContext } from './authorization.types.js';
 import { AuthorizationPolicy } from './authorization-policy.js';
 import {
@@ -83,6 +84,7 @@ export class AuthenticationGuard implements CanActivate {
     @Inject(AUTH_STORE) private readonly store: AuthStore,
     @Inject(AuthorizationPolicy) private readonly policy: AuthorizationPolicy,
     @Inject(ClientModuleAccessService) private readonly modules: ClientModuleAccessService,
+    @Inject(SupabaseAuthService) private readonly supabase?: SupabaseAuthService,
   ) {}
 
   async canActivate(executionContext: ExecutionContext): Promise<boolean> {
@@ -111,9 +113,20 @@ export class AuthenticationGuard implements CanActivate {
 
     const request = executionContext.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = bearerToken(request);
-    const claims = token ? await this.tokens.verify(token) : undefined;
+    const supabaseToken =
+      token && this.supabase?.enabled ? await this.supabase.verify(token) : undefined;
+    // Transitional compatibility for currently-issued CRM tokens. This branch is
+    // removed only after web and mobile exclusively send Supabase sessions.
+    let claims;
+    if (token && !supabaseToken) {
+      try {
+        claims = await this.tokens.verify(token);
+      } catch {
+        claims = undefined;
+      }
+    }
 
-    if (!claims) {
+    if (!supabaseToken && !claims) {
       throw new UnauthorizedException({
         code: 'SESSION_EXPIRED',
         details: [],
@@ -122,11 +135,33 @@ export class AuthenticationGuard implements CanActivate {
       });
     }
 
-    const resolution = await this.store.resolveSession(
-      claims.sessionId,
-      claims.membershipId,
-      new Date(),
-    );
+    const requestMetadata = authenticationRequestMetadata(request);
+    const membershipId = supabaseToken
+      ? await this.store.ensureSupabaseSession({
+          ...browserDeviceMetadata(request),
+          expiresAt: supabaseToken.expiresAt,
+          sessionId: supabaseToken.sessionId,
+          ...(requestMetadata.sourceIp ? { sourceIp: requestMetadata.sourceIp } : {}),
+          supabaseAuthUserId: supabaseToken.userId,
+          ...(requestMetadata.userAgent ? { userAgent: requestMetadata.userAgent } : {}),
+        })
+      : claims?.membershipId;
+
+    if (supabaseToken && !membershipId) {
+      throw new UnauthorizedException({
+        code: 'CRM_ACCOUNT_NOT_LINKED',
+        details: [],
+        message:
+          'This sign-in account is not linked to a Go Digital CRM user. Contact your agency administrator for access.',
+        retryable: false,
+      });
+    }
+
+    const sessionId = supabaseToken?.sessionId ?? claims?.sessionId;
+    const resolution =
+      membershipId && sessionId
+        ? await this.store.resolveSession(sessionId, membershipId, new Date())
+        : { kind: 'session_revoked' as const };
 
     if (resolution.kind !== 'active') {
       throw sessionException(resolution);
@@ -134,7 +169,7 @@ export class AuthenticationGuard implements CanActivate {
 
     const authorization = resolution.value.context;
 
-    if (authorization.userId !== claims.userId) {
+    if (claims && authorization.userId !== claims.userId) {
       throw new UnauthorizedException({
         code: 'SESSION_REVOKED',
         details: [],

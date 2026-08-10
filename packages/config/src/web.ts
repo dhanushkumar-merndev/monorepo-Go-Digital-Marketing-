@@ -17,6 +17,8 @@ const rawWebEnvironmentSchema = z
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     NEXT_PUBLIC_API_URL: publicApiUrlSchema.optional(),
     NEXT_PUBLIC_GOOGLE_CLIENT_ID: googleWebClientIdSchema.optional(),
+    NEXT_PUBLIC_SUPABASE_URL: z.url().optional(),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().trim().min(20).max(2_048).optional(),
   })
   .superRefine((environment, context) => {
     if (
@@ -62,6 +64,12 @@ export const webEnvironmentSchema = rawWebEnvironmentSchema.transform((environme
   NEXT_PUBLIC_API_URL: environment.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/v1',
   ...(environment.NEXT_PUBLIC_GOOGLE_CLIENT_ID
     ? { NEXT_PUBLIC_GOOGLE_CLIENT_ID: environment.NEXT_PUBLIC_GOOGLE_CLIENT_ID }
+    : {}),
+  ...(environment.NEXT_PUBLIC_SUPABASE_URL
+    ? { NEXT_PUBLIC_SUPABASE_URL: environment.NEXT_PUBLIC_SUPABASE_URL }
+    : {}),
+  ...(environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    ? { NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }
     : {}),
 }));
 

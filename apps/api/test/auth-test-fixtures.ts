@@ -36,6 +36,7 @@ export function authStoreStub(overrides: Partial<AuthStore> = {}): AuthStore {
     createMfaLoginChallenge: () => Promise.resolve(),
     createSession: () => Promise.resolve(),
     createSupportElevation: () => Promise.resolve(undefined),
+    ensureSupabaseSession: () => Promise.resolve(undefined),
     findPasswordIdentity: () => Promise.resolve(undefined),
     getActiveMfaAuthenticator: () => Promise.resolve(undefined),
     getAuthenticationIdentity: () => Promise.resolve(undefined),

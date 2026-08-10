@@ -16,10 +16,31 @@ function DropdownMenuTrigger({ className, ...props }: MenuPrimitive.Trigger.Prop
   );
 }
 
-function DropdownMenuContent({ className, ...props }: MenuPrimitive.Popup.Props) {
+type DropdownMenuContentProps = MenuPrimitive.Popup.Props &
+  Pick<
+    MenuPrimitive.Positioner.Props,
+    'align' | 'alignOffset' | 'collisionPadding' | 'side' | 'sideOffset'
+  >;
+
+function DropdownMenuContent({
+  align = 'center',
+  alignOffset,
+  className,
+  collisionPadding,
+  side = 'bottom',
+  sideOffset = 8,
+  ...props
+}: DropdownMenuContentProps) {
   return (
     <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner className="z-[60] outline-none" sideOffset={8}>
+      <MenuPrimitive.Positioner
+        align={align}
+        alignOffset={alignOffset}
+        className="z-[60] outline-none"
+        collisionPadding={collisionPadding}
+        side={side}
+        sideOffset={sideOffset}
+      >
         <MenuPrimitive.Popup
           className={cn(
             'border-border bg-popover text-popover-foreground min-w-48 origin-[var(--transform-origin)] rounded-md border p-1 shadow-[var(--shadow-md)] transition-[transform,opacity] duration-100 outline-none data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:scale-[0.98] data-starting-style:opacity-0',

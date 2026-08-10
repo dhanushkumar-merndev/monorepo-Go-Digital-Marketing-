@@ -5,6 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@gdm/
 import { EmptyState } from '@gdm/ui/components/empty-state';
 import { Input } from '@gdm/ui/components/input';
 import { Label } from '@gdm/ui/components/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@gdm/ui/components/select';
 import { Skeleton } from '@gdm/ui/components/skeleton';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -89,6 +96,23 @@ interface Hierarchy {
     subordinate_membership_id: string;
   }[];
 }
+
+const clientRoleOptions = [
+  { label: 'Client Admin', value: 'CLIENT_ADMIN' },
+  { label: 'Manager', value: 'MANAGER' },
+  { label: 'Sales Manager', value: 'SALES_MANAGER' },
+  { label: 'Team Manager', value: 'TEAM_MANAGER' },
+  { label: 'Telecaller', value: 'TELECALLER' },
+  { label: 'Salesperson', value: 'SALESPERSON' },
+  { label: 'Test Ride Executive', value: 'TEST_RIDE_EXECUTIVE' },
+  { label: 'Inventory Executive', value: 'INVENTORY_EXECUTIVE' },
+  {
+    label: 'Billing and Documentation Executive',
+    value: 'BILLING_DOCUMENTATION_EXECUTIVE',
+  },
+  { label: 'Delivery Executive', value: 'DELIVERY_EXECUTIVE' },
+  { label: 'RC and Registration Executive', value: 'RC_REGISTRATION_EXECUTIVE' },
+] as const;
 const api = <T,>(path: string, init?: RequestInit) => authApiClient.request<T>(path, init);
 const body = (method: string, data: unknown): RequestInit => ({
   method,
@@ -106,8 +130,16 @@ export function AdministrationConsole() {
   const session = auth.session;
   const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const agency = session !== null && hasPermission(session, 'platform.clients.manage');
-  const client = session !== null && hasPermission(session, 'organization.settings.manage');
+  const isAgencyAdmin = session?.currentMembership?.roleCode === 'AGENCY_ADMIN';
+  const hasSupportClient = session?.supportElevation !== null;
+  // Agency Admin is a platform role. Its inherited client permissions only become usable
+  // after audited support elevation provides a real tenant context.
+  const agency =
+    session !== null && hasPermission(session, 'platform.clients.manage') && !hasSupportClient;
+  const client =
+    session !== null &&
+    hasPermission(session, 'organization.settings.manage') &&
+    (!isAgencyAdmin || hasSupportClient);
   const clients = useQuery({
     queryKey: ['admin', 'clients'],
     queryFn: () => api<{ client_organizations: Client[] }>('/clients'),
@@ -196,11 +228,16 @@ export function AdministrationConsole() {
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-muted-foreground text-sm">Agency and dealership operations</p>
-          <h1 className="text-3xl font-semibold tracking-tight">Administration</h1>
+          <p className="text-muted-foreground text-sm">
+            {agency ? 'Agency platform controls' : 'Client organization controls'}
+          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            {agency ? 'Platform administration' : 'Client administration'}
+          </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl text-sm">
-            Tenant-scoped lifecycle, user, scope and configuration controls. Historical references
-            are preserved and sensitive changes are audited.
+            {agency
+              ? 'Manage client organizations from the platform. To inspect or change a client’s operational settings, start temporary audited support access first.'
+              : 'Tenant-scoped lifecycle, user, scope and configuration controls. Historical references are preserved and sensitive changes are audited.'}
           </p>
         </div>
         <Button
@@ -272,7 +309,8 @@ function Agency({
             Agency client list
           </CardTitle>
           <CardDescription>
-            Suspension revokes current client sessions; no data is hard-deleted.
+            Pending means the client is created but not live. Activate it to continue onboarding;
+            suspension signs out its users without deleting data.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -292,9 +330,9 @@ function Agency({
                     {item.legal_name} · {item.timezone}
                   </small>
                 </span>
-                <span className="flex gap-2">
+                <span className="flex items-center gap-2">
                   <StatusBadge tone={item.status === 'ACTIVE' ? 'success' : 'warning'}>
-                    {item.status}
+                    {item.status === 'PENDING' ? 'Pending setup' : titleCase(item.status)}
                   </StatusBadge>
                   <Button
                     disabled={mutation.isPending}
@@ -302,18 +340,24 @@ function Agency({
                       mutation.mutate({
                         path: `/administration/clients/${item.id}/status`,
                         init: body('PATCH', {
-                          status: item.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED',
+                          status: item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE',
                           reason:
-                            item.status === 'SUSPENDED'
-                              ? 'Agency restored client access.'
-                              : 'Agency suspended client access.',
+                            item.status === 'PENDING'
+                              ? 'Agency approved the client for onboarding.'
+                              : item.status === 'SUSPENDED'
+                                ? 'Agency restored client access.'
+                                : 'Agency suspended client access.',
                         }),
                       })
                     }
                     size="sm"
                     variant="outline"
                   >
-                    {item.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}
+                    {item.status === 'PENDING'
+                      ? 'Activate'
+                      : item.status === 'SUSPENDED'
+                        ? 'Reactivate'
+                        : 'Suspend'}
                   </Button>
                 </span>
               </div>
@@ -330,7 +374,8 @@ function Agency({
         <CardHeader>
           <CardTitle>Create client</CardTitle>
           <CardDescription>
-            Clients begin pending with all modules off and integration placeholders disconnected.
+            Creates the company in Pending setup. Activate it, start support access, then invite its
+            Client Admin by name and email.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -399,14 +444,17 @@ function ClientAdmin({
   profile: ReturnType<typeof useQuery<{ client_organization: Client }>>;
   mutation: ReturnType<typeof useMutation<unknown, Error, { path: string; init: RequestInit }>>;
 }) {
+  const session = useAuth().session;
+  const agencySetup =
+    session?.currentMembership?.roleCode === 'AGENCY_ADMIN' && session.supportElevation !== null;
   const [branch, setBranch] = useState({ code: '', name: '', timezone: 'Asia/Kolkata' });
   const [department, setDepartment] = useState({ branch_id: '', code: '', name: '' });
   const [team, setTeam] = useState({ branch_id: '', department_id: '', code: '', name: '' });
   const [invite, setInvite] = useState({
     display_name: '',
     email: '',
-    job_title: 'Sales Consultant',
-    role_code: 'SALESPERSON',
+    job_title: agencySetup ? 'Client Administrator' : 'Sales Consultant',
+    role_code: agencySetup ? 'CLIENT_ADMIN' : 'SALESPERSON',
   });
   return (
     <section className="space-y-5">
@@ -590,8 +638,9 @@ function ClientAdmin({
           <CardHeader>
             <CardTitle>User directory and invitation</CardTitle>
             <CardDescription>
-              Invitation delivery is explicitly unavailable until a provider is approved; the
-              pending membership is still created for the existing activation flow.
+              Add the user’s name, email and role. They create their own private password; agency
+              and client administrators never choose or see it. Automatic invitation email delivery
+              is not enabled yet.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -667,11 +716,27 @@ function ClientAdmin({
                 value={invite.job_title}
                 onChange={(job_title) => setInvite({ ...invite, job_title })}
               />
-              <Field
-                label="Role code"
-                value={invite.role_code}
-                onChange={(role_code) => setInvite({ ...invite, role_code })}
-              />
+              <div className="space-y-1.5">
+                <Label htmlFor="invitation-role">Role</Label>
+                <Select
+                  items={clientRoleOptions}
+                  onValueChange={(role_code) =>
+                    setInvite({ ...invite, role_code: role_code ?? invite.role_code })
+                  }
+                  value={invite.role_code}
+                >
+                  <SelectTrigger id="invitation-role">
+                    <SelectValue placeholder="Choose a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientRoleOptions.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button disabled={mutation.isPending} type="submit">
                 <Users data-icon="inline-start" />
                 Create invitation
@@ -1376,4 +1441,11 @@ function Field({
       />
     </div>
   );
+}
+
+function titleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

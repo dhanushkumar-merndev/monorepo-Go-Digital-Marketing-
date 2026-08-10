@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { DevicePlatform } from '@gdm/contracts';
 import { isIP } from 'node:net';
 import {
   resolveCorrelationId,
@@ -20,5 +21,52 @@ export function authenticationRequestMetadata(request: Request): AuthRequestMeta
     correlationId: resolveCorrelationId(request as CorrelatedRequest),
     ...(sourceIp ? { sourceIp } : {}),
     ...(userAgent ? { userAgent } : {}),
+  };
+}
+
+export function browserDeviceMetadata(request: Request): {
+  deviceName: string;
+  devicePlatform: DevicePlatform;
+} {
+  const userAgent = request.headers['user-agent'] ?? '';
+  const browserBrands = request.headers['sec-ch-ua'];
+  const brands = Array.isArray(browserBrands) ? browserBrands.join(' ') : (browserBrands ?? '');
+  const browser = /Brave/iu.test(brands)
+    ? 'Brave'
+    : /Edg\//iu.test(userAgent)
+      ? 'Edge'
+      : /OPR\//iu.test(userAgent)
+        ? 'Opera'
+        : /Firefox\//iu.test(userAgent)
+          ? 'Firefox'
+          : /Chrome\/|CriOS\//iu.test(userAgent)
+            ? 'Chrome'
+            : /Safari\//iu.test(userAgent)
+              ? 'Safari'
+              : 'Web browser';
+  const operatingSystem = /Android/iu.test(userAgent)
+    ? 'Android'
+    : /iPhone/iu.test(userAgent)
+      ? 'iPhone'
+      : /iPad/iu.test(userAgent)
+        ? 'iPad'
+        : /Windows NT/iu.test(userAgent)
+          ? 'Windows'
+          : /CrOS/iu.test(userAgent)
+            ? 'ChromeOS'
+            : /Mac OS X/iu.test(userAgent)
+              ? 'macOS'
+              : /Linux/iu.test(userAgent)
+                ? 'Linux'
+                : undefined;
+  const devicePlatform: DevicePlatform = /Android/iu.test(userAgent)
+    ? 'android'
+    : /iPhone|iPad|iPod/iu.test(userAgent)
+      ? 'ios'
+      : 'web';
+
+  return {
+    deviceName: operatingSystem ? `${browser} on ${operatingSystem}` : browser,
+    devicePlatform,
   };
 }

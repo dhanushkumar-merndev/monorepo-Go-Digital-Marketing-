@@ -10,6 +10,7 @@ import {
   normalizedEmailSchema,
   tenantUserSummarySchema,
 } from '../auth/contracts.js';
+import { reportRangeSchema } from '../reporting/contracts.js';
 
 const idSchema = z.uuid();
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/u);
@@ -60,6 +61,38 @@ export const clientDetailResponseSchema = z.object({
     branches: z.number().int().nonnegative(),
     teams: z.number().int().nonnegative(),
   }),
+});
+
+export const agencyDashboardQuerySchema = reportRangeSchema.omit({
+  branch_id: true,
+  team_id: true,
+});
+export const agencyClientLeadKpiSchema = z.object({
+  client_organization: clientOrganizationSummarySchema,
+  converted: z.number().int().nonnegative(),
+  conversion_rate: z.number().min(0).max(100),
+  in_progress: z.number().int().nonnegative(),
+  leads_received: z.number().int().nonnegative(),
+  lost: z.number().int().nonnegative(),
+  new: z.number().int().nonnegative(),
+  pending_review: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+});
+export const agencyDashboardResponseSchema = z.object({
+  clients: z.array(agencyClientLeadKpiSchema),
+  range: z.object({
+    end_at: z.iso.datetime({ offset: true }),
+    from: z.string().date(),
+    start_at: z.iso.datetime({ offset: true }),
+    timezone: z.string(),
+    to: z.string().date(),
+  }),
+  totals: agencyClientLeadKpiSchema
+    .omit({ client_organization: true, conversion_rate: true })
+    .extend({
+      client_organizations: z.number().int().nonnegative(),
+      conversion_rate: z.number().min(0).max(100),
+    }),
 });
 
 export const createBranchRequestSchema = z.object({
@@ -336,6 +369,8 @@ export const auditTimelineResponseSchema = z.object({
 });
 
 export type CreateClientRequest = z.infer<typeof createClientRequestSchema>;
+export type AgencyDashboardQuery = z.infer<typeof agencyDashboardQuerySchema>;
+export type AgencyDashboardResponse = z.infer<typeof agencyDashboardResponseSchema>;
 export type UpdateClientRequest = z.infer<typeof updateClientRequestSchema>;
 export type SetClientStatusRequest = z.infer<typeof setClientStatusRequestSchema>;
 export type CreateBranchRequest = z.infer<typeof createBranchRequestSchema>;

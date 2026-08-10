@@ -201,7 +201,9 @@ export const sessionSummarySchema = z.object({
   created_at: timestampSchema,
   last_seen_at: timestampSchema,
   expires_at: timestampSchema,
+  ip_address: z.string().min(1).max(64).nullable().optional(),
   revoked_at: nullableTimestampSchema,
+  user_agent: z.string().min(1).max(2_000).nullable().optional(),
   current: z.boolean(),
 });
 

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuthClientType, DevicePlatform, PermissionCode } from '@gdm/contracts';
 import { type DatabaseConnection, schema } from '@gdm/database';
-import { and, desc, eq, gt, isNull, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, inArray, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import type {
   AuthorizationContext,
@@ -24,6 +24,7 @@ import type {
   CreateMfaLoginChallengeInput,
   CreateSessionInput,
   CreateSupportElevationInput,
+  EnsureSupabaseSessionInput,
   GoogleLoginIdentityResolution,
   LinkGoogleIdentityInput,
   LinkGoogleIdentityResult,
@@ -172,6 +173,7 @@ export class DrizzleAuthStore implements AuthStore {
   async consumeExternalAuthChallenge(
     input: ConsumeExternalAuthChallengeInput,
   ): Promise<ConsumedExternalAuthChallenge | undefined> {
+    const databaseNow = sql`CURRENT_TIMESTAMP`;
     const binding =
       input.purpose === 'LOGIN'
         ? and(
@@ -184,7 +186,11 @@ export class DrizzleAuthStore implements AuthStore {
           );
     const [consumed] = await this.connection.db
       .update(schema.externalAuthChallenges)
-      .set({ consumedAt: input.consumedAt })
+      .set({
+        // Challenge rows use PostgreSQL's creation timestamp. Use that same clock when
+        // consuming them so small API/database clock differences cannot invalidate OAuth.
+        consumedAt: sql`GREATEST(${databaseNow}, ${schema.externalAuthChallenges.createdAt})`,
+      })
       .where(
         and(
           eq(schema.externalAuthChallenges.id, input.challengeId),
@@ -193,7 +199,7 @@ export class DrizzleAuthStore implements AuthStore {
             ? [eq(schema.externalAuthChallenges.clientType, clientTypeToDatabase(input.clientType))]
             : []),
           isNull(schema.externalAuthChallenges.consumedAt),
-          gt(schema.externalAuthChallenges.expiresAt, input.consumedAt),
+          gt(schema.externalAuthChallenges.expiresAt, databaseNow),
           binding,
         ),
       )
@@ -213,6 +219,7 @@ export class DrizzleAuthStore implements AuthStore {
         authenticationIdentityId: input.authenticationIdentityId,
         ...(input.authenticatorId ? { authenticatorId: input.authenticatorId } : {}),
         clientType: clientTypeToDatabase(input.clientType),
+        createdAt: input.createdAt,
         deviceId: input.device.deviceId,
         deviceName: input.device.deviceName,
         devicePlatform: devicePlatformToDatabase(input.device.platform),
@@ -385,18 +392,49 @@ export class DrizzleAuthStore implements AuthStore {
           .limit(1);
         if (current?.status === 'ACTIVE') throw new MfaMutationConflict();
 
-        const id = current?.id ?? input.authenticator.id;
-        if (!current) {
-          await transaction.insert(schema.mfaAuthenticators).values({
-            id,
-            secretAuthTag: input.authenticator.secretAuthTag,
-            secretCiphertext: input.authenticator.secretCiphertext,
-            secretKeyId: input.authenticator.secretKeyId,
-            secretNonce: input.authenticator.secretNonce,
-            status: 'PENDING',
-            userId: input.authenticator.userId,
-          });
+        const id = input.authenticator.id;
+        if (current?.status === 'PENDING') {
+          // A new login enrollment must never reuse a previously displayed QR secret.
+          // The encryption associated data includes the authenticator ID, so retain the old
+          // record only as disabled history and create a new pending record for the new secret.
+          const [disabled] = await transaction
+            .update(schema.mfaAuthenticators)
+            .set({
+              disabledAt: input.now,
+              status: 'DISABLED',
+              updatedAt: input.now,
+            })
+            .where(
+              and(
+                eq(schema.mfaAuthenticators.id, current.id),
+                eq(schema.mfaAuthenticators.userId, challenge.userId),
+                eq(schema.mfaAuthenticators.status, 'PENDING'),
+              ),
+            )
+            .returning({ id: schema.mfaAuthenticators.id });
+          if (!disabled) throw new MfaMutationConflict();
+
+          await transaction
+            .update(schema.mfaLoginChallenges)
+            .set({ consumedAt: input.now })
+            .where(
+              and(
+                eq(schema.mfaLoginChallenges.userId, challenge.userId),
+                eq(schema.mfaLoginChallenges.kind, 'ENROLLMENT'),
+                isNull(schema.mfaLoginChallenges.consumedAt),
+                ne(schema.mfaLoginChallenges.id, input.challengeId),
+              ),
+            );
         }
+        await transaction.insert(schema.mfaAuthenticators).values({
+          id,
+          secretAuthTag: input.authenticator.secretAuthTag,
+          secretCiphertext: input.authenticator.secretCiphertext,
+          secretKeyId: input.authenticator.secretKeyId,
+          secretNonce: input.authenticator.secretNonce,
+          status: 'PENDING',
+          userId: input.authenticator.userId,
+        });
         const [bound] = await transaction
           .update(schema.mfaLoginChallenges)
           .set({ authenticatorId: id })
@@ -1242,6 +1280,77 @@ export class DrizzleAuthStore implements AuthStore {
     };
   }
 
+  async ensureSupabaseSession(input: EnsureSupabaseSessionInput): Promise<string | undefined> {
+    return this.connection.db.transaction(async (transaction) => {
+      const [user] = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.supabaseAuthUserId, input.supabaseAuthUserId))
+        .limit(1);
+      if (!user) return undefined;
+
+      const [existing] = await transaction
+        .select({
+          currentMembershipId: schema.refreshSessions.currentMembershipId,
+          userId: schema.refreshSessions.userId,
+        })
+        .from(schema.refreshSessions)
+        .where(eq(schema.refreshSessions.id, input.sessionId))
+        .limit(1);
+
+      if (existing) {
+        if (existing.userId !== user.id || !existing.currentMembershipId) return undefined;
+        await transaction
+          .update(schema.refreshSessions)
+          .set({
+            deviceName: input.deviceName,
+            devicePlatform: devicePlatformToDatabase(input.devicePlatform),
+            expiresAt: input.expiresAt,
+            lastSeenAt: new Date(),
+            revokedAt: null,
+            revokedReason: null,
+            ...(input.sourceIp ? { sourceIp: input.sourceIp } : {}),
+            ...(input.userAgent ? { userAgent: input.userAgent } : {}),
+          })
+          .where(eq(schema.refreshSessions.id, input.sessionId));
+        return existing.currentMembershipId;
+      }
+
+      const [identity] = await transaction
+        .select({ id: schema.authenticationIdentities.id })
+        .from(schema.authenticationIdentities)
+        .where(
+          and(
+            eq(schema.authenticationIdentities.userId, user.id),
+            eq(schema.authenticationIdentities.status, 'ACTIVE'),
+          ),
+        )
+        .orderBy(schema.authenticationIdentities.createdAt)
+        .limit(1);
+      const [membership] = await transaction
+        .select({ id: schema.memberships.id })
+        .from(schema.memberships)
+        .where(and(eq(schema.memberships.userId, user.id), eq(schema.memberships.status, 'ACTIVE')))
+        .orderBy(schema.memberships.effectiveFrom, schema.memberships.id)
+        .limit(1);
+      if (!identity || !membership) return undefined;
+
+      await transaction.insert(schema.refreshSessions).values({
+        authenticationIdentityId: identity.id,
+        clientType: 'WEB',
+        currentMembershipId: membership.id,
+        deviceName: input.deviceName,
+        devicePlatform: devicePlatformToDatabase(input.devicePlatform),
+        expiresAt: input.expiresAt,
+        id: input.sessionId,
+        ...(input.sourceIp ? { sourceIp: input.sourceIp } : {}),
+        userId: user.id,
+        ...(input.userAgent ? { userAgent: input.userAgent } : {}),
+      });
+      return membership.id;
+    });
+  }
+
   async rotateRefreshToken(input: RotateRefreshTokenInput): Promise<RefreshRotationResult> {
     const outcome = await this.connection.db.transaction(async (transaction) => {
       const [row] = await transaction
@@ -1679,6 +1788,8 @@ export class DrizzleAuthStore implements AuthStore {
       lastSeenAt: row.lastSeenAt,
       platform: devicePlatformFromDatabase(row.devicePlatform),
       ...(row.revokedAt ? { revokedAt: row.revokedAt } : {}),
+      ...(row.sourceIp ? { sourceIp: row.sourceIp } : {}),
+      ...(row.userAgent ? { userAgent: row.userAgent } : {}),
     }));
   }
 

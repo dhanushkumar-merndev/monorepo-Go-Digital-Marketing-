@@ -75,6 +75,7 @@ export interface GoogleAuthChallenge {
 export interface GoogleCredentialInput {
   challengeId: string;
   idToken: string;
+  nonce?: string;
 }
 
 export interface GoogleIdentityUnlinkResult {

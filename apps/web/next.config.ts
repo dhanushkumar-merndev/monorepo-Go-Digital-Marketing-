@@ -13,7 +13,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/(.*)',
-        headers: buildWebSecurityHeaders(process.env.NODE_ENV, process.env.NEXT_PUBLIC_API_URL),
+        headers: buildWebSecurityHeaders(
+          process.env.NODE_ENV,
+          process.env.NEXT_PUBLIC_API_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+        ),
       },
     ];
   },

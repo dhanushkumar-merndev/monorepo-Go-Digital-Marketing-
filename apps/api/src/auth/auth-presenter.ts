@@ -33,8 +33,10 @@ export function presentSession(session: SessionSummaryRecord): SessionSummary {
     device_platform: session.platform,
     expires_at: session.expiresAt.toISOString(),
     id: session.id,
+    ip_address: session.sourceIp ?? null,
     last_seen_at: session.lastSeenAt.toISOString(),
     revoked_at: session.revokedAt?.toISOString() ?? null,
+    user_agent: session.userAgent ?? null,
   };
 }
 

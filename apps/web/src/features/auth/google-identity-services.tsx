@@ -25,6 +25,25 @@ type ButtonStatus = 'error' | 'loading' | 'ready' | 'submitting';
 
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
 
+function challengeIsUsable(
+  challenge: GoogleAuthChallenge | null,
+): challenge is GoogleAuthChallenge {
+  if (challenge === null) return false;
+  const expiresAt = Date.parse(challenge.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+// Browsers without FedCM reject `navigator.credentials.get({ identity })`, which GIS
+// reports as an uncaught NotSupportedError before falling back to the popup flow.
+function fedcmIsSupported() {
+  return typeof window !== 'undefined' && 'IdentityCredential' in window;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export function GoogleIdentityButton({
   ariaLabel = 'Sign in with Google',
   clientId = publicEnvironment.googleClientId,
@@ -39,6 +58,9 @@ export function GoogleIdentityButton({
   const onCredentialRef = useRef(onCredential);
   const onFailureRef = useRef(onFailure);
   const preparationSequence = useRef(0);
+  const activeChallenge = useRef<GoogleAuthChallenge | null>(null);
+  const pendingChallenge = useRef<Promise<GoogleAuthChallenge> | null>(null);
+  const appliedConfiguration = useRef<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [status, setStatus] = useState<ButtonStatus>('loading');
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -49,6 +71,13 @@ export function GoogleIdentityButton({
     onCredentialRef.current = onCredential;
     onFailureRef.current = onFailure;
   }, [createChallenge, onCredential, onFailure]);
+
+  // A consumed or rejected challenge cannot be replayed, so the next preparation has to
+  // mint a replacement and register it with GIS.
+  const discardChallenge = useCallback(() => {
+    activeChallenge.current = null;
+    appliedConfiguration.current = null;
+  }, []);
 
   const prepareButton = useCallback(async () => {
     if (disabled) return;
@@ -68,45 +97,73 @@ export function GoogleIdentityButton({
     setSetupError(null);
 
     try {
-      const challenge = await createChallengeRef.current();
-      if (sequence !== preparationSequence.current) return;
+      // A challenge is single-use but stays valid across re-preparations, so reuse the
+      // live one instead of asking the API for a replacement on every effect run.
+      const cached = activeChallenge.current;
+      let challenge: GoogleAuthChallenge;
+      if (challengeIsUsable(cached)) {
+        challenge = cached;
+      } else {
+        pendingChallenge.current ??= createChallengeRef.current().finally(() => {
+          pendingChallenge.current = null;
+        });
+        challenge = await pendingChallenge.current;
+        if (sequence !== preparationSequence.current) return;
+      }
 
-      const expiresAt = Date.parse(challenge.expiresAt);
-      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      if (!challengeIsUsable(challenge)) {
         throw new Error('The Google sign-in challenge expired before it could be used.');
       }
+      activeChallenge.current = challenge;
+      const googleNonce = await sha256Hex(challenge.nonce);
 
       const container = containerRef.current;
       if (container === null) return;
+      const buttonWidth = Math.min(
+        400,
+        Math.max(
+          200,
+          Math.floor(container.parentElement?.clientWidth || container.clientWidth || 320),
+        ),
+      );
 
-      googleIdentity.initialize({
-        auto_select: false,
-        button_auto_select: false,
-        callback: (response) => {
-          const idToken = response.credential?.trim();
-          if (!idToken) {
-            const error = new Error('Google did not return a verifiable identity credential.');
-            onFailureRef.current?.(error);
-            setStatus('error');
-            setSetupError('Google did not complete sign-in. Try again.');
-            return;
-          }
-
-          setStatus('submitting');
-          void onCredentialRef
-            .current({ challengeId: challenge.challengeId, idToken })
-            .then(() => setStatus('ready'))
-            .catch((error: unknown) => {
+      // GIS keeps only the last initialization, and warns about every extra call. Re-run
+      // it solely when the identity it would register actually changed.
+      const useFedcm = fedcmIsSupported();
+      const configuration = `${clientId}|${challenge.challengeId}|${String(useFedcm)}`;
+      if (appliedConfiguration.current !== configuration) {
+        googleIdentity.initialize({
+          auto_select: false,
+          button_auto_select: false,
+          callback: (response) => {
+            const idToken = response.credential?.trim();
+            if (!idToken) {
+              const error = new Error('Google did not return a verifiable identity credential.');
+              discardChallenge();
               onFailureRef.current?.(error);
-              setStatus('loading');
-              setPreparationAttempt((attempt) => attempt + 1);
-            });
-        },
-        client_id: clientId,
-        nonce: challenge.nonce,
-        use_fedcm_for_button: true,
-        ux_mode: 'popup',
-      });
+              setStatus('error');
+              setSetupError('Google did not complete sign-in. Try again.');
+              return;
+            }
+
+            setStatus('submitting');
+            discardChallenge();
+            void onCredentialRef
+              .current({ challengeId: challenge.challengeId, idToken, nonce: challenge.nonce })
+              .then(() => setStatus('ready'))
+              .catch((error: unknown) => {
+                onFailureRef.current?.(error);
+                setStatus('loading');
+                setPreparationAttempt((attempt) => attempt + 1);
+              });
+          },
+          client_id: clientId,
+          nonce: googleNonce,
+          use_fedcm_for_button: useFedcm,
+          ux_mode: 'popup',
+        });
+        appliedConfiguration.current = configuration;
+      }
 
       container.replaceChildren();
       googleIdentity.renderButton(container, {
@@ -116,7 +173,7 @@ export function GoogleIdentityButton({
         text,
         theme: 'outline',
         type: 'standard',
-        width: Math.min(400, Math.max(200, Math.floor(container.clientWidth || 320))),
+        width: buttonWidth,
       });
       setStatus('ready');
     } catch (error) {
@@ -125,7 +182,7 @@ export function GoogleIdentityButton({
       setStatus('error');
       setSetupError('Google sign-in could not be prepared. Check your connection and try again.');
     }
-  }, [clientId, disabled, text]);
+  }, [clientId, disabled, discardChallenge, text]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -140,6 +197,7 @@ export function GoogleIdentityButton({
   function retry() {
     setSetupError(null);
     setStatus('loading');
+    discardChallenge();
     if (window.google?.accounts.id) {
       setSdkReady(true);
       setPreparationAttempt((attempt) => attempt + 1);

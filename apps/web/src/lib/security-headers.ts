@@ -16,11 +16,15 @@ function apiOrigin(apiUrl: string | undefined): string | undefined {
 export function buildWebSecurityHeaders(
   nodeEnvironment: string | undefined,
   publicApiUrl: string | undefined,
+  publicSupabaseUrl?: string | undefined,
 ): SecurityHeader[] {
   const hosted = nodeEnvironment === 'staging' || nodeEnvironment === 'production';
-  const connectSources = ["'self'", 'https://accounts.google.com', apiOrigin(publicApiUrl)].filter(
-    (source): source is string => Boolean(source),
-  );
+  const connectSources = [
+    "'self'",
+    'https://accounts.google.com',
+    apiOrigin(publicApiUrl),
+    apiOrigin(publicSupabaseUrl),
+  ].filter((source): source is string => Boolean(source));
   const scriptSources = [
     "'self'",
     "'unsafe-inline'",
@@ -38,7 +42,7 @@ export function buildWebSecurityHeaders(
     "img-src 'self' data: blob: https://*.googleusercontent.com",
     "object-src 'none'",
     `script-src ${scriptSources.join(' ')}`,
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com",
     ...(hosted ? ['upgrade-insecure-requests'] : []),
   ].join('; ');
 

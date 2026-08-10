@@ -181,6 +181,13 @@ export interface CreateMfaLoginChallengeInput {
   authenticationIdentityId: string;
   authenticatorId?: string;
   clientType: AuthClientType;
+  /**
+   * Written explicitly rather than left to the column's `now()` default. The
+   * consumed/expiry check constraints compare this against timestamps the API
+   * supplies, so both sides must come from the same clock; a database running
+   * ahead of the API otherwise fails the checks outright.
+   */
+  createdAt: Date;
   device: DeviceMetadata;
   expiresAt: Date;
   id: string;
@@ -268,6 +275,16 @@ export interface SessionAccessRecord {
   userStatus: UserStatus;
 }
 
+export interface EnsureSupabaseSessionInput {
+  deviceName: string;
+  devicePlatform: DevicePlatform;
+  expiresAt: Date;
+  sessionId: string;
+  sourceIp?: string;
+  supabaseAuthUserId: string;
+  userAgent?: string;
+}
+
 export type SessionResolution =
   | { kind: 'active'; value: SessionAccessRecord }
   | {
@@ -344,6 +361,8 @@ export interface SessionSummaryRecord {
   lastSeenAt: Date;
   platform: DevicePlatform;
   revokedAt?: Date;
+  sourceIp?: string;
+  userAgent?: string;
 }
 
 export interface AuthenticationAuditInput {
@@ -506,6 +525,7 @@ export interface AuthStore {
   resolveGoogleLoginIdentity(
     input: ResolveGoogleLoginIdentityInput,
   ): Promise<GoogleLoginIdentityResolution>;
+  ensureSupabaseSession(input: EnsureSupabaseSessionInput): Promise<string | undefined>;
   resolveSession(sessionId: string, membershipId: string, now: Date): Promise<SessionResolution>;
   revokeAllSessions(
     userId: string,

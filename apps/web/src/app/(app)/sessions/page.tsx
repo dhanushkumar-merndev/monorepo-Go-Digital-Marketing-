@@ -42,6 +42,10 @@ import { useAuth } from '@/features/auth/auth-provider';
 import type { SessionDevice } from '@/features/auth/auth-types';
 
 export default function SessionsPage() {
+  return <SessionsPanel />;
+}
+
+export function SessionsPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const auth = useAuth();
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const sessionsQuery = useQuery({
@@ -61,14 +65,21 @@ export default function SessionsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className={embedded ? 'space-y-5' : 'space-y-8'}>
       <section
         className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
         aria-labelledby="sessions-heading"
       >
         <div>
-          <Badge variant="secondary">Security</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight" id="sessions-heading">
+          {embedded ? null : <Badge variant="secondary">Security</Badge>}
+          <h1
+            className={
+              embedded
+                ? 'text-xl font-semibold tracking-tight'
+                : 'mt-3 text-3xl font-semibold tracking-tight'
+            }
+            id="sessions-heading"
+          >
             Active sessions
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">

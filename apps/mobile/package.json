@@ -22,6 +22,7 @@
     "@gdm/config": "workspace:*",
     "@gdm/contracts": "workspace:*",
     "@gdm/design-tokens": "workspace:*",
+    "@supabase/supabase-js": "2.95.1",
     "@tanstack/react-query": "5.101.4",
     "expo": "57.0.11",
     "expo-build-properties": "57.0.9",

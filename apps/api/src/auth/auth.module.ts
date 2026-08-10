@@ -29,6 +29,7 @@ import { OrganizationAccessController } from './organization-access.controller.j
 import { OrganizationAccessService } from './organization-access.service.js';
 import { PasswordHasher } from './password-hasher.js';
 import { TotpService } from './totp.service.js';
+import { SupabaseAuthService } from './supabase-auth.service.js';
 import {
   PASSWORD_RESET_DELIVERY,
   UnavailablePasswordResetDelivery,
@@ -95,6 +96,7 @@ function toRuntimeConfig(environment: AuthEnvironment): AuthRuntimeConfig {
     PasswordHasher,
     MfaService,
     TotpService,
+    SupabaseAuthService,
     {
       provide: MfaSecretProtector,
       inject: [AUTH_RUNTIME_CONFIG],

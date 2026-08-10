@@ -11,9 +11,11 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  agencyDashboardQuerySchema,
   assignTeamMemberRequestSchema,
   createBranchRequestSchema,
   createClientRequestSchema,
@@ -34,6 +36,8 @@ import {
   updateDepartmentRequestSchema,
   updateMembershipRequestSchema,
   updateTeamRequestSchema,
+  type AgencyDashboardQuery,
+  type AgencyDashboardResponse,
   type AssignTeamMemberRequest,
   type CreateBranchRequest,
   type CreateClientRequest,
@@ -73,6 +77,17 @@ export class AdministrationController {
   constructor(
     @Inject(AdministrationService) private readonly administration: AdministrationService,
   ) {}
+
+  @Get('agency-dashboard')
+  @Header('Cache-Control', 'no-store')
+  @RequirePermissions('reports.read')
+  @ApiOperation({ summary: 'Read agency-scoped client lead KPIs' })
+  async agencyDashboard(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Query(new ZodSchemaValidationPipe(agencyDashboardQuerySchema)) query: AgencyDashboardQuery,
+  ): Promise<AgencyDashboardResponse> {
+    return this.administration.agencyDashboard(context, query);
+  }
 
   @Post('clients')
   @Header('Cache-Control', 'no-store')

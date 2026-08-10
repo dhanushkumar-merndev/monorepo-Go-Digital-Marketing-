@@ -1049,7 +1049,9 @@ async function seed(): Promise<void> {
         salt,
       );
 
-      return { user, salt: salt.toString('hex'), digest: digest.toString('hex') };
+      // PasswordHasher stores and reads scrypt values using base64url. Keep
+      // development identities in the same encoding so seeded users can log in.
+      return { user, salt: salt.toString('base64url'), digest: digest.toString('base64url') };
     }),
   );
 
