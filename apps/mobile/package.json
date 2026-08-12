@@ -57,7 +57,7 @@
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
-    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "8.0.1",
     "@gdm/eslint-config": "workspace:*",
     "@gdm/typescript-config": "workspace:*",
     "@react-native/jest-preset": "0.86.2",
