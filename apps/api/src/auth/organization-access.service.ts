@@ -3,6 +3,7 @@ import type {
   BranchListResponse,
   BranchResponse,
   ClientOrganizationListResponse,
+  TenantUserListQuery,
   TenantUserListResponse,
   TeamListResponse,
   TeamResponse,
@@ -176,20 +177,36 @@ export class OrganizationAccessService {
     };
   }
 
-  async users(authorization: AuthorizationContext): Promise<TenantUserListResponse> {
-    const users = await this.store.listTenantUsers(clientIdFrom(authorization));
+  async users(
+    authorization: AuthorizationContext,
+    query: TenantUserListQuery,
+  ): Promise<TenantUserListResponse> {
+    const users = await this.store.listTenantUsers(clientIdFrom(authorization), {
+      branchIds: [...authorization.branchIds],
+      branchScopeMode: authorization.branchScopeMode,
+      limit: query.limit + 1,
+      offset: (query.page - 1) * query.limit,
+      teamIds: [...authorization.teamIds],
+      teamScopeMode: authorization.teamScopeMode,
+    });
+    const visible = users.filter(
+      (user) => branchVisible(authorization, user) && teamVisible(authorization, user),
+    );
     return {
-      users: users
-        .filter((user) => branchVisible(authorization, user) && teamVisible(authorization, user))
-        .map((user) => ({
-          display_name: user.displayName,
-          email: user.email,
-          membership_id: user.membershipId,
-          membership_status: user.membershipStatus,
-          role_code: user.roleCode,
-          user_id: user.userId,
-          user_status: user.userStatus,
-        })),
+      pagination: {
+        has_next: visible.length > query.limit,
+        page: query.page,
+        page_size: query.limit,
+      },
+      users: visible.slice(0, query.limit).map((user) => ({
+        display_name: user.displayName,
+        email: user.email,
+        membership_id: user.membershipId,
+        membership_status: user.membershipStatus,
+        role_code: user.roleCode,
+        user_id: user.userId,
+        user_status: user.userStatus,
+      })),
     };
   }
 }

@@ -302,3 +302,18 @@ populated Phase 1-to-3 compatibility and PGlite snapshot/restore suites. No shar
 mutated during the Phase 14 local audit. For production rollback, restore the reviewed recovery point
 before new evidence is accepted; afterward ship a forward compensation that preserves audit,
 authentication and integration history.
+
+## Analytics add-on index migration
+
+`0037_soft_the_enforcers.sql` adds ten non-unique composite indexes supporting the observed
+tenant/date/status ordering of Lead, call, inventory, booking, finance, insurance, delivery,
+registration and Customer Vehicle analytics/list queries. It creates no aggregate table or view and
+does not rewrite business rows. Historical migrations, tenant keys, foreign keys and append-only
+evidence remain unchanged.
+
+Apply forward through the normal migration-first release job after a recoverable database point.
+On a production-sized database, review concurrent-index operational requirements and lock duration
+before execution; the generated migration uses ordinary `CREATE INDEX`. Verify the latest journal,
+query predicates and migration integration suite. Before production traffic depends on the indexes,
+rollback may drop exactly the ten named indexes; afterward prefer a reviewed forward migration so
+release history stays reproducible. No shared/staging/production database was mutated locally.

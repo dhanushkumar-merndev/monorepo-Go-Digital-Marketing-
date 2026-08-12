@@ -181,6 +181,87 @@ OpenNext Worker and EAS mobile candidates must share an immutable release identi
 the recovery source of truth; Redis/BullMQ accelerates work but recurring reminder and messaging
 maintenance schedules replay durable rows after interruption.
 
+# Analytics Design System
+
+## Role overview philosophy
+
+The authenticated membership, not a client-supplied role or tenant identifier, determines analytics
+scope. Role home screens show a focused subset of operational KPIs and attention queues; `/analytics`
+provides the deeper authorized view. A domain is absent when it is unimplemented, disabled or not
+permitted. Zero, no data, unavailable and not permitted are distinct states and must never be
+interchanged to fill a dashboard.
+
+## KPI and page pattern
+
+KPI cards contain a label, formatted value, canonical definition, direction semantics and an explicit
+drilldown contract: `NO_DRILLDOWN`, `AGGREGATE_DRILLDOWN` or `RECORD_DRILLDOWN`. Comparisons use
+percentage change for counts and percentage-point change for rates. The shared page order is global
+filters, freshness/scope, KPI cards, attention, charts, and authorized detail. Loading uses local
+skeletons; empty and error states retain context and retry actions.
+
+## ECharts standard
+
+Apache ECharts is the canonical engine for new analytics. `AnalyticsChart` lazy-loads modular chart,
+component and Canvas renderer code, consumes narrow `{ category, value, comparison? }` datasets,
+enables ECharts ARIA, responds through `ResizeObserver`, and disposes every instance on teardown.
+Charts use semantic CSS-derived palette values and never receive hidden raw rows or customer PII.
+Use line for time, bar for ranked/discrete comparison, funnel only for canonical ordered lifecycle
+states, and donut only for a small part-to-whole set. No 3D or ornamental gauges. Always retain a
+text summary for non-visual access. Add `dataZoom` only when a series can exceed the readable viewport.
+
+## Dates, comparisons and filters
+
+The shared analytics bar provides 7-day, 30-day, month-to-date and custom inclusive ranges, previous
+period/month/year comparison, reset, and URL-authoritative state. Tenant analytics are evaluated in
+the organization timezone returned by PostgreSQL; a browser timezone parameter is advisory only.
+Branch, department, team, user, source, model and channel filters must be validated against server
+scope before aggregation. Network-backed free-text filters debounce by 300 ms. TanStack Query keys
+must include endpoint, scope-relevant URL parameters and filters so older responses cannot replace a
+new selection.
+
+## Drilldown and privacy
+
+Every destination reauthorizes tenant, membership, permission, branch/team and assignment scope.
+Agency Admin platform analytics stop at client-level aggregates and never return customer names,
+phones, emails, notes, message bodies, recordings or Lead records. Support elevation is a separate,
+short-lived and audited workflow; analytics never imply it. Tooltip and export payloads follow the
+same boundary.
+
+## Table and list standard
+
+Every future table, data grid or long list must record expected volume, pagination strategy, page
+sizes, server search/debounce, stable sort, filters/date range, virtualization decision, export
+behavior and authorization scope before implementation. Potentially large administrative/resource
+tables use server pagination at 25 rows by default with only 25/50/100 selectable and a hard maximum
+of 100. Chat history uses a stable opaque cursor. Page/filter/search state belongs in the URL where it
+is useful to share or restore. Filter or search changes reset the page to one.
+
+Virtualization optimizes rendering and never substitutes for server pagination. It is required only
+when loaded DOM size is legitimately large, currently the incrementally loaded conversation message
+timeline through TanStack Virtual. Paged 25/50/100-row tables, fixed status/permission lists,
+checklists and short detail histories remain non-virtualized deliberately.
+
+All lists require meaningful skeleton/loading, empty, error, responsive overflow and accessible
+headers/control labels. Destructive row actions remain permission-gated and confirmed. Exports are
+server jobs over the effective filter/scope snapshot, not accidental current-page browser downloads.
+
+## Responsive analytics and accessibility
+
+Desktop uses up to four KPI columns and two chart columns; tablet reduces columns; mobile prioritizes
+four KPIs, attention and the work queue rather than reproducing an executive chart wall. Validate at
+1920, 1440, 1366, 1280, 1024, 768, 430, 390 and 360 CSS pixels. Controls are keyboard accessible,
+focus-visible, semantically labelled and do not communicate outcome by colour alone. Every chart has
+an accessible name, description and textual values.
+
+# Analytics Privacy
+
+Client analytics are tenant-, branch-, team-, assignment- and permission-scoped in SQL. Platform
+analytics use agency-owned client IDs only and return aggregate counts/rates and integration health.
+Analytics data stays in TanStack Query; complete responses, PII and server datasets are prohibited
+from persisted Zustand or browser storage. Any future domain must register supported facts,
+dimensions, role metrics, attribution rules, privacy boundary and query/index evidence with the
+canonical analytics service instead of building an independent dashboard calculation path.
+
 Messaging ingress applies byte/event budgets and provider/connection rate limits. Webhook work uses
 atomic PostgreSQL claims with expiring leases. Outbound sends use distributed provider and
 tenant/provider concurrency permits; an interrupted send with unknown provider acceptance is

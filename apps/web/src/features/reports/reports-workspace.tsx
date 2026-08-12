@@ -19,8 +19,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileBarChart2, ScrollText } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 
@@ -60,6 +61,10 @@ export function ReportsWorkspace() {
   const params = useSearchParams();
   const router = useRouter();
   const cache = useQueryClient();
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(25);
+  const [exportPage, setExportPage] = useState(1);
+  const [exportPageSize, setExportPageSize] = useState(25);
   const from = params.get('from') ?? firstDay;
   const to = params.get('to') ?? today;
   const view = params.get('view') === 'audit' ? 'audit' : 'dashboard';
@@ -78,13 +83,19 @@ export function ReportsWorkspace() {
     enabled: view === 'dashboard',
   });
   const audit = useQuery({
-    queryKey: ['report-audit', query],
-    queryFn: () => api.request<{ events: Audit[] }>(`/reports/audit-events?${query}`),
+    queryKey: ['report-audit', query, auditPage, auditPageSize],
+    queryFn: () =>
+      api.request<{ events: Audit[]; pagination: PageMetadata }>(
+        `/reports/audit-events?${query}&limit=${String(auditPageSize)}&page=${String(auditPage)}`,
+      ),
     enabled: view === 'audit',
   });
   const exports = useQuery({
-    queryKey: ['report-exports'],
-    queryFn: () => api.request<{ exports: ExportJob[] }>('/reports/exports?limit=20'),
+    queryKey: ['report-exports', exportPage, exportPageSize],
+    queryFn: () =>
+      api.request<{ exports: ExportJob[]; pagination: PageMetadata }>(
+        `/reports/exports?limit=${String(exportPageSize)}&page=${String(exportPage)}`,
+      ),
   });
   const createExport = useMutation({
     mutationFn: (format: 'CSV' | 'XLSX') =>
@@ -177,7 +188,16 @@ export function ReportsWorkspace() {
         {view === 'dashboard' ? (
           <DashboardPanel data={dashboard.data} loading={dashboard.isLoading} />
         ) : (
-          <AuditPanel data={audit.data?.events} loading={audit.isLoading} />
+          <AuditPanel
+            data={audit.data?.events}
+            loading={audit.isLoading}
+            metadata={audit.data?.pagination}
+            onPage={setAuditPage}
+            onPageSize={(value) => {
+              setAuditPageSize(value);
+              setAuditPage(1);
+            }}
+          />
         )}
         <Card>
           <CardHeader>
@@ -229,6 +249,16 @@ export function ReportsWorkspace() {
                 title="No export jobs yet"
               />
             )}
+            {exports.data?.pagination ? (
+              <ServerPagination
+                metadata={exports.data.pagination}
+                onPage={setExportPage}
+                onPageSize={(value) => {
+                  setExportPageSize(value);
+                  setExportPage(1);
+                }}
+              />
+            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -278,7 +308,19 @@ function DashboardPanel({ data, loading }: { data: Dashboard | undefined; loadin
     </div>
   );
 }
-function AuditPanel({ data, loading }: { data: Audit[] | undefined; loading: boolean }) {
+function AuditPanel({
+  data,
+  loading,
+  metadata,
+  onPage,
+  onPageSize,
+}: {
+  data: Audit[] | undefined;
+  loading: boolean;
+  metadata: PageMetadata | undefined;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+}) {
   if (loading) return <Skeleton className="h-80 w-full" />;
   if (!data?.length)
     return (
@@ -319,6 +361,9 @@ function AuditPanel({ data, loading }: { data: Audit[] | undefined; loading: boo
             ))}
           </TableBody>
         </Table>
+        {metadata ? (
+          <ServerPagination metadata={metadata} onPage={onPage} onPageSize={onPageSize} />
+        ) : null}
       </CardContent>
     </Card>
   );

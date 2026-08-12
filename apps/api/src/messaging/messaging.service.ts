@@ -19,6 +19,7 @@ import type {
   ConfigureDevelopmentMessagingConnectionRequest,
   ConfigureWhatsAppCloudConnectionRequest,
   ConversationListQuery,
+  ConversationMessagePageQuery,
   CreateInternalNoteRequest,
   SendMessageRequest,
   TemplateListQuery,
@@ -26,8 +27,13 @@ import type {
 import { messageTemplateVariableKeys } from '@gdm/contracts';
 import { type DatabaseConnection, schema } from '@gdm/database';
 import type { Queue } from 'bullmq';
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import {
@@ -79,6 +85,38 @@ function clientId(context: AuthorizationContext): string {
       retryable: false,
     });
   return context.clientOrganizationId;
+}
+
+function encodeMessageCursor(receivedAt: Date, id: string): string {
+  return Buffer.from(
+    JSON.stringify({ id, received_at: receivedAt.toISOString() }),
+    'utf8',
+  ).toString('base64url');
+}
+
+function decodeMessageCursor(value: string): { id: string; receivedAt: Date } {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as {
+      id?: unknown;
+      received_at?: unknown;
+    };
+    if (
+      typeof parsed.id !== 'string' ||
+      !/^[0-9a-f-]{36}$/iu.test(parsed.id) ||
+      typeof parsed.received_at !== 'string'
+    )
+      throw new Error('invalid cursor');
+    const receivedAt = new Date(parsed.received_at);
+    if (Number.isNaN(receivedAt.getTime())) throw new Error('invalid cursor');
+    return { id: parsed.id, receivedAt };
+  } catch {
+    throw new BadRequestException({
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'before', reason: 'Cursor is invalid or expired.' }],
+      message: 'The message cursor is invalid or expired.',
+      retryable: false,
+    });
+  }
 }
 function notFound(message: string): NotFoundException {
   return new NotFoundException({ code: 'NOT_FOUND', details: [], message, retryable: false });
@@ -482,7 +520,16 @@ export class MessagingService {
 
   async conversations(context: AuthorizationContext, query: ConversationListQuery) {
     const cid = clientId(context);
-    const conditions = [eq(schema.conversations.clientOrganizationId, cid)];
+    const conditions = [
+      eq(schema.conversations.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.conversations.conversationOwnerId,
+        branch: schema.conversations.branchId,
+        department: schema.teams.departmentId,
+        owner: schema.leadOpportunities.relationshipOwnerId,
+        team: schema.conversations.teamId,
+      }),
+    ];
     if (query.status) conditions.push(eq(schema.conversations.status, query.status));
     if (query.assigned_to_me)
       conditions.push(eq(schema.conversations.conversationOwnerId, context.userId));
@@ -525,72 +572,33 @@ export class MessagingService {
       )
       .where(and(...conditions))
       .orderBy(desc(schema.conversations.lastMessageAt), desc(schema.conversations.id))
-      .limit(query.limit);
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) =>
+      this.policy.canAccessResource(context, {
+        assigneeId: row.conversation.conversationOwnerId,
+        branchId: row.conversation.branchId,
+        clientOrganizationId: cid,
+        departmentId: row.queueDepartmentId,
+        ownerId: row.lead.relationshipOwnerId,
+        teamId: row.conversation.teamId,
+      }),
+    );
     return {
-      conversations: rows
-        .filter((row) =>
-          this.policy.canAccessResource(context, {
-            assigneeId: row.conversation.conversationOwnerId,
-            branchId: row.conversation.branchId,
-            clientOrganizationId: cid,
-            departmentId: row.queueDepartmentId,
-            ownerId: row.lead.relationshipOwnerId,
-            teamId: row.conversation.teamId,
-          }),
-        )
+      conversations: accessible
+        .slice(0, query.limit)
         .map((row) => this.presentConversation(row.conversation, row.contactName, row.phone)),
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
     };
   }
 
   async detail(context: AuthorizationContext, conversationId: string) {
     const scoped = await this.scopedConversation(context, conversationId);
-    const messageRows = await this.connection.db
-      .select({ message: schema.messages, templateName: schema.messageTemplates.name })
-      .from(schema.messages)
-      .leftJoin(
-        schema.messageTemplates,
-        and(
-          eq(
-            schema.messageTemplates.clientOrganizationId,
-            scoped.conversation.clientOrganizationId,
-          ),
-          eq(schema.messageTemplates.id, schema.messages.templateId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.messages.clientOrganizationId, scoped.conversation.clientOrganizationId),
-          eq(schema.messages.conversationId, conversationId),
-        ),
-      );
-    const mediaRows = messageRows.length
-      ? await this.connection.db
-          .select()
-          .from(schema.messageMedia)
-          .where(
-            and(
-              eq(
-                schema.messageMedia.clientOrganizationId,
-                scoped.conversation.clientOrganizationId,
-              ),
-              inArray(
-                schema.messageMedia.messageId,
-                messageRows.map((row) => row.message.id),
-              ),
-            ),
-          )
-      : [];
-    const ordered = messageRows.sort((left, right) => {
-      const leftTime = (left.message.providerOccurredAt ?? left.message.receivedAt).getTime();
-      const rightTime = (right.message.providerOccurredAt ?? right.message.receivedAt).getTime();
-      if (leftTime !== rightTime) return leftTime - rightTime;
-      const sequence = (left.message.providerSequence ?? '').localeCompare(
-        right.message.providerSequence ?? '',
-      );
-      if (sequence !== 0) return sequence;
-      const received = left.message.receivedAt.getTime() - right.message.receivedAt.getTime();
-      return received !== 0 ? received : left.message.id.localeCompare(right.message.id);
-    });
+    const messagePage = await this.readMessagePage(
+      scoped.conversation.clientOrganizationId,
+      conversationId,
+      { limit: 50 },
+    );
     const windowExpires =
       scoped.conversation.channel === 'WHATSAPP' && scoped.conversation.lastInboundAt
         ? new Date(
@@ -606,6 +614,81 @@ export class MessagingService {
         free_form_window_expires_at: windowExpires?.toISOString() ?? null,
         vehicle_interest: scoped.lead.vehicleInterest,
       },
+      message_page: messagePage.page,
+      messages: messagePage.messages,
+    };
+  }
+
+  async messagePage(
+    context: AuthorizationContext,
+    conversationId: string,
+    query: ConversationMessagePageQuery,
+  ) {
+    const scoped = await this.scopedConversation(context, conversationId);
+    return this.readMessagePage(scoped.conversation.clientOrganizationId, conversationId, query);
+  }
+
+  private async readMessagePage(
+    cid: string,
+    conversationId: string,
+    query: ConversationMessagePageQuery,
+  ) {
+    const cursor = query.before ? decodeMessageCursor(query.before) : null;
+    const messageRows = await this.connection.db
+      .select({ message: schema.messages, templateName: schema.messageTemplates.name })
+      .from(schema.messages)
+      .leftJoin(
+        schema.messageTemplates,
+        and(
+          eq(schema.messageTemplates.clientOrganizationId, cid),
+          eq(schema.messageTemplates.id, schema.messages.templateId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.messages.clientOrganizationId, cid),
+          eq(schema.messages.conversationId, conversationId),
+          cursor
+            ? or(
+                lt(schema.messages.receivedAt, cursor.receivedAt),
+                and(
+                  eq(schema.messages.receivedAt, cursor.receivedAt),
+                  lt(schema.messages.id, cursor.id),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(schema.messages.receivedAt), desc(schema.messages.id))
+      .limit(query.limit + 1);
+    const selectedRows = messageRows.slice(0, query.limit);
+    const mediaRows = selectedRows.length
+      ? await this.connection.db
+          .select()
+          .from(schema.messageMedia)
+          .where(
+            and(
+              eq(schema.messageMedia.clientOrganizationId, cid),
+              inArray(
+                schema.messageMedia.messageId,
+                selectedRows.map((row) => row.message.id),
+              ),
+            ),
+          )
+      : [];
+    const ordered = selectedRows.sort((left, right) => {
+      const leftTime = (left.message.providerOccurredAt ?? left.message.receivedAt).getTime();
+      const rightTime = (right.message.providerOccurredAt ?? right.message.receivedAt).getTime();
+      if (leftTime !== rightTime) return leftTime - rightTime;
+      const sequence = (left.message.providerSequence ?? '').localeCompare(
+        right.message.providerSequence ?? '',
+      );
+      if (sequence !== 0) return sequence;
+      const received = left.message.receivedAt.getTime() - right.message.receivedAt.getTime();
+      return received !== 0 ? received : left.message.id.localeCompare(right.message.id);
+    });
+    const oldest = ordered[0]?.message;
+    return {
       messages: ordered.map((row) =>
         this.presentMessage(
           row.message,
@@ -613,6 +696,13 @@ export class MessagingService {
           mediaRows.filter((media) => media.messageId === row.message.id),
         ),
       ),
+      page: {
+        has_more: messageRows.length > query.limit,
+        next_cursor:
+          messageRows.length > query.limit && oldest
+            ? encodeMessageCursor(oldest.receivedAt, oldest.id)
+            : null,
+      },
     };
   }
 

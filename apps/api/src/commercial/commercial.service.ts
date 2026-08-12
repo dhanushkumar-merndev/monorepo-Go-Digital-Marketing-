@@ -34,6 +34,11 @@ import { schema, type DatabaseConnection } from '@gdm/database';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import {
@@ -145,7 +150,10 @@ export class CommercialService {
     const cid = clientId(context);
     if (query.branch_id && !this.policy.canAccessBranch(context, query.branch_id))
       return { items: [] };
-    const filters = [eq(schema.bookings.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.bookings.clientOrganizationId, cid),
+      authorizationScopeCondition(context, { branch: schema.bookings.branchId }),
+    ];
     if (query.branch_id) filters.push(eq(schema.bookings.branchId, query.branch_id));
     if (query.status) filters.push(eq(schema.bookings.status, query.status));
     if (query.search) {
@@ -167,10 +175,10 @@ export class CommercialService {
       )
       .where(and(...filters))
       .orderBy(desc(schema.bookings.createdAt), desc(schema.bookings.id))
-      .limit(query.limit);
-    const accessible = rows.filter((row) =>
-      this.policy.canAccessBranch(context, row.booking.branchId),
-    );
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const scoped = rows.filter((row) => this.policy.canAccessBranch(context, row.booking.branchId));
+    const accessible = scoped.slice(0, query.limit);
     const balances = await this.paymentBalances(
       cid,
       accessible.map((row) => row.booking.id),
@@ -179,6 +187,7 @@ export class CommercialService {
       items: accessible.map(({ booking, customerName }) =>
         this.bookingSummary(booking, customerName, balances.get(booking.id) ?? 0),
       ),
+      pagination: pageMetadata(query.page, query.limit, scoped.length),
     };
   }
 

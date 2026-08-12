@@ -65,7 +65,8 @@ export const reminderRuleRequestSchema = z
 
 export const reminderListQuerySchema = z.object({
   branch_id: z.string().uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   status: reminderStatusSchema.optional(),
   type: reminderTypeSchema.optional(),
 });

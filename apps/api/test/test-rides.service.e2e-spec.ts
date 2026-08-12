@@ -407,6 +407,7 @@ describe('Phase 6 test-ride service integration', () => {
     const active = await service.list(context(), {
       assigned_to_me: false,
       limit: 100,
+      page: 1,
       status: 'ACTIVE',
     });
     assert.equal(active.rides.length, 1);
@@ -475,8 +476,14 @@ describe('Phase 6 test-ride service integration', () => {
       );
     assert.equal(completionEvents[0]?.count, 1);
     assert.equal(
-      (await service.list(context(), { assigned_to_me: false, limit: 100, status: 'ACTIVE' })).rides
-        .length,
+      (
+        await service.list(context(), {
+          assigned_to_me: false,
+          limit: 100,
+          page: 1,
+          status: 'ACTIVE',
+        })
+      ).rides.length,
       0,
     );
 

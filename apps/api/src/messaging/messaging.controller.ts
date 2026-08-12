@@ -24,6 +24,7 @@ import {
   configureDevelopmentMessagingConnectionRequestSchema,
   configureWhatsAppCloudConnectionRequestSchema,
   conversationListQuerySchema,
+  conversationMessagePageQuerySchema,
   createInternalNoteRequestSchema,
   sendMessageRequestSchema,
   templateListQuerySchema,
@@ -33,6 +34,7 @@ import {
   type ConfigureDevelopmentMessagingConnectionRequest,
   type ConfigureWhatsAppCloudConnectionRequest,
   type ConversationListQuery,
+  type ConversationMessagePageQuery,
   type CreateInternalNoteRequest,
   type SendMessageRequest,
   type TemplateListQuery,
@@ -163,6 +165,18 @@ export class MessagingController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ) {
     return this.messaging.detail(context, conversationId);
+  }
+
+  @Get('conversations/:conversationId/messages')
+  @RequirePermissions('messaging.conversations.read')
+  @ApiOperation({ summary: 'Read an older cursor page of the authorized conversation timeline' })
+  messages(
+    @CurrentAuthorization() context: AuthorizationContext,
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Query(new ZodSchemaValidationPipe(conversationMessagePageQuerySchema))
+    query: ConversationMessagePageQuery,
+  ) {
+    return this.messaging.messagePage(context, conversationId, query);
   }
 
   @Post('conversations/:conversationId/read')

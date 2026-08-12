@@ -35,7 +35,8 @@ export const vehicleOwnershipSourceSchema = z.enum(VEHICLE_OWNERSHIP_SOURCES);
 export const registrationListQuerySchema = z.object({
   assigned_to_me: queryBoolean.default(false),
   branch_id: id.optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   overdue_only: queryBoolean.default(false),
   status: registrationStatusSchema.optional(),
 });
@@ -149,7 +150,8 @@ export const updateRegistrationSettingsRequestSchema = z.object({
 export const customerVehicleListQuerySchema = z.object({
   branch_id: id.optional(),
   contact_id: id.optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   ownership_source: vehicleOwnershipSourceSchema.optional(),
 });
 

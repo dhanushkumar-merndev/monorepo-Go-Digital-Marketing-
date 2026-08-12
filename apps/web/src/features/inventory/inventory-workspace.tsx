@@ -31,6 +31,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useInventoryUiStore } from './inventory-ui.store';
@@ -73,6 +74,8 @@ export function InventoryWorkspace() {
   const cache = useQueryClient();
   const view = parseInventoryView(searchParams.get('view'));
   const search = searchParams.get('search') ?? '';
+  const page = positiveInteger(searchParams.get('page'), 1);
+  const pageSize = allowedPageSize(searchParams.get('page_size'));
   const [searchDraft, setSearchDraft] = useState(search);
   const createUnitOpen = useInventoryUiStore((state) => state.createUnitOpen);
   const setCreateUnitOpen = useInventoryUiStore((state) => state.setCreateUnitOpen);
@@ -80,12 +83,16 @@ export function InventoryWorkspace() {
   const setDensity = useInventoryUiStore((state) => state.setDensity);
   const canManageUnits = session?.permissions.includes('inventory.units.manage') ?? false;
   const status = viewStatuses[view];
-  const query = new URLSearchParams({ limit: '200' });
+  const query = new URLSearchParams({ limit: String(pageSize), page: String(page) });
+  if (view === 'AGING') query.set('min_age_days', '30');
   if (status) query.set('status', status);
   if (search) query.set('search', search);
   const units = useQuery({
-    queryKey: ['inventory', 'units', view, search],
-    queryFn: () => api.request<{ units: InventoryUnitSummary[] }>(`/inventory/units?${query}`),
+    queryKey: ['inventory', 'units', view, search, page, pageSize],
+    queryFn: () =>
+      api.request<{ pagination: PageMetadata; units: InventoryUnitSummary[] }>(
+        `/inventory/units?${query}`,
+      ),
     enabled: view !== 'CATALOGUE' && view !== 'IMPORT',
   });
   const catalogue = useQuery({
@@ -105,8 +112,17 @@ export function InventoryWorkspace() {
     onSuccess: () => void cache.invalidateQueries({ queryKey: ['inventory'] }),
   });
 
-  function navigate(nextView: InventoryView, nextSearch = search) {
-    const next = new URLSearchParams({ view: nextView });
+  function navigate(
+    nextView: InventoryView,
+    nextSearch = search,
+    nextPage = 1,
+    nextPageSize = pageSize,
+  ) {
+    const next = new URLSearchParams({
+      page: String(nextPage),
+      page_size: String(nextPageSize),
+      view: nextView,
+    });
     if (nextSearch) next.set('search', nextSearch);
     router.replace(`/inventory?${next.toString()}`);
   }
@@ -211,7 +227,13 @@ export function InventoryWorkspace() {
                 {reconcile.error.message}
               </p>
             ) : null}
-            <StockTable density={density} query={units} view={view} />
+            <StockTable
+              density={density}
+              onPage={(value) => navigate(view, search, value)}
+              onPageSize={(value) => navigate(view, search, 1, value)}
+              query={units}
+              view={view}
+            />
           </>
         )}
       </div>
@@ -221,11 +243,15 @@ export function InventoryWorkspace() {
 
 function StockTable({
   density,
+  onPage,
+  onPageSize,
   query,
   view,
 }: {
   density: 'comfortable' | 'compact';
-  query: ReturnType<typeof useQuery<{ units: InventoryUnitSummary[] }>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<typeof useQuery<{ pagination: PageMetadata; units: InventoryUnitSummary[] }>>;
   view: InventoryView;
 }) {
   if (query.isPending)
@@ -249,8 +275,7 @@ function StockTable({
         title="Inventory could not be loaded"
       />
     );
-  let units = query.data?.units ?? [];
-  if (view === 'AGING') units = units.filter((unit) => (unit.age_days ?? 0) >= 30);
+  const units = query.data?.units ?? [];
   if (units.length === 0)
     return (
       <EmptyState
@@ -321,9 +346,24 @@ function StockTable({
             </TableBody>
           </Table>
         </div>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );
+}
+
+function positiveInteger(value: string | null, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function allowedPageSize(value: string | null): number {
+  const parsed = positiveInteger(value, 25);
+  return [25, 50, 100].includes(parsed) ? parsed : 25;
 }
 
 function CreateUnitForm({

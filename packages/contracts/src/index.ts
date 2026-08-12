@@ -11,6 +11,8 @@ export * from './registration/index.js';
 export * from './reminders/index.js';
 export * from './reporting/index.js';
 export * from './integrations/index.js';
+export * from './analytics/index.js';
+export * from './pagination.js';
 export {
   apiErrorCodeSchema,
   apiErrorDetailSchema,

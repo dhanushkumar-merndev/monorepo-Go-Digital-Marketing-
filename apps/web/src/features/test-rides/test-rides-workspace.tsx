@@ -31,6 +31,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import {
+  readPageParameters,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTestRidesUiStore } from './test-rides-ui.store';
@@ -51,21 +56,25 @@ export function TestRidesWorkspace() {
   const scheduleOpen = useTestRidesUiStore((state) => state.scheduleOpen);
   const setScheduleOpen = useTestRidesUiStore((state) => state.setScheduleOpen);
   const view = parseRideView(search.get('view'));
+  const { page, pageSize } = readPageParameters(search);
   const date = localCalendarDate(new Date());
-  const queryString =
-    view === 'ACTIVE'
-      ? 'status=ACTIVE&limit=200'
-      : view === 'TODAY'
-        ? `date=${date}&limit=200`
-        : 'limit=200';
+  const query = new URLSearchParams({ limit: String(pageSize), page: String(page) });
+  if (view === 'ACTIVE') query.set('status', 'ACTIVE');
+  if (view === 'TODAY') query.set('date', date);
+  const queryString = query.toString();
   const rides = useQuery({
-    queryKey: ['test-rides', view, date],
-    queryFn: () => api.request<{ rides: TestRideSummary[] }>(`/test-rides?${queryString}`),
+    queryKey: ['test-rides', view, date, page, pageSize],
+    queryFn: () =>
+      api.request<{ pagination: PageMetadata; rides: TestRideSummary[] }>(
+        `/test-rides?${queryString}`,
+      ),
   });
   const canSchedule = session?.permissions.includes('test_rides.schedule') ?? false;
 
-  function changeView(next: RideView) {
-    router.replace(`/test-rides?view=${next}`);
+  function navigate(next: RideView, nextPage = 1, nextPageSize = pageSize) {
+    router.replace(
+      `/test-rides?view=${next}&page=${String(nextPage)}&page_size=${String(nextPageSize)}`,
+    );
   }
 
   return (
@@ -89,7 +98,7 @@ export function TestRidesWorkspace() {
           {(['TODAY', 'ACTIVE', 'ALL'] as const).map((item) => (
             <Button
               key={item}
-              onClick={() => changeView(item)}
+              onClick={() => navigate(item)}
               variant={view === item ? 'default' : 'outline'}
             >
               {item === 'TODAY'
@@ -110,16 +119,28 @@ export function TestRidesWorkspace() {
           />
         ) : null}
 
-        {view === 'ACTIVE' ? <ActiveRideMonitor query={rides} /> : <RideTable query={rides} />}
+        {view === 'ACTIVE' ? (
+          <ActiveRideMonitor query={rides} />
+        ) : (
+          <RideTable
+            onPage={(value) => navigate(view, value)}
+            onPageSize={(value) => navigate(view, 1, value)}
+            query={rides}
+          />
+        )}
       </div>
     </PermissionGate>
   );
 }
 
 function RideTable({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ rides: TestRideSummary[] }>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<typeof useQuery<{ pagination: PageMetadata; rides: TestRideSummary[] }>>;
 }) {
   if (query.isPending) return <RideSkeleton />;
   if (query.isError) return <RideQueryError retry={() => void query.refetch()} />;
@@ -175,6 +196,11 @@ function RideTable({
             </TableBody>
           </Table>
         </div>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );
@@ -183,7 +209,7 @@ function RideTable({
 function ActiveRideMonitor({
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ rides: TestRideSummary[] }>>;
+  query: ReturnType<typeof useQuery<{ pagination: PageMetadata; rides: TestRideSummary[] }>>;
 }) {
   const showDetails = useTestRidesUiStore((state) => state.showLocationDetails);
   const setShowDetails = useTestRidesUiStore((state) => state.setShowLocationDetails);

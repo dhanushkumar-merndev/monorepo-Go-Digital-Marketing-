@@ -234,6 +234,12 @@ export const inventoryUnits = pgTable(
       table.status,
       table.expectedArrivalAt,
     ),
+    index('inventory_units_status_received_idx').on(
+      table.clientOrganizationId,
+      table.status,
+      table.receivedAt,
+      table.id,
+    ),
     check('inventory_units_version_check', sql`${table.version} >= 1`),
     check('inventory_units_odometer_check', sql`${table.currentOdometerKm} >= 0`),
   ],

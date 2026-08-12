@@ -396,6 +396,7 @@ export const bookings = pgTable(
       table.leadId,
       table.createdAt,
     ),
+    index('bookings_client_created_idx').on(table.clientOrganizationId, table.createdAt, table.id),
     check('bookings_payable_check', sql`${table.payableMinor} >= 0`),
     check('bookings_version_check', sql`${table.version} >= 1`),
   ],
@@ -554,6 +555,11 @@ export const financeCases = pgTable(
       .on(table.clientOrganizationId, table.bookingId)
       .where(sql`${table.status} in ('APPLIED', 'APPROVED')`),
     unique('finance_cases_client_id_unique').on(table.clientOrganizationId, table.id),
+    index('finance_cases_client_created_idx').on(
+      table.clientOrganizationId,
+      table.createdAt,
+      table.id,
+    ),
     check(
       'finance_cases_amounts_check',
       sql`${table.appliedAmountMinor} > 0 and ${table.downPaymentMinor} >= 0 and coalesce(${table.sanctionedAmountMinor}, 0) >= 0 and coalesce(${table.disbursedAmountMinor}, 0) >= 0`,
@@ -627,6 +633,11 @@ export const insuranceCases = pgTable(
     }).onDelete('restrict'),
     uniqueIndex('insurance_cases_booking_uidx').on(table.clientOrganizationId, table.bookingId),
     unique('insurance_cases_client_id_unique').on(table.clientOrganizationId, table.id),
+    index('insurance_cases_client_created_idx').on(
+      table.clientOrganizationId,
+      table.createdAt,
+      table.id,
+    ),
     check('insurance_cases_premium_check', sql`${table.premiumMinor} >= 0`),
   ],
 );

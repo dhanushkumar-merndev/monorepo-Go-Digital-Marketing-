@@ -25,6 +25,11 @@ import type {
 import { schema, type DatabaseConnection } from '@gdm/database';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import {
@@ -115,7 +120,16 @@ export class TestRidesService {
   async list(context: AuthorizationContext, query: TestRideListQuery) {
     const cid = clientId(context);
     await this.expireTracking(cid, new Date(), `test-ride-list-${context.sessionId}`);
-    const conditions: SQL[] = [eq(schema.testRideJobs.clientOrganizationId, cid)];
+    const conditions: SQL[] = [
+      eq(schema.testRideJobs.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.testRideJobs.executiveUserId,
+        branch: schema.testRideJobs.branchId,
+        department: schema.teams.departmentId,
+        owner: schema.leadOpportunities.relationshipOwnerId,
+        team: schema.testRideJobs.teamId,
+      }),
+    ];
     if (query.status) conditions.push(eq(schema.testRideJobs.status, query.status));
     if (query.assigned_to_me)
       conditions.push(eq(schema.testRideJobs.executiveMembershipId, context.membershipId));
@@ -124,6 +138,10 @@ export class TestRidesService {
         sql`(${schema.testRideJobs.scheduledStartAt} at time zone ${schema.branches.timezone})::date = ${query.date}::date`,
       );
     }
+    if (query.from_date)
+      conditions.push(
+        sql`(${schema.testRideJobs.scheduledStartAt} at time zone ${schema.branches.timezone})::date >= ${query.from_date}::date`,
+      );
     const rows = await this.connection.db
       .select({
         contact: schema.contacts,
@@ -158,15 +176,18 @@ export class TestRidesService {
       .leftJoin(schema.users, eq(schema.users.id, schema.testRideJobs.executiveUserId))
       .where(and(...conditions))
       .orderBy(asc(schema.testRideJobs.scheduledStartAt), asc(schema.testRideJobs.id))
-      .limit(query.limit);
-    const allowed = rows.filter((row) =>
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) =>
       this.canAccess(context, row.job, row.lead, row.departmentId),
     );
+    const allowed = accessible.slice(0, query.limit);
     const locations = await this.latestLocations(
       cid,
       allowed.map((row) => row.job.id),
     );
     return {
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
       rides: allowed.map((row) =>
         this.presentSummary(row.job, row.contact, row.executiveName, locations.get(row.job.id)),
       ),

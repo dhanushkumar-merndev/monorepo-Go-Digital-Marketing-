@@ -8,7 +8,7 @@ import { Building2, KeyRound, Network, ShieldCheck, UsersRound } from 'lucide-re
 import type { ReactNode } from 'react';
 
 import { FoundationStatus } from '@/components/foundation-status';
-import { AgencyKpiDashboard } from '@/features/administration/agency-kpi-dashboard';
+import { AnalyticsWorkspace } from '@/features/analytics/analytics-workspace';
 import { hasPermission } from '@/features/auth/auth-types';
 import { useAuth } from '@/features/auth/auth-provider';
 
@@ -53,6 +53,18 @@ export default function SecureOverviewPage() {
           </AlertDescription>
         </Alert>
       )}
+
+      <section aria-labelledby="role-overview-heading" className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold" id="role-overview-heading">
+            Your operational overview
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Focused metrics and attention items for your role and effective assignment scope.
+          </p>
+        </div>
+        <AnalyticsWorkspace compact />
+      </section>
 
       <section aria-labelledby="access-heading" className="space-y-4">
         <div>
@@ -160,7 +172,7 @@ function PlatformOverview({ displayName }: { displayName: string }) {
         </div>
       </section>
 
-      <AgencyKpiDashboard />
+      <AnalyticsWorkspace compact />
 
       <section aria-labelledby="platform-access-heading" className="space-y-4">
         <div>

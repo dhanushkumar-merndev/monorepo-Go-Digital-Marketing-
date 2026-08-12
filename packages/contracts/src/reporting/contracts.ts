@@ -14,7 +14,8 @@ export const auditEventQuerySchema = reportRangeSchema.extend({
   correlation_id: z.string().trim().min(1).max(128).optional(),
   entity_id: z.string().trim().min(1).max(128).optional(),
   entity_type: z.string().trim().min(1).max(100).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 export const exportFormatSchema = z.enum(['CSV', 'XLSX']);
@@ -33,7 +34,8 @@ export const createExportRequestSchema = z.object({
 });
 
 export const exportListQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 export type AuditEventQuery = z.infer<typeof auditEventQuerySchema>;

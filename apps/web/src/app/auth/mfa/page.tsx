@@ -8,14 +8,14 @@ import { Label } from '@gdm/ui/components/label';
 import { Check, Copy, LoaderCircle, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { safeReturnPath } from '@/features/auth/safe-return-path';
 
 type Screen = 'checking' | 'choose' | 'enroll' | 'verify';
 
-export default function SupabaseMfaPage() {
+function SupabaseMfaContent() {
   const router = useRouter();
   const parameters = useSearchParams();
   const returnTo = safeReturnPath(parameters.get('returnTo'));
@@ -209,5 +209,21 @@ export default function SupabaseMfaPage() {
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+export default function SupabaseMfaPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card>
+          <CardContent className="flex items-center gap-2 py-6 text-sm">
+            <LoaderCircle className="animate-spin" /> Checking account security…
+          </CardContent>
+        </Card>
+      }
+    >
+      <SupabaseMfaContent />
+    </Suspense>
   );
 }

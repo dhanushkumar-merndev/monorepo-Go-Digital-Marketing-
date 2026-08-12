@@ -26,6 +26,11 @@ import type {
 import { type DatabaseConnection, schema } from '@gdm/database';
 import { and, asc, count, desc, eq, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import { isAllowedLeadTransition, requiresNextAction } from './lead-lifecycle.js';
@@ -500,7 +505,16 @@ export class LeadsService {
 
   async list(context: AuthorizationContext, query: LeadListQuery) {
     const cid = clientId(context);
-    const conditions = [eq(schema.leadOpportunities.clientOrganizationId, cid)];
+    const conditions = [
+      eq(schema.leadOpportunities.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.leadOpportunities.currentProcessOwnerId,
+        branch: schema.leadOpportunities.branchId,
+        department: schema.teams.departmentId,
+        owner: schema.leadOpportunities.relationshipOwnerId,
+        team: schema.assignmentQueues.teamId,
+      }),
+    ];
     if (query.status) conditions.push(eq(schema.leadOpportunities.status, query.status));
     if (query.source) conditions.push(eq(schema.leadOpportunities.source, query.source));
     if (query.campaign)
@@ -527,7 +541,8 @@ export class LeadsService {
             eq(schema.leadStatusHistory.toStatus, query.history_status),
           ),
         );
-      if (history.length === 0) return { leads: [] };
+      if (history.length === 0)
+        return { leads: [], pagination: pageMetadata(query.page, query.limit, 0) };
       conditions.push(
         inArray(
           schema.leadOpportunities.id,
@@ -575,12 +590,16 @@ export class LeadsService {
       )
       .where(and(...conditions))
       .orderBy(desc(schema.leadOpportunities.capturedAt))
-      .limit(Math.min(query.limit * 4, 400));
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) =>
+      this.canAccess(context, row.lead, row.queueTeamId, row.queueDepartmentId),
+    );
     return {
-      leads: rows
-        .filter((row) => this.canAccess(context, row.lead, row.queueTeamId, row.queueDepartmentId))
+      leads: accessible
         .slice(0, query.limit)
         .map((row) => this.summary(row.lead, row.contactName, row.phone, row.campaignName)),
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
     };
   }
 

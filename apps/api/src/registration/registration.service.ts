@@ -31,8 +31,13 @@ import type {
   UpdateRegistrationSettingsRequest,
 } from '@gdm/contracts';
 import { schema, type DatabaseConnection } from '@gdm/database';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import {
@@ -110,23 +115,59 @@ export class RegistrationService {
 
   async list(context: AuthorizationContext, query: RegistrationListQuery) {
     const cid = clientId(context);
-    const filters = [eq(schema.registrationCases.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.registrationCases.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.registrationCases.assignedUserId,
+        branch: schema.registrationCases.branchId,
+      }),
+    ];
     if (query.assigned_to_me)
       filters.push(eq(schema.registrationCases.assignedMembershipId, context.membershipId));
     if (query.branch_id) filters.push(eq(schema.registrationCases.branchId, query.branch_id));
     if (query.status) filters.push(eq(schema.registrationCases.status, query.status));
     const settings = await this.settings(this.connection.db, cid);
-    const rows = await this.caseRows(and(...filters), query.limit);
-    const cases = rows
-      .filter((row) => this.canAccess(context, row.registrationCase))
+    if (query.overdue_only) {
+      const statusBreaches = Object.entries(settings.slaHours)
+        .filter(([, hours]) => hours > 0)
+        .map(([status, hours]) =>
+          and(
+            eq(schema.registrationCases.status, status as RegistrationStatus),
+            sql`${schema.registrationCases.statusChangedAt} < now() - make_interval(hours => ${hours})`,
+          ),
+        );
+      const overdueCondition = and(
+        sql`${schema.registrationCases.status} <> 'CASE_CLOSED'`,
+        or(
+          and(
+            sql`${schema.registrationCases.expectedCompletionAt} is not null`,
+            sql`${schema.registrationCases.expectedCompletionAt} < now()`,
+          ),
+          ...statusBreaches,
+        ),
+      );
+      if (overdueCondition) filters.push(overdueCondition);
+    }
+    const rows = await this.caseRows(
+      and(...filters),
+      query.limit + 1,
+      pageOffset(query.page, query.limit),
+    );
+    const scoped = rows.filter((row) => this.canAccess(context, row.registrationCase));
+    const cases = scoped
+      .slice(0, query.limit)
       .map((row) => this.presentCase(row, settings.slaHours));
-    return { cases: query.overdue_only ? cases.filter((entry) => entry.aging.overdue) : cases };
+    return {
+      cases,
+      pagination: pageMetadata(query.page, query.limit, scoped.length),
+    };
   }
 
   async aging(context: AuthorizationContext) {
     const result = await this.list(context, {
       assigned_to_me: false,
-      limit: 200,
+      limit: 100,
+      page: 1,
       overdue_only: false,
     });
     const active = result.cases.filter((entry) => entry.status !== 'CASE_CLOSED');
@@ -1101,7 +1142,10 @@ export class RegistrationService {
 
   async listVehicles(context: AuthorizationContext, query: CustomerVehicleListQuery) {
     const cid = clientId(context);
-    const filters = [eq(schema.customerVehicles.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.customerVehicles.clientOrganizationId, cid),
+      authorizationScopeCondition(context, { branch: schema.customerVehicles.branchId }),
+    ];
     if (query.branch_id) filters.push(eq(schema.customerVehicles.branchId, query.branch_id));
     if (query.contact_id) filters.push(eq(schema.customerVehicles.contactId, query.contact_id));
     if (query.ownership_source)
@@ -1118,10 +1162,13 @@ export class RegistrationService {
       )
       .where(and(...filters))
       .orderBy(desc(schema.customerVehicles.createdAt))
-      .limit(query.limit);
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) => this.canAccessVehicle(context, row.vehicle));
     return {
-      vehicles: rows
-        .filter((row) => this.canAccessVehicle(context, row.vehicle))
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
+      vehicles: accessible
+        .slice(0, query.limit)
         .map((row) => this.presentVehicle(row.vehicle, row.contact.displayName)),
     };
   }
@@ -1759,7 +1806,7 @@ export class RegistrationService {
     };
   }
 
-  private async caseRows(condition: ReturnType<typeof and>, limit: number) {
+  private async caseRows(condition: ReturnType<typeof and>, limit: number, offset = 0) {
     return this.connection.db
       .select({
         assignedName: schema.users.displayName,
@@ -1811,7 +1858,8 @@ export class RegistrationService {
       .leftJoin(schema.users, eq(schema.users.id, schema.registrationCases.assignedUserId))
       .where(condition)
       .orderBy(asc(schema.registrationCases.statusChangedAt), asc(schema.registrationCases.id))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
   }
 
   private presentCase(

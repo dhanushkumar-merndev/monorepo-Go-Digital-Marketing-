@@ -48,6 +48,7 @@ import type {
   SwitchMembershipInput,
   StartMfaEnrollmentInput,
   TeamRecord,
+  TenantUserPageScope,
   TenantUserRecord,
   UnlinkGoogleIdentityResult,
 } from './auth-store.js';
@@ -2658,7 +2659,42 @@ export class DrizzleAuthStore implements AuthStore {
       .orderBy(schema.teams.name, schema.teams.id);
   }
 
-  async listTenantUsers(clientOrganizationId: string): Promise<TenantUserRecord[]> {
+  async listTenantUsers(
+    clientOrganizationId: string,
+    pagination?: TenantUserPageScope,
+  ): Promise<TenantUserRecord[]> {
+    const visibility = [];
+    if (pagination?.branchScopeMode === 'NONE') return [];
+    if (pagination?.branchScopeMode === 'SELECTED') {
+      visibility.push(
+        or(
+          eq(schema.memberships.branchScopeMode, 'ALL'),
+          and(
+            eq(schema.memberships.branchScopeMode, 'SELECTED'),
+            pagination.branchIds.length
+              ? sql`exists (select 1 from ${schema.membershipBranchScopes} branch_scope where branch_scope.membership_id = ${schema.memberships.id} and branch_scope.branch_id in (${sql.join(
+                  pagination.branchIds.map((id) => sql`${id}::uuid`),
+                  sql`, `,
+                )}))`
+              : sql`false`,
+          ),
+        ),
+      );
+    }
+    if (pagination?.teamScopeMode === 'NONE') return [];
+    if (pagination?.teamScopeMode === 'SELECTED') {
+      visibility.push(
+        or(
+          inArray(schema.memberships.teamScopeMode, ['ALL', 'NONE']),
+          pagination.teamIds.length
+            ? sql`exists (select 1 from ${schema.membershipTeamScopes} team_scope where team_scope.membership_id = ${schema.memberships.id} and team_scope.team_id in (${sql.join(
+                pagination.teamIds.map((id) => sql`${id}::uuid`),
+                sql`, `,
+              )}))`
+            : sql`false`,
+        ),
+      );
+    }
     const rows = await this.connection.db
       .select({
         branchScopeMode: schema.memberships.branchScopeMode,
@@ -2676,8 +2712,10 @@ export class DrizzleAuthStore implements AuthStore {
       .from(schema.memberships)
       .innerJoin(schema.users, eq(schema.memberships.userId, schema.users.id))
       .innerJoin(schema.roles, eq(schema.memberships.roleId, schema.roles.id))
-      .where(eq(schema.memberships.clientOrganizationId, clientOrganizationId))
-      .orderBy(schema.users.displayName, schema.users.id);
+      .where(and(eq(schema.memberships.clientOrganizationId, clientOrganizationId), ...visibility))
+      .orderBy(schema.users.displayName, schema.users.id)
+      .limit(pagination?.limit ?? 100)
+      .offset(pagination?.offset ?? 0);
 
     if (rows.length === 0) {
       return [];

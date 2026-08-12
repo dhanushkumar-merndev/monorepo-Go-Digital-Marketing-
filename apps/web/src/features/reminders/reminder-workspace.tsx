@@ -30,6 +30,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import {
+  readPageParameters,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import {
@@ -51,6 +56,7 @@ export function ReminderWorkspace() {
   const current = views.includes(params.get('view') as View)
     ? (params.get('view') as View)
     : 'upcoming';
+  const { page, pageSize } = readPageParameters(params);
   const status =
     current === 'failed' ? 'FAILED' : current === 'suppressed' ? 'SUPPRESSED' : 'SCHEDULED';
   const rules = useQuery({
@@ -58,14 +64,17 @@ export function ReminderWorkspace() {
     queryFn: () => api.request<{ rules: ReminderRule[] }>('/reminders/rules'),
   });
   const plans = useQuery({
-    queryKey: ['reminder-plans'],
-    queryFn: () => api.request<{ plans: ReminderPlan[] }>('/reminders/plans?limit=200'),
+    queryKey: ['reminder-plans', page, pageSize],
+    queryFn: () =>
+      api.request<{ pagination: PageMetadata; plans: ReminderPlan[] }>(
+        `/reminders/plans?limit=${String(pageSize)}&page=${String(page)}`,
+      ),
   });
   const reminders = useQuery({
-    queryKey: ['reminder-instances', status],
+    queryKey: ['reminder-instances', status, page, pageSize],
     queryFn: () =>
-      api.request<{ reminders: ReminderInstance[] }>(
-        `/reminders/instances?limit=200&status=${status}`,
+      api.request<{ pagination: PageMetadata; reminders: ReminderInstance[] }>(
+        `/reminders/instances?limit=${String(pageSize)}&page=${String(page)}&status=${status}`,
       ),
   });
   const dispatch = useMutation({
@@ -94,7 +103,9 @@ export function ReminderWorkspace() {
           {views.map((view) => (
             <Button
               key={view}
-              onClick={() => router.replace(`/reminders?view=${view}`)}
+              onClick={() =>
+                router.replace(`/reminders?view=${view}&page=1&page_size=${String(pageSize)}`)
+              }
               variant={current === view ? 'default' : 'outline'}
             >
               {view.replaceAll('_', ' ')}
@@ -117,10 +128,32 @@ export function ReminderWorkspace() {
           </Alert>
         ) : null}
         {current === 'rules' ? <RulesPanel query={rules} /> : null}
-        {current === 'plans' ? <PlansPanel query={plans} /> : null}
+        {current === 'plans' ? (
+          <PlansPanel
+            onPage={(value) =>
+              router.replace(
+                `/reminders?view=plans&page=${String(value)}&page_size=${String(pageSize)}`,
+              )
+            }
+            onPageSize={(value) =>
+              router.replace(`/reminders?view=plans&page=1&page_size=${String(value)}`)
+            }
+            query={plans}
+          />
+        ) : null}
         {current === 'preferences' ? <PreferencesPanel /> : null}
         {current === 'upcoming' || current === 'failed' || current === 'suppressed' ? (
-          <InstancesPanel query={reminders} />
+          <InstancesPanel
+            onPage={(value) =>
+              router.replace(
+                `/reminders?view=${current}&page=${String(value)}&page_size=${String(pageSize)}`,
+              )
+            }
+            onPageSize={(value) =>
+              router.replace(`/reminders?view=${current}&page=1&page_size=${String(value)}`)
+            }
+            query={reminders}
+          />
         ) : null}
       </div>
     </PermissionGate>
@@ -295,9 +328,13 @@ function RuleTable({ rules }: { rules: ReminderRule[] }) {
 }
 
 function PlansPanel({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ plans: ReminderPlan[] }, Error>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<typeof useQuery<{ pagination: PageMetadata; plans: ReminderPlan[] }, Error>>;
 }) {
   if (query.isLoading) return <LoadingCard />;
   if (query.isError)
@@ -348,15 +385,26 @@ function PlansPanel({
             ))}
           </TableBody>
         </Table>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );
 }
 
 function InstancesPanel({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ reminders: ReminderInstance[] }, Error>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<
+    typeof useQuery<{ pagination: PageMetadata; reminders: ReminderInstance[] }, Error>
+  >;
 }) {
   const { api, session } = useAuth();
   const cache = useQueryClient();
@@ -442,6 +490,11 @@ function InstancesPanel({
             ))}
           </TableBody>
         </Table>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );

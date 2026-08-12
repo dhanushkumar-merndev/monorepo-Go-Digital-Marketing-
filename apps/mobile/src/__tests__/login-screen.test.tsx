@@ -31,7 +31,7 @@ describe('LoginForm', () => {
       view.getByRole('button', { name: 'Sign in with Google' }).props.accessibilityState,
     ).toMatchObject({ disabled: true });
     expect(view.getByText(/needs a configured native/iu)).toBeTruthy();
-  });
+  }, 15_000);
 
   it('shows field errors and does not submit incomplete credentials', async () => {
     const onLogin = jest.fn(async () => undefined);

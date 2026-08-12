@@ -16,6 +16,12 @@ human-reviewed AI proposals, plus production release controls. The repository is
 prototype; hosted provider, restore, signing, load/soak and dealership-pilot evidence remains
 deliberately gated.
 
+The additive analytics/data-grid layer provides role-scoped KPI homes and `/analytics`, an
+aggregate-only Agency Admin platform view, tenant-authoritative date/comparison filters, Apache
+ECharts visualizations, paged high-volume resource tables and cursor/virtualized chat history. It
+adds no environment variables. Metric definitions, unavailable fact families and the exhaustive
+role/table audits are documented under [`docs/analytics`](docs/analytics/ANALYTICS_ADDON_PRD.md).
+
 Phase 2 is the canonical organization source: Client → Branch/Showroom → Department → Team, with
 effective-dated team membership, Team Manager assignment and configurable reporting lines. CRM
 Admin uses the tenant-only `CLIENT_ADMIN` profile; Sales Consultant retains the stable

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageMetadataSchema } from '../pagination.js';
 
 const idSchema = z.uuid();
 const nonBlank = (maximum: number) => z.string().trim().min(1).max(maximum);
@@ -81,7 +82,8 @@ export const configureTelephonyConnectionRequestSchema = z.object({
 export const callListQuerySchema = z.object({
   lead_id: idSchema.optional(),
   missing_outcome: z.coerce.boolean().default(false),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 export const beginManualRecordingUploadRequestSchema = z
@@ -140,6 +142,7 @@ export const telephonyCallSummarySchema = z.object({
 
 export const telephonyCallListResponseSchema = z.object({
   calls: z.array(telephonyCallSummarySchema),
+  pagination: pageMetadataSchema,
 });
 export const telephonyCallDetailResponseSchema = z.object({
   call: telephonyCallSummarySchema,

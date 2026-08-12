@@ -97,7 +97,12 @@ export class TestRidesController {
   @RequirePermissions('test_rides.active_map.read')
   @ApiOperation({ summary: 'List ACTIVE jobs only for the manager monitoring workspace' })
   active(@CurrentAuthorization() context: AuthorizationContext) {
-    return this.rides.list(context, { assigned_to_me: false, limit: 200, status: 'ACTIVE' });
+    return this.rides.list(context, {
+      assigned_to_me: false,
+      limit: 100,
+      page: 1,
+      status: 'ACTIVE',
+    });
   }
 
   @Post('tracking/reconcile')

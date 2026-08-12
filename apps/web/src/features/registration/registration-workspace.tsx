@@ -29,6 +29,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { commandHeaders, errorMessage, type RegistrationCaseSummary } from './registration-types';
@@ -38,13 +39,21 @@ export function RegistrationWorkspace() {
   const cache = useQueryClient();
   const [status, setStatus] = useState('ALL');
   const [overdue, setOverdue] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(false);
-  const queryString = new URLSearchParams({ limit: '200', overdue_only: String(overdue) });
+  const queryString = new URLSearchParams({
+    limit: String(pageSize),
+    overdue_only: String(overdue),
+    page: String(page),
+  });
   if (status !== 'ALL') queryString.set('status', status);
   const queue = useQuery({
-    queryKey: ['registration-cases', status, overdue],
+    queryKey: ['registration-cases', status, overdue, page, pageSize],
     queryFn: () =>
-      api.request<{ cases: RegistrationCaseSummary[] }>(`/registration-cases?${queryString}`),
+      api.request<{ cases: RegistrationCaseSummary[]; pagination: PageMetadata }>(
+        `/registration-cases?${queryString}`,
+      ),
   });
   const aging = useQuery({
     queryKey: ['registration-aging'],
@@ -112,7 +121,13 @@ export function RegistrationWorkspace() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-64 space-y-1">
             <Label>Status</Label>
-            <Select value={status} onValueChange={(value) => setStatus(value ?? 'ALL')}>
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                setStatus(value ?? 'ALL');
+                setPage(1);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -128,7 +143,10 @@ export function RegistrationWorkspace() {
           </div>
           <Button
             variant={overdue ? 'default' : 'outline'}
-            onClick={() => setOverdue((value) => !value)}
+            onClick={() => {
+              setOverdue((value) => !value);
+              setPage(1);
+            }}
           >
             <ClockAlert data-icon="inline-start" />
             Overdue only
@@ -141,7 +159,14 @@ export function RegistrationWorkspace() {
             Refresh
           </Button>
         </div>
-        <QueueTable query={queue} />
+        <QueueTable
+          onPage={setPage}
+          onPageSize={(value) => {
+            setPageSize(value);
+            setPage(1);
+          }}
+          query={queue}
+        />
         {session?.permissions.includes('registration.settings.manage') ? (
           <RegistrationSettings />
         ) : null}
@@ -181,9 +206,15 @@ function Metric({
 }
 
 function QueueTable({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ cases: RegistrationCaseSummary[] }, Error>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<
+    typeof useQuery<{ cases: RegistrationCaseSummary[]; pagination: PageMetadata }, Error>
+  >;
 }) {
   if (query.isLoading)
     return (
@@ -256,6 +287,11 @@ function QueueTable({
             ))}
           </TableBody>
         </Table>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );

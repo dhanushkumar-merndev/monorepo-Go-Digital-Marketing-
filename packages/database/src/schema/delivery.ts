@@ -196,6 +196,12 @@ export const deliveryJobs = pgTable(
       table.assignedMembershipId,
       table.scheduledFor,
     ),
+    index('delivery_jobs_client_schedule_idx').on(
+      table.clientOrganizationId,
+      table.scheduledFor,
+      table.status,
+      table.id,
+    ),
     check(
       'delivery_jobs_destination_latitude_check',
       sql`${table.destinationLatitude} is null or ${table.destinationLatitude} between -90 and 90`,

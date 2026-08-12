@@ -434,6 +434,11 @@ export const leadOpportunities = pgTable(
       table.slaState,
       table.slaDueAt,
     ),
+    index('lead_opportunities_client_captured_idx').on(
+      table.clientOrganizationId,
+      table.capturedAt,
+      table.id,
+    ),
     check('lead_opportunities_version_check', sql`${table.version} >= 1`),
     check(
       'lead_opportunities_other_source_check',

@@ -451,6 +451,15 @@ export interface TenantUserRecord {
   userStatus: UserStatus;
 }
 
+export interface TenantUserPageScope {
+  branchIds: string[];
+  branchScopeMode: MembershipScopeMode;
+  limit: number;
+  offset: number;
+  teamIds: string[];
+  teamScopeMode: MembershipScopeMode;
+}
+
 export interface ClientOrganizationRecord {
   agencyId: string;
   displayName: string;
@@ -511,7 +520,10 @@ export interface AuthStore {
   listAgencyClients(agencyId: string): Promise<ClientOrganizationRecord[]>;
   listBranches(clientOrganizationId: string): Promise<BranchRecord[]>;
   listSessions(userId: string, currentSessionId: string): Promise<SessionSummaryRecord[]>;
-  listTenantUsers(clientOrganizationId: string): Promise<TenantUserRecord[]>;
+  listTenantUsers(
+    clientOrganizationId: string,
+    pagination?: TenantUserPageScope,
+  ): Promise<TenantUserRecord[]>;
   listTeams(clientOrganizationId: string): Promise<TeamRecord[]>;
   recordAuthenticationAudit(input: AuthenticationAuditInput): Promise<void>;
   recordLoginFailure(

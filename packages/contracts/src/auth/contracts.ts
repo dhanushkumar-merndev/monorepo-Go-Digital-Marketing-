@@ -77,7 +77,23 @@ export const tenantUserSummarySchema = z.object({
 });
 
 export const tenantUserResponseSchema = z.object({ user: tenantUserSummarySchema });
+export const tenantUserListQuerySchema = z.object({
+  limit: z.coerce
+    .number()
+    .int()
+    .refine((value) => [25, 50, 100].includes(value))
+    .default(25),
+  page: z.coerce.number().int().min(1).default(1),
+});
 export const tenantUserListResponseSchema = z.object({
+  pagination: z.object({
+    has_next: z.boolean(),
+    page: z.number().int().min(1),
+    page_size: z
+      .number()
+      .int()
+      .refine((value) => [25, 50, 100].includes(value)),
+  }),
   users: z.array(tenantUserSummarySchema),
 });
 
@@ -474,6 +490,7 @@ export type SwitchMembershipResponse = z.infer<typeof switchMembershipResponseSc
 export type UserProfile = z.infer<typeof userProfileSchema>;
 export type UserStatus = z.infer<typeof userStatusSchema>;
 export type TenantUserListResponse = z.infer<typeof tenantUserListResponseSchema>;
+export type TenantUserListQuery = z.infer<typeof tenantUserListQuerySchema>;
 export type TenantUserResponse = z.infer<typeof tenantUserResponseSchema>;
 export type TenantUserSummary = z.infer<typeof tenantUserSummarySchema>;
 export type TeamListResponse = z.infer<typeof teamListResponseSchema>;

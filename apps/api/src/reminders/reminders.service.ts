@@ -24,6 +24,11 @@ import { schema, type DatabaseConnection } from '@gdm/database';
 import type { Queue } from 'bullmq';
 import { and, asc, desc, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 import {
@@ -223,7 +228,10 @@ export class RemindersService {
 
   async plans(context: AuthorizationContext, query: ReminderListQuery) {
     const cid = clientId(context);
-    const filters = [eq(schema.customerReminderPlans.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.customerReminderPlans.clientOrganizationId, cid),
+      authorizationScopeCondition(context, { branch: schema.customerVehicles.branchId }),
+    ];
     if (query.branch_id) filters.push(eq(schema.customerVehicles.branchId, query.branch_id));
     if (query.type) filters.push(eq(schema.reminderDefinitions.type, query.type));
     const rows = await this.connection.db
@@ -265,17 +273,21 @@ export class RemindersService {
       )
       .where(and(...filters))
       .orderBy(asc(schema.customerReminderPlans.dueAt))
-      .limit(query.limit);
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) => this.canAccess(context, row.vehicle));
     return {
-      plans: rows
-        .filter((row) => this.canAccess(context, row.vehicle))
-        .map((row) => this.presentPlan(row)),
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
+      plans: accessible.slice(0, query.limit).map((row) => this.presentPlan(row)),
     };
   }
 
   async instances(context: AuthorizationContext, query: ReminderListQuery) {
     const cid = clientId(context);
-    const filters = [eq(schema.reminderInstances.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.reminderInstances.clientOrganizationId, cid),
+      authorizationScopeCondition(context, { branch: schema.customerVehicles.branchId }),
+    ];
     if (query.branch_id) filters.push(eq(schema.customerVehicles.branchId, query.branch_id));
     if (query.status) filters.push(eq(schema.reminderInstances.status, query.status));
     if (query.type) filters.push(eq(schema.reminderDefinitions.type, query.type));
@@ -324,17 +336,18 @@ export class RemindersService {
       )
       .where(and(...filters))
       .orderBy(asc(schema.reminderInstances.scheduledFor))
-      .limit(query.limit);
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) => this.canAccess(context, row.vehicle));
     return {
-      reminders: rows
-        .filter((row) => this.canAccess(context, row.vehicle))
-        .map((row) => ({
-          ...this.presentInstance(row.instance),
-          contact_name: row.contactName,
-          reminder_type: row.definition.type,
-          vehicle: `${row.vehicle.brandName} ${row.vehicle.modelName} ${row.vehicle.variantName}`,
-          vehicle_id: row.vehicle.id,
-        })),
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
+      reminders: accessible.slice(0, query.limit).map((row) => ({
+        ...this.presentInstance(row.instance),
+        contact_name: row.contactName,
+        reminder_type: row.definition.type,
+        vehicle: `${row.vehicle.brandName} ${row.vehicle.modelName} ${row.vehicle.variantName}`,
+        vehicle_id: row.vehicle.id,
+      })),
     };
   }
 

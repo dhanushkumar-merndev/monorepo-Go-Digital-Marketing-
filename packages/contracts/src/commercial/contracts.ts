@@ -234,7 +234,8 @@ export const verifyCommercialDocumentRequestSchema = z.object({
 
 export const commercialBookingListQuerySchema = z.object({
   branch_id: idSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   search: z.string().trim().max(120).optional(),
   status: bookingStatusSchema.optional(),
 });

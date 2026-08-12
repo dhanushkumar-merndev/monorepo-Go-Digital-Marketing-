@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageMetadataSchema } from '../pagination.js';
 
 const idSchema = z.uuid();
 const nonBlank = (max: number) => z.string().trim().min(1).max(max);
@@ -33,9 +34,15 @@ export const messageTemplateStatusSchema = z.enum([
 
 export const conversationListQuerySchema = z.object({
   assigned_to_me: z.coerce.boolean().default(false),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   search: z.string().trim().max(160).optional(),
   status: conversationStatusSchema.optional(),
+});
+
+export const conversationMessagePageQuerySchema = z.object({
+  before: z.string().trim().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 export const sendMessageRequestSchema = z.discriminatedUnion('content_type', [
@@ -162,6 +169,7 @@ export const conversationSummarySchema = z.object({
 
 export const conversationListResponseSchema = z.object({
   conversations: z.array(conversationSummarySchema),
+  pagination: pageMetadataSchema,
 });
 
 export const conversationDetailResponseSchema = z.object({
@@ -172,6 +180,12 @@ export const conversationDetailResponseSchema = z.object({
     vehicle_interest: z.string(),
   }),
   messages: z.array(messageSummarySchema),
+  message_page: z.object({ has_more: z.boolean(), next_cursor: z.string().nullable() }),
+});
+
+export const conversationMessagePageResponseSchema = z.object({
+  messages: z.array(messageSummarySchema),
+  page: z.object({ has_more: z.boolean(), next_cursor: z.string().nullable() }),
 });
 
 export const messageTemplateResponseSchema = z.object({
@@ -216,6 +230,7 @@ export type ConfigureWhatsAppCloudConnectionRequest = z.infer<
 >;
 export type ConversationDetailResponse = z.infer<typeof conversationDetailResponseSchema>;
 export type ConversationListQuery = z.infer<typeof conversationListQuerySchema>;
+export type ConversationMessagePageQuery = z.infer<typeof conversationMessagePageQuerySchema>;
 export type ConversationListResponse = z.infer<typeof conversationListResponseSchema>;
 export type CreateInternalNoteRequest = z.infer<typeof createInternalNoteRequestSchema>;
 export type MessageTemplateResponse = z.infer<typeof messageTemplateResponseSchema>;

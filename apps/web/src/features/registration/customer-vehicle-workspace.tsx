@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { commandHeaders, errorMessage, type CustomerVehicle } from './registration-types';
@@ -29,9 +30,14 @@ export function CustomerVehicleWorkspace() {
   const { api, session } = useAuth();
   const cache = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const query = useQuery({
-    queryKey: ['customer-vehicles'],
-    queryFn: () => api.request<{ vehicles: CustomerVehicle[] }>('/customer-vehicles?limit=200'),
+    queryKey: ['customer-vehicles', page, pageSize],
+    queryFn: () =>
+      api.request<{ pagination: PageMetadata; vehicles: CustomerVehicle[] }>(
+        `/customer-vehicles?limit=${String(pageSize)}&page=${String(page)}`,
+      ),
   });
   return (
     <PermissionGate permission="customer_vehicles.read">
@@ -61,16 +67,29 @@ export function CustomerVehicleWorkspace() {
             }}
           />
         ) : null}
-        <VehicleTable query={query} />
+        <VehicleTable
+          onPage={setPage}
+          onPageSize={(value) => {
+            setPageSize(value);
+            setPage(1);
+          }}
+          query={query}
+        />
       </div>
     </PermissionGate>
   );
 }
 
 function VehicleTable({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ vehicles: CustomerVehicle[] }, Error>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<
+    typeof useQuery<{ pagination: PageMetadata; vehicles: CustomerVehicle[] }, Error>
+  >;
 }) {
   if (query.isLoading)
     return (
@@ -142,6 +161,11 @@ function VehicleTable({
             ))}
           </TableBody>
         </Table>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );

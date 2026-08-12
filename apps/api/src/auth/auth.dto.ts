@@ -589,6 +589,12 @@ export class TenantUserSummaryResponseDto {
 }
 
 export class TenantUserListResponseDto {
+  @ApiProperty({
+    example: { has_next: false, page: 1, page_size: 25 },
+    type: Object,
+  })
+  declare pagination: { has_next: boolean; page: number; page_size: number };
+
   @ApiProperty({ type: [TenantUserSummaryResponseDto] })
   declare users: TenantUserSummaryResponseDto[];
 }

@@ -1,7 +1,8 @@
-import type { TestRideSummary } from '@gdm/contracts';
+import type { PageMetadata, TestRideSummary } from '@gdm/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import { useState } from 'react';
 
 import { useAuth } from '../auth/auth-provider';
 import { Alert, AppText, Badge, Button, Card, StatePanel } from '../components/ui';
@@ -12,6 +13,7 @@ import { useAppStore } from '../store/app-store';
 import { useAuthStore } from '../store/auth-store';
 import { useTestRidesUiStore } from '../store/test-rides-ui.store';
 import { parseJson } from './assigned-leads-screen';
+import { MobilePagination } from '../components/mobile-pagination';
 
 export function AssignedTestRidesScreen() {
   const { request } = useAuth();
@@ -22,11 +24,14 @@ export function AssignedTestRidesScreen() {
   const filter = useTestRidesUiStore((state) => state.filter);
   const setFilter = useTestRidesUiStore((state) => state.setFilter);
   const permitted = principal?.permissions.includes('test_rides.read') ?? false;
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ['mobile', 'assigned-test-rides'],
+    queryKey: ['mobile', 'assigned-test-rides', page, filter],
     queryFn: async () =>
-      parseJson<{ rides: TestRideSummary[] }>(
-        await request('/test-rides?assigned_to_me=true&limit=100'),
+      parseJson<{ pagination: PageMetadata; rides: TestRideSummary[] }>(
+        await request(
+          `/test-rides?assigned_to_me=true&limit=25&page=${String(page)}${filter === 'TODAY' ? `&date=${localDate(new Date())}` : `&from_date=${localDate(tomorrow())}`}`,
+        ),
       ),
     enabled: permitted,
   });
@@ -54,13 +59,19 @@ export function AssignedTestRidesScreen() {
         <Button
           className="flex-1"
           label="Today"
-          onPress={() => setFilter('TODAY')}
+          onPress={() => {
+            setFilter('TODAY');
+            setPage(1);
+          }}
           variant={filter === 'TODAY' ? 'primary' : 'secondary'}
         />
         <Button
           className="flex-1"
           label="Upcoming"
-          onPress={() => setFilter('UPCOMING')}
+          onPress={() => {
+            setFilter('UPCOMING');
+            setPage(1);
+          }}
           variant={filter === 'UPCOMING' ? 'primary' : 'secondary'}
         />
       </View>
@@ -99,6 +110,7 @@ export function AssignedTestRidesScreen() {
           </View>
         </Card>
       ))}
+      {query.data ? <MobilePagination metadata={query.data.pagination} onPage={setPage} /> : null}
       {connectivity === 'online' && principal ? (
         <Button
           label="Replay failed/offline work"
@@ -112,4 +124,14 @@ export function AssignedTestRidesScreen() {
       ) : null}
     </MobileShell>
   );
+}
+
+function localDate(value: Date): string {
+  return `${String(value.getFullYear())}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
+function tomorrow(): Date {
+  const value = new Date();
+  value.setDate(value.getDate() + 1);
+  return value;
 }

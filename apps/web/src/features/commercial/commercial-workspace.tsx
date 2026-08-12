@@ -31,6 +31,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import {
+  readPageParameters,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 
@@ -49,20 +54,24 @@ export function CommercialWorkspace() {
   const cache = useQueryClient();
   const search = params.get('search') ?? '';
   const status = params.get('status') ?? 'ALL';
+  const { page, pageSize } = readPageParameters(params);
   const [searchDraft, setSearchDraft] = useState(search);
   const [createOpen, setCreateOpen] = useState(false);
-  const query = new URLSearchParams({ limit: '200' });
+  const query = new URLSearchParams({ limit: String(pageSize), page: String(page) });
   if (search) query.set('search', search);
   if (status !== 'ALL') query.set('status', status);
   const bookings = useQuery({
-    queryKey: ['commercial', 'bookings', search, status],
-    queryFn: () => api.request<{ items: BookingSummary[] }>(`/commercial/bookings?${query}`),
+    queryKey: ['commercial', 'bookings', search, status, page, pageSize],
+    queryFn: () =>
+      api.request<{ items: BookingSummary[]; pagination: PageMetadata }>(
+        `/commercial/bookings?${query}`,
+      ),
   });
   const canCreate = session?.permissions.includes('commercial.quotations.manage') ?? false;
   const canApprove = session?.permissions.includes('commercial.discounts.approve') ?? false;
 
-  function navigate(nextSearch: string, nextStatus: string) {
-    const next = new URLSearchParams();
+  function navigate(nextSearch: string, nextStatus: string, nextPage = 1, nextPageSize = pageSize) {
+    const next = new URLSearchParams({ page: String(nextPage), page_size: String(nextPageSize) });
     if (nextSearch) next.set('search', nextSearch);
     if (nextStatus !== 'ALL') next.set('status', nextStatus);
     router.replace(`/bookings${next.size ? `?${next.toString()}` : ''}`);
@@ -131,7 +140,11 @@ export function CommercialWorkspace() {
             </div>
           </CardContent>
         </Card>
-        <BookingTable query={bookings} />
+        <BookingTable
+          onPage={(value) => navigate(search, status, value)}
+          onPageSize={(value) => navigate(search, status, 1, value)}
+          query={bookings}
+        />
       </div>
     </PermissionGate>
   );
@@ -215,9 +228,13 @@ function DiscountDecision() {
 }
 
 function BookingTable({
+  onPage,
+  onPageSize,
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ items: BookingSummary[] }>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<typeof useQuery<{ items: BookingSummary[]; pagination: PageMetadata }>>;
 }) {
   if (query.isPending)
     return (
@@ -300,6 +317,11 @@ function BookingTable({
             </TableBody>
           </Table>
         </div>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );

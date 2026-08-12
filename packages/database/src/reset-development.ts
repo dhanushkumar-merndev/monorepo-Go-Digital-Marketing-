@@ -1,5 +1,3 @@
-import { fileURLToPath } from 'node:url';
-
 import { createDatabaseConnection } from './connection.js';
 
 const databaseUrl = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL;

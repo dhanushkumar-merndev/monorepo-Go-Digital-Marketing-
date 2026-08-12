@@ -19,6 +19,7 @@ import { StatusBadge } from '@gdm/ui/components/status-badge';
 import { Textarea } from '@gdm/ui/components/textarea';
 import { messageTemplateVariableKeys } from '@gdm/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   AlertTriangle,
   FileUp,
@@ -33,8 +34,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import {
+  readPageParameters,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
+import { useDebouncedValue } from '@/features/analytics/use-debounced-value';
 import { useInboxUiStore } from './inbox-ui.store';
 
 interface ConversationSummary {
@@ -78,6 +85,12 @@ interface ConversationDetail {
     vehicle_interest: string;
   };
   messages: MessageSummary[];
+  message_page: { has_more: boolean; next_cursor: string | null };
+}
+
+interface MessagePage {
+  messages: MessageSummary[];
+  page: { has_more: boolean; next_cursor: string | null };
 }
 
 interface MessageTemplate {
@@ -117,16 +130,19 @@ export function UnifiedInbox() {
   const searchParameters = useSearchParams();
   const selectedId = searchParameters.get('conversation');
   const search = searchParameters.get('search') ?? '';
+  const { page, pageSize } = readPageParameters(searchParameters);
   const assignedOnly = searchParameters.get('assigned') === 'true';
+  const [searchDraft, setSearchDraft] = useState(search);
+  const debouncedSearch = useDebouncedValue(searchDraft);
   const [notice, setNotice] = useState<string | null>(null);
   const readRequests = useRef(new Set<string>());
   const customerPanelOpen = useInboxUiStore((state) => state.customerPanelOpen);
   const setCustomerPanelOpen = useInboxUiStore((state) => state.setCustomerPanelOpen);
   const conversations = useQuery({
-    queryKey: ['messaging', 'conversations', search, assignedOnly],
+    queryKey: ['messaging', 'conversations', search, assignedOnly, page, pageSize],
     queryFn: () =>
-      api.request<{ conversations: ConversationSummary[] }>(
-        `/messaging/conversations?assigned_to_me=${String(assignedOnly)}&search=${encodeURIComponent(search)}`,
+      api.request<{ conversations: ConversationSummary[]; pagination: PageMetadata }>(
+        `/messaging/conversations?assigned_to_me=${String(assignedOnly)}&search=${encodeURIComponent(search)}&limit=${String(pageSize)}&page=${String(page)}`,
       ),
   });
   const activeSelectedId = selectedId ?? conversations.data?.conversations[0]?.id ?? null;
@@ -160,6 +176,12 @@ export function UnifiedInbox() {
       .catch(() => undefined)
       .finally(() => readRequests.current.delete(conversation.id));
   }, [api, cache, detail.data?.conversation]);
+  useEffect(() => {
+    if (debouncedSearch !== search)
+      updateInboxUrl({ conversation: null, page: '1', search: debouncedSearch });
+    // updateInboxUrl is stable for the active URL snapshot and intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, search]);
   const templates = useQuery({
     queryKey: ['messaging', 'templates'],
     queryFn: () => api.request<{ templates: MessageTemplate[] }>('/messaging/templates'),
@@ -230,11 +252,9 @@ export function UnifiedInbox() {
               <Label htmlFor="conversation-search">Search customers</Label>
               <Input
                 id="conversation-search"
-                onChange={(event) =>
-                  updateInboxUrl({ conversation: null, search: event.target.value })
-                }
+                onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Name or phone"
-                value={search}
+                value={searchDraft}
               />
               <Button
                 aria-pressed={assignedOnly}
@@ -243,6 +263,7 @@ export function UnifiedInbox() {
                   updateInboxUrl({
                     assigned: assignedOnly ? null : 'true',
                     conversation: null,
+                    page: '1',
                   })
                 }
                 variant={assignedOnly ? 'default' : 'outline'}
@@ -290,6 +311,15 @@ export function UnifiedInbox() {
                   </button>
                 ))}
               </div>
+              {conversations.data ? (
+                <ServerPagination
+                  metadata={conversations.data.pagination}
+                  onPage={(value) => updateInboxUrl({ conversation: null, page: String(value) })}
+                  onPageSize={(value) =>
+                    updateInboxUrl({ conversation: null, page: '1', page_size: String(value) })
+                  }
+                />
+              ) : null}
             </CardContent>
           </Card>
 
@@ -340,6 +370,18 @@ function ConversationWorkspace({
   const setMode = useInboxUiStore((state) => state.setComposerMode);
   const setSelectedTemplateId = useInboxUiStore((state) => state.setSelectedTemplateId);
   const setTemplateVariable = useInboxUiStore((state) => state.setTemplateVariable);
+  const [olderMessages, setOlderMessages] = useState<MessageSummary[]>([]);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const messageViewport = useRef<HTMLDivElement>(null);
+  const renderedMessages = [...olderMessages, ...(detail.data?.messages ?? [])];
+  // TanStack Virtual returns imperative measurement functions by design.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const messageVirtualizer = useVirtualizer({
+    count: renderedMessages.length,
+    estimateSize: () => 112,
+    getScrollElement: () => messageViewport.current,
+    overscan: 6,
+  });
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
   const variableKeys = selectedTemplate
     ? messageTemplateVariableKeys(selectedTemplate.body_text)
@@ -347,6 +389,22 @@ function ConversationWorkspace({
   useEffect(() => {
     if (detail.data?.conversation.id) prepareComposer(detail.data.conversation.id);
   }, [detail.data?.conversation.id, prepareComposer]);
+  useEffect(() => {
+    setOlderMessages([]);
+    setOlderCursor(detail.data?.message_page.next_cursor ?? null);
+  }, [detail.data?.conversation.id, detail.data?.message_page.next_cursor]);
+  const loadOlder = useMutation({
+    mutationFn: async () => {
+      if (!detail.data || !olderCursor) throw new Error('No older message page is available.');
+      return api.request<MessagePage>(
+        `/messaging/conversations/${detail.data.conversation.id}/messages?before=${encodeURIComponent(olderCursor)}&limit=50`,
+      );
+    },
+    onSuccess: (page) => {
+      setOlderMessages((current) => [...page.messages, ...current]);
+      setOlderCursor(page.page.next_cursor);
+    },
+  });
   const send = useMutation({
     mutationFn: async () => {
       if (!detail.data) throw new Error('Select a conversation first.');
@@ -437,17 +495,46 @@ function ConversationWorkspace({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4 p-4">
-        <div aria-live="polite" className="max-h-[28rem] flex-1 space-y-3 overflow-y-auto pr-1">
-          {detail.data.messages.length === 0 ? (
+        <div aria-live="polite" className="flex flex-1 flex-col gap-2">
+          {olderCursor ? (
+            <Button
+              className="w-full"
+              disabled={loadOlder.isPending}
+              onClick={() => loadOlder.mutate()}
+              size="sm"
+              variant="ghost"
+            >
+              {loadOlder.isPending ? 'Loading older messages…' : 'Load older messages'}
+            </Button>
+          ) : null}
+          {renderedMessages.length === 0 ? (
             <EmptyState
               description="No message or internal-note evidence has been recorded."
               icon={<MessageSquareText className="size-5" />}
               title="Empty timeline"
             />
           ) : (
-            detail.data.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))
+            <div className="h-[28rem] overflow-y-auto pr-1" ref={messageViewport}>
+              <div
+                className="relative w-full"
+                style={{ height: messageVirtualizer.getTotalSize() }}
+              >
+                {messageVirtualizer.getVirtualItems().map((row) => {
+                  const message = renderedMessages[row.index];
+                  return message ? (
+                    <div
+                      className="absolute top-0 left-0 w-full pb-3"
+                      data-index={row.index}
+                      key={message.id}
+                      ref={messageVirtualizer.measureElement}
+                      style={{ transform: `translateY(${String(row.start)}px)` }}
+                    >
+                      <MessageBubble message={message} />
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            </div>
           )}
         </div>
         {!conversation.free_form_allowed ? (

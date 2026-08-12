@@ -277,12 +277,15 @@ describe('Phase 3 lead service integration', () => {
       managedTeamIds: new Set([teamA]),
       roleCode: 'TEAM_MANAGER',
     });
-    assert.equal((await service.list(teamManager, { limit: 50, sla: 'ALL' })).leads.length, 1);
+    assert.equal(
+      (await service.list(teamManager, { limit: 50, page: 1, sla: 'ALL' })).leads.length,
+      1,
+    );
     assert.equal(
       (
         await service.list(
           context({ assignmentScope: 'TEAM', managedTeamIds: new Set(), roleCode: 'TEAM_MANAGER' }),
-          { limit: 50, sla: 'ALL' },
+          { limit: 50, page: 1, sla: 'ALL' },
         )
       ).leads.length,
       0,
@@ -295,7 +298,10 @@ describe('Phase 3 lead service integration', () => {
       roleCode: 'SALESPERSON',
       userId: activeUser,
     });
-    assert.equal((await service.list(salesperson, { limit: 50, sla: 'ALL' })).leads.length, 1);
+    assert.equal(
+      (await service.list(salesperson, { limit: 50, page: 1, sla: 'ALL' })).leads.length,
+      1,
+    );
     const unassignedSalesperson = context({
       assignmentScope: 'ASSIGNED',
       membershipId: otherMember,
@@ -303,7 +309,7 @@ describe('Phase 3 lead service integration', () => {
       userId: otherUser,
     });
     assert.equal(
-      (await service.list(unassignedSalesperson, { limit: 50, sla: 'ALL' })).leads.length,
+      (await service.list(unassignedSalesperson, { limit: 50, page: 1, sla: 'ALL' })).leads.length,
       0,
     );
     await assert.rejects(() =>
@@ -332,8 +338,14 @@ describe('Phase 3 lead service integration', () => {
       'correlation-reject',
     )) as { version: number };
     assert.equal(
-      (await service.list(context(), { history_status: 'REJECTED', limit: 50, sla: 'ALL' })).leads
-        .length,
+      (
+        await service.list(context(), {
+          history_status: 'REJECTED',
+          limit: 50,
+          page: 1,
+          sla: 'ALL',
+        })
+      ).leads.length,
       1,
     );
     await service.transition(
@@ -382,8 +394,14 @@ describe('Phase 3 lead service integration', () => {
       'correlation-lost-b',
     );
     assert.equal(
-      (await service.list(context(), { history_status: 'LOST', limit: 50, sla: 'ALL' })).leads
-        .length,
+      (
+        await service.list(context(), {
+          history_status: 'LOST',
+          limit: 50,
+          page: 1,
+          sla: 'ALL',
+        })
+      ).leads.length,
       1,
     );
 

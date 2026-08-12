@@ -517,7 +517,11 @@ export function LoginForm() {
           <Separator className="flex-1" />
         </div>
 
-        <form className="space-y-5" noValidate onSubmit={form.handleSubmit(submit)}>
+        <form
+          className="space-y-5"
+          noValidate
+          onSubmit={(event) => void form.handleSubmit(submit)(event)}
+        >
           <div className="space-y-2">
             <Label htmlFor="login-email">Email address</Label>
             <Input

@@ -1052,3 +1052,39 @@
   permanently skip retention obligations.
 - **Status:** Accepted and integration-tested; hosted scheduling/alerts remain external.
 - **Affected modules:** Messaging maintenance, BullMQ, webhook storage and private object storage.
+
+## ADR-0060 - One server-authoritative role analytics contract replaces dashboard calculations
+
+- **Date:** 2026-08-12
+- **Decision:** Client roles use `/v1/analytics/overview`; Agency Admin uses the separate
+  `/v1/analytics/platform` aggregate contract. PostgreSQL performs aggregation after authorization
+  predicates, and web/mobile consume narrow typed facts through TanStack Query.
+- **Reason:** Parallel browser calculations drift in attribution, expose scope risk and make metric
+  definitions inconsistent. Agency aggregates require a structurally different privacy boundary.
+- **Alternatives considered:** Extend the old report dashboard in React; add per-role endpoints; create
+  materialized views before profiling.
+- **Status:** Accepted and integration-tested.
+- **Affected modules:** Contracts, analytics API, role home, analytics web page and mobile home.
+
+## ADR-0061 - ECharts and TanStack Virtual are narrowly standardized
+
+- **Date:** 2026-08-12
+- **Decision:** Apache ECharts 6 modular Canvas builds are canonical for new analytics and TanStack
+  Virtual is used for the loaded web message timeline only. Charts receive aggregate datasets, expose
+  ARIA/text summaries, resize and dispose explicitly.
+- **Reason:** One chart lifecycle avoids duplicated visualization code; virtualization is valuable for
+  incrementally loaded chat but adds no benefit to bounded 25/50/100-row pages.
+- **Alternatives considered:** Recharts for new charts; full ECharts bundle; virtualize every table.
+- **Status:** Accepted and web-tested.
+- **Affected modules:** Web analytics, Unified Inbox and design standards.
+
+## ADR-0062 - High-volume resources are bounded before rendering
+
+- **Date:** 2026-08-12
+- **Decision:** Major resource lists use server pages of 25/50/100, message history uses a 50-row opaque
+  cursor, and server authorization/filter predicates run before pagination. Page/filter state is URL
+  based where shareable; network typeahead is debounced by 300 ms.
+- **Reason:** Browser-side slicing produces incorrect scoped pages and unbounded memory/DOM growth.
+- **Alternatives considered:** Client pagination; unlimited exports; cursor pagination for admin tables.
+- **Status:** Accepted; table audit is recorded in `docs/analytics/TABLE_AUDIT_MATRIX.md`.
+- **Affected modules:** Resource contracts/services/controllers, web/mobile list screens and reporting.

@@ -38,13 +38,17 @@ try {
   const existingResponse = await request('/auth/v1/admin/users?page=1&per_page=1000');
   if (!existingResponse.ok) throw new Error('Supabase Auth users could not be listed.');
   const existingPayload = (await existingResponse.json()) as { users?: SupabaseUser[] };
-  const existingByEmail = new Map(
-    (existingPayload.users ?? [])
-      .filter((user) => user.email)
-      .map((user) => [user.email!.trim().toLowerCase(), user]),
-  );
+  const existingByEmail = new Map<string, SupabaseUser>();
+  for (const user of existingPayload.users ?? []) {
+    if (user.email) existingByEmail.set(user.email.trim().toLowerCase(), user);
+  }
   const crmUsers = await connection.db
-    .select({ displayName: users.displayName, email: users.primaryEmailNormalized, id: users.id, supabaseAuthUserId: users.supabaseAuthUserId })
+    .select({
+      displayName: users.displayName,
+      email: users.primaryEmailNormalized,
+      id: users.id,
+      supabaseAuthUserId: users.supabaseAuthUserId,
+    })
     .from(users);
 
   let created = 0;
@@ -62,7 +66,8 @@ try {
         }),
         method: 'POST',
       });
-      if (!response.ok) throw new Error(`Supabase Auth user could not be created for ${crmUser.email}.`);
+      if (!response.ok)
+        throw new Error(`Supabase Auth user could not be created for ${crmUser.email}.`);
       supabaseUser = (await response.json()) as SupabaseUser;
       created += 1;
     }
@@ -76,7 +81,9 @@ try {
     }
   }
 
-  process.stdout.write(`Created ${String(created)} and linked ${String(linked)} Supabase Auth development users.\n`);
+  process.stdout.write(
+    `Created ${String(created)} and linked ${String(linked)} Supabase Auth development users.\n`,
+  );
 } finally {
   await connection.close();
 }

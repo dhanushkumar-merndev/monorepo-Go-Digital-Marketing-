@@ -124,7 +124,9 @@ export const endTestRideRequestSchema = z.object({
 export const testRideListQuerySchema = z.object({
   assigned_to_me: z.coerce.boolean().default(false),
   date: z.iso.date().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  from_date: z.iso.date().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   status: testRideStatusSchema.optional(),
 });
 

@@ -23,6 +23,11 @@ import type {
 import { type DatabaseConnection, schema } from '@gdm/database';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import {
   OBJECT_STORAGE,
@@ -368,7 +373,16 @@ export class TelephonyService {
 
   async calls(context: AuthorizationContext, query: CallListQuery) {
     const cid = clientId(context);
-    const conditions = [eq(schema.calls.clientOrganizationId, cid)];
+    const conditions = [
+      eq(schema.calls.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.leadOpportunities.currentProcessOwnerId,
+        branch: schema.leadOpportunities.branchId,
+        department: schema.teams.departmentId,
+        owner: schema.leadOpportunities.relationshipOwnerId,
+        team: schema.assignmentQueues.teamId,
+      }),
+    ];
     if (query.lead_id) conditions.push(eq(schema.calls.leadId, query.lead_id));
     if (query.missing_outcome) conditions.push(eq(schema.calls.outcomeRequirement, 'REQUIRED'));
     const rows = await this.connection.db
@@ -402,12 +416,14 @@ export class TelephonyService {
       )
       .where(and(...conditions))
       .orderBy(desc(schema.calls.createdAt))
-      .limit(Math.min(query.limit * 4, 400));
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const accessible = rows.filter((row) =>
+      this.canAccess(context, row.lead, row.teamId, row.departmentId),
+    );
     return {
-      calls: rows
-        .filter((row) => this.canAccess(context, row.lead, row.teamId, row.departmentId))
-        .slice(0, query.limit)
-        .map((row) => this.presentCall(row.call)),
+      calls: accessible.slice(0, query.limit).map((row) => this.presentCall(row.call)),
+      pagination: pageMetadata(query.page, query.limit, accessible.length),
     };
   }
 

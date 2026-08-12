@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Inject, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Header, Inject, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -14,8 +14,10 @@ import type {
   ClientOrganizationListResponse,
   TeamListResponse,
   TeamResponse,
+  TenantUserListQuery,
   TenantUserListResponse,
 } from '@gdm/contracts';
+import { tenantUserListQuerySchema } from '@gdm/contracts';
 import {
   CurrentAuthorization,
   RequireBranchParameter,
@@ -25,6 +27,7 @@ import {
 } from '../authorization/authorization.decorators.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { ApiErrorEnvelopeDto } from '../common/errors/api-error.dto.js';
+import { ZodSchemaValidationPipe } from '../common/validation/zod-validation.pipe.js';
 import { OrganizationAccessService } from './organization-access.service.js';
 import {
   BranchListResponseDto,
@@ -118,7 +121,8 @@ export class OrganizationAccessController {
   @ApiOkResponse({ type: TenantUserListResponseDto })
   async users(
     @CurrentAuthorization() authorization: AuthorizationContext,
+    @Query(new ZodSchemaValidationPipe(tenantUserListQuerySchema)) query: TenantUserListQuery,
   ): Promise<TenantUserListResponse> {
-    return this.organizations.users(authorization);
+    return this.organizations.users(authorization, query);
   }
 }

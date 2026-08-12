@@ -34,6 +34,7 @@ import {
   FileBadge2,
   BellRing,
   ChartNoAxesCombined,
+  ScrollText,
   EllipsisVertical,
   PlugZap,
 } from 'lucide-react';
@@ -124,9 +125,14 @@ const navigation = [
     clientOperational: true,
   },
   {
-    href: '/reports',
+    href: '/analytics',
     icon: ChartNoAxesCombined,
-    label: 'Reports & audit',
+    label: 'Analytics',
+  },
+  {
+    href: '/reports',
+    icon: ScrollText,
+    label: 'Audit & exports',
     permission: 'reports.read',
     clientOperational: true,
   },

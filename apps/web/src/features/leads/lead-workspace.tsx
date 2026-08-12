@@ -37,6 +37,12 @@ import { LEAD_SOURCE_CODES, type LeadSource, type LeadStatus } from '@gdm/contra
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PageHeader } from '@/components/page-header';
+import {
+  defaultPageMetadata,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
+import { useDebouncedValue } from '@/features/analytics/use-debounced-value';
 
 export interface LeadSummary {
   id: string;
@@ -83,22 +89,27 @@ export function LeadWorkspace() {
   const [source, setSource] = useState('ALL');
   const [campaign, setCampaign] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [showCreate, setShowCreate] = useState(false);
+  const debouncedCampaign = useDebouncedValue(campaign);
+  const debouncedSearch = useDebouncedValue(search);
   const query = useMemo(() => {
-    const parameters = new URLSearchParams({ limit: '100' });
+    const parameters = new URLSearchParams({ limit: String(pageSize), page: String(page) });
     if (source !== 'ALL') parameters.set('source', source);
-    if (campaign) parameters.set('campaign', campaign);
-    if (search) parameters.set('search', search);
+    if (debouncedCampaign) parameters.set('campaign', debouncedCampaign);
+    if (debouncedSearch) parameters.set('search', debouncedSearch);
     if (view === 'ASSIGNMENT') parameters.set('status', 'PENDING_REVIEW');
     if (view === 'FOLLOW_UP') parameters.set('status', 'FOLLOW_UP');
     if (view === 'SLA') parameters.set('sla', 'BREACHED');
     if (view === 'REJECTED') parameters.set('history_status', 'REJECTED');
     if (view === 'LOST') parameters.set('history_status', 'LOST');
     return parameters.toString();
-  }, [campaign, search, source, view]);
+  }, [debouncedCampaign, debouncedSearch, page, pageSize, source, view]);
   const leads = useQuery({
     queryKey: ['leads', query],
-    queryFn: () => api.request<{ leads: LeadSummary[] }>(`/leads?${query}`),
+    queryFn: () =>
+      api.request<{ leads: LeadSummary[]; pagination: PageMetadata }>(`/leads?${query}`),
     enabled: view !== 'DUPLICATES',
   });
   const duplicates = useQuery({
@@ -129,7 +140,10 @@ export function LeadWorkspace() {
           {views.map((item) => (
             <Button
               key={item.value}
-              onClick={() => setView(item.value)}
+              onClick={() => {
+                setView(item.value);
+                setPage(1);
+              }}
               variant={view === item.value ? 'default' : 'outline'}
             >
               {item.label}
@@ -162,7 +176,10 @@ export function LeadWorkspace() {
                   <Label htmlFor="lead-source">Source</Label>
                   <FormSelect
                     id="lead-source"
-                    onValueChange={setSource}
+                    onValueChange={(value) => {
+                      setSource(value);
+                      setPage(1);
+                    }}
                     options={[
                       { label: 'All sources', value: 'ALL' },
                       ...LEAD_SOURCE_CODES.map((item) => ({
@@ -177,7 +194,10 @@ export function LeadWorkspace() {
                   <Label htmlFor="lead-campaign">Campaign</Label>
                   <Input
                     id="lead-campaign"
-                    onChange={(event) => setCampaign(event.target.value)}
+                    onChange={(event) => {
+                      setCampaign(event.target.value);
+                      setPage(1);
+                    }}
                     placeholder="Campaign name"
                     value={campaign}
                   />
@@ -186,7 +206,10 @@ export function LeadWorkspace() {
                   <Label htmlFor="lead-search">Search</Label>
                   <Input
                     id="lead-search"
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setPage(1);
+                    }}
                     placeholder="Name, phone or vehicle"
                     value={search}
                   />
@@ -197,7 +220,17 @@ export function LeadWorkspace() {
               ) : leads.isError ? (
                 <QueryError retry={() => void leads.refetch()} />
               ) : (
-                <LeadTable leads={leads.data?.leads ?? []} />
+                <>
+                  <LeadTable leads={leads.data?.leads ?? []} />
+                  <ServerPagination
+                    metadata={leads.data?.pagination ?? defaultPageMetadata(page, pageSize)}
+                    onPage={setPage}
+                    onPageSize={(size) => {
+                      setPageSize(size);
+                      setPage(1);
+                    }}
+                  />
+                </>
               )}
             </CardContent>
           </Card>

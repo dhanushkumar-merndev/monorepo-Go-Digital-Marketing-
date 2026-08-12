@@ -176,6 +176,17 @@ export const registrationCases = pgTable(
       table.assignedMembershipId,
       table.status,
     ),
+    index('registration_cases_client_created_idx').on(
+      table.clientOrganizationId,
+      table.createdAt,
+      table.status,
+      table.id,
+    ),
+    index('registration_cases_status_changed_idx').on(
+      table.clientOrganizationId,
+      table.statusChangedAt,
+      table.id,
+    ),
     check('registration_cases_version_check', sql`${table.version} >= 1`),
   ],
 );
@@ -391,6 +402,11 @@ export const customerVehicles = pgTable(
       table.clientOrganizationId,
       table.contactId,
       table.createdAt,
+    ),
+    index('customer_vehicles_client_created_idx').on(
+      table.clientOrganizationId,
+      table.createdAt,
+      table.id,
     ),
     check('customer_vehicles_version_check', sql`${table.version} >= 1`),
     check(

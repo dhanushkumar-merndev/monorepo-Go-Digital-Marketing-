@@ -36,6 +36,11 @@ import { schema, type DatabaseConnection } from '@gdm/database';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { CommercialService } from '../commercial/commercial.service.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
@@ -127,13 +132,25 @@ export class DeliveryService {
   async list(context: AuthorizationContext, query: DeliveryListQuery) {
     const cid = clientId(context);
     await this.expireTracking(cid, new Date(), `delivery-list-${context.sessionId}`);
-    const filters = [eq(schema.deliveryJobs.clientOrganizationId, cid)];
+    const filters = [
+      eq(schema.deliveryJobs.clientOrganizationId, cid),
+      authorizationScopeCondition(context, {
+        assignee: schema.deliveryJobs.assignedUserId,
+        branch: schema.deliveryJobs.branchId,
+      }),
+    ];
     if (query.assigned_to_me)
       filters.push(eq(schema.deliveryJobs.assignedMembershipId, context.membershipId));
     if (query.status) filters.push(eq(schema.deliveryJobs.status, query.status));
+    if (query.exception_only)
+      filters.push(inArray(schema.deliveryJobs.status, ['DELAYED', 'FAILED']));
     if (query.date)
       filters.push(
         sql`(${schema.deliveryJobs.scheduledFor} at time zone ${schema.branches.timezone})::date = ${query.date}::date`,
+      );
+    if (query.from_date)
+      filters.push(
+        sql`(${schema.deliveryJobs.scheduledFor} at time zone ${schema.branches.timezone})::date >= ${query.from_date}::date`,
       );
     const rows = await this.connection.db
       .select({
@@ -190,8 +207,10 @@ export class DeliveryService {
       .leftJoin(schema.users, eq(schema.users.id, schema.deliveryJobs.assignedUserId))
       .where(and(...filters))
       .orderBy(asc(schema.deliveryJobs.scheduledFor), asc(schema.deliveryJobs.id))
-      .limit(query.limit);
-    const accessible = rows.filter((row) => this.canAccess(context, row.job));
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    const scoped = rows.filter((row) => this.canAccess(context, row.job));
+    const accessible = scoped.slice(0, query.limit);
     const locations = await this.latestLocations(
       cid,
       accessible.map((row) => row.job.id),
@@ -200,11 +219,18 @@ export class DeliveryService {
       deliveries: accessible.map((row) =>
         this.presentSummary(row, locations.get(row.job.id) ?? null),
       ),
+      pagination: pageMetadata(query.page, query.limit, scoped.length),
     };
   }
 
   async active(context: AuthorizationContext) {
-    return this.list(context, { assigned_to_me: false, limit: 200, status: 'OUT_FOR_DELIVERY' });
+    return this.list(context, {
+      assigned_to_me: false,
+      exception_only: false,
+      limit: 100,
+      page: 1,
+      status: 'OUT_FOR_DELIVERY',
+    });
   }
 
   async getSettings(context: AuthorizationContext) {

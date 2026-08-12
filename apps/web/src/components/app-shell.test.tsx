@@ -95,7 +95,7 @@ describe('AppShell permission-aware navigation', () => {
 
     expect(screen.getByText('Support client')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Leads' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Reports & audit' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Audit & exports' })).toBeInTheDocument();
   });
 
   it('shows inventory only with the inventory read permission', () => {

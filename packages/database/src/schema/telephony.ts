@@ -183,6 +183,7 @@ export const calls = pgTable(
       .on(table.clientOrganizationId, table.provider, table.providerCallId)
       .where(sql`${table.providerCallId} is not null`),
     index('calls_lead_created_idx').on(table.clientOrganizationId, table.leadId, table.createdAt),
+    index('calls_client_created_idx').on(table.clientOrganizationId, table.createdAt, table.id),
     index('calls_outcome_queue_idx').on(
       table.clientOrganizationId,
       table.outcomeRequirement,

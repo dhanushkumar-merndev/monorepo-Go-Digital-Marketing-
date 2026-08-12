@@ -35,6 +35,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import {
+  readPageParameters,
+  ServerPagination,
+  type PageMetadata,
+} from '@/components/server-pagination';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 
@@ -60,25 +65,37 @@ export function DeliveryWorkspace() {
   const cache = useQueryClient();
   const view = viewFrom(params.get('view'));
   const status = params.get('status') ?? 'ALL';
+  const { page, pageSize } = readPageParameters(params);
   const date = localDate();
   const [showCreate, setShowCreate] = useState(false);
-  const query = new URLSearchParams({ limit: '200' });
+  const query = new URLSearchParams({ limit: String(pageSize), page: String(page) });
   if (view === 'TODAY') query.set('date', date);
   if (view === 'ACTIVE') query.set('status', 'OUT_FOR_DELIVERY');
+  if (view === 'EXCEPTIONS') query.set('exception_only', 'true');
   if (status !== 'ALL') query.set('status', status);
   const deliveries = useQuery({
-    queryKey: ['deliveries', view, status, date],
-    queryFn: () => api.request<{ deliveries: DeliverySummary[] }>(`/delivery?${query}`),
+    queryKey: ['deliveries', view, status, date, page, pageSize],
+    queryFn: () =>
+      api.request<{ deliveries: DeliverySummary[]; pagination: PageMetadata }>(
+        `/delivery?${query}`,
+      ),
     refetchInterval: view === 'ACTIVE' ? 30_000 : false,
   });
-  const items = (deliveries.data?.deliveries ?? []).filter((item) =>
-    view === 'EXCEPTIONS' ? ['DELAYED', 'FAILED'].includes(item.status) : true,
-  );
+  const items = deliveries.data?.deliveries ?? [];
   const canManage = session?.permissions.includes('delivery.jobs.manage') ?? false;
   const canManageSettings = session?.permissions.includes('delivery.settings.manage') ?? false;
 
-  function navigate(nextView: DeliveryView, nextStatus = status) {
-    const next = new URLSearchParams({ view: nextView });
+  function navigate(
+    nextView: DeliveryView,
+    nextStatus = status,
+    nextPage = 1,
+    nextPageSize = pageSize,
+  ) {
+    const next = new URLSearchParams({
+      page: String(nextPage),
+      page_size: String(nextPageSize),
+      view: nextView,
+    });
     if (nextStatus !== 'ALL') next.set('status', nextStatus);
     router.replace(`/deliveries?${next}`);
   }
@@ -147,7 +164,12 @@ export function DeliveryWorkspace() {
         {view === 'ACTIVE' ? (
           <ActiveDeliveryMonitor query={deliveries} />
         ) : (
-          <DeliveryTable items={items} query={deliveries} />
+          <DeliveryTable
+            items={items}
+            onPage={(value) => navigate(view, status, value)}
+            onPageSize={(value) => navigate(view, status, 1, value)}
+            query={deliveries}
+          />
         )}
       </div>
     </PermissionGate>
@@ -335,10 +357,14 @@ function DeliveryMetrics({ items }: { items: DeliverySummary[] }) {
 
 function DeliveryTable({
   items,
+  onPage,
+  onPageSize,
   query,
 }: {
   items: DeliverySummary[];
-  query: ReturnType<typeof useQuery<{ deliveries: DeliverySummary[] }>>;
+  onPage(page: number): void;
+  onPageSize(pageSize: number): void;
+  query: ReturnType<typeof useQuery<{ deliveries: DeliverySummary[]; pagination: PageMetadata }>>;
 }) {
   if (query.isPending) return <DeliverySkeleton />;
   if (query.isError) return <DeliveryError retry={() => void query.refetch()} />;
@@ -396,6 +422,11 @@ function DeliveryTable({
             </TableBody>
           </Table>
         </div>
+        <ServerPagination
+          metadata={query.data?.pagination ?? { has_next: false, page: 1, page_size: 25 }}
+          onPage={onPage}
+          onPageSize={onPageSize}
+        />
       </CardContent>
     </Card>
   );
@@ -404,7 +435,7 @@ function DeliveryTable({
 function ActiveDeliveryMonitor({
   query,
 }: {
-  query: ReturnType<typeof useQuery<{ deliveries: DeliverySummary[] }>>;
+  query: ReturnType<typeof useQuery<{ deliveries: DeliverySummary[]; pagination: PageMetadata }>>;
 }) {
   if (query.isPending) return <DeliverySkeleton />;
   if (query.isError) return <DeliveryError retry={() => void query.refetch()} />;

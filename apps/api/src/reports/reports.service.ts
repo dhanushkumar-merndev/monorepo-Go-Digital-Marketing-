@@ -20,6 +20,7 @@ import { schema, type DatabaseConnection } from '@gdm/database';
 import type { Queue } from 'bullmq';
 import { and, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import { pageMetadata, pageOffset } from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { PLATFORM_BACKGROUND_QUEUE } from '../background/background-processing.lifecycle.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
@@ -523,13 +524,16 @@ export class ReportsService {
       filters.push(eq(schema.auditEvents.correlationId, query.correlation_id));
     if (query.entity_id) filters.push(eq(schema.auditEvents.entityId, query.entity_id));
     if (query.entity_type) filters.push(eq(schema.auditEvents.entityType, query.entity_type));
+    const events = await this.connection.db
+      .select()
+      .from(schema.auditEvents)
+      .where(and(...filters))
+      .orderBy(desc(schema.auditEvents.createdAt))
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
     return {
-      events: await this.connection.db
-        .select()
-        .from(schema.auditEvents)
-        .where(and(...filters))
-        .orderBy(desc(schema.auditEvents.createdAt))
-        .limit(query.limit),
+      events: events.slice(0, query.limit),
+      pagination: pageMetadata(query.page, query.limit, events.length),
     };
   }
 
@@ -603,8 +607,12 @@ export class ReportsService {
         ),
       )
       .orderBy(desc(schema.exportJobs.createdAt))
-      .limit(query.limit);
-    return { exports: exports.map((job) => this.safeExportJob(job)) };
+      .limit(query.limit + 1)
+      .offset(pageOffset(query.page, query.limit));
+    return {
+      exports: exports.slice(0, query.limit).map((job) => this.safeExportJob(job)),
+      pagination: pageMetadata(query.page, query.limit, exports.length),
+    };
   }
 
   async downloadExport(context: AuthorizationContext, id: string) {

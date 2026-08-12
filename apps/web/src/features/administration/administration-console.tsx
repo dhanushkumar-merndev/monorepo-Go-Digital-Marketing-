@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, RefreshCw, Settings2, Users } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { ApiClientError, authApiClient } from '@/features/auth/auth-api-client';
 import { hasPermission } from '@/features/auth/auth-types';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -130,6 +131,8 @@ export function AdministrationConsole() {
   const session = auth.session;
   const [notice, setNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(25);
   const isAgencyAdmin = session?.currentMembership?.roleCode === 'AGENCY_ADMIN';
   const hasSupportClient = session?.supportElevation !== null;
   // Agency Admin is a platform role. Its inherited client permissions only become usable
@@ -156,8 +159,11 @@ export function AdministrationConsole() {
     enabled: client,
   });
   const users = useQuery({
-    queryKey: ['admin', 'users'],
-    queryFn: () => api<{ users: User[] }>('/users'),
+    queryKey: ['admin', 'users', userPage, userPageSize],
+    queryFn: () =>
+      api<{ pagination: PageMetadata; users: User[] }>(
+        `/users?limit=${String(userPageSize)}&page=${String(userPage)}`,
+      ),
     enabled: client,
   });
   const hierarchy = useQuery({
@@ -276,6 +282,11 @@ export function AdministrationConsole() {
           profile={profile}
           settings={settings}
           teams={teams}
+          onUserPage={setUserPage}
+          onUserPageSize={(value) => {
+            setUserPage(1);
+            setUserPageSize(value);
+          }}
           users={users}
         />
       ) : null}
@@ -422,10 +433,14 @@ function ClientAdmin({
   audit,
   profile,
   mutation,
+  onUserPage,
+  onUserPageSize,
 }: {
   branches: ReturnType<typeof useQuery<{ branches: Branch[] }>>;
   teams: ReturnType<typeof useQuery<{ teams: Team[] }>>;
-  users: ReturnType<typeof useQuery<{ users: User[] }>>;
+  users: ReturnType<typeof useQuery<{ pagination: PageMetadata; users: User[] }>>;
+  onUserPage(page: number): void;
+  onUserPageSize(pageSize: number): void;
   flags: ReturnType<typeof useQuery<{ flags: Flag[] }>>;
   settings: ReturnType<
     typeof useQuery<{ lead_assignment_ready: boolean; retention_policy: Record<string, unknown> }>
@@ -681,6 +696,13 @@ function ClientAdmin({
                 </span>
               </div>
             ))}
+            {users.data ? (
+              <ServerPagination
+                metadata={users.data.pagination}
+                onPage={onUserPage}
+                onPageSize={onUserPageSize}
+              />
+            ) : null}
             <form
               className="grid gap-2 sm:grid-cols-2"
               onSubmit={(e) => {

@@ -23,6 +23,7 @@ import { RegistrationModule } from './registration/registration.module.js';
 import { RemindersModule } from './reminders/reminders.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { IntegrationsModule } from './integrations/integrations.module.js';
     RemindersModule,
     ReportsModule,
     IntegrationsModule,
+    AnalyticsModule,
   ],
   providers: [ApiExceptionFilter, ZodValidationPipe],
 })

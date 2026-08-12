@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { pageMetadataSchema } from '../pagination.js';
 
 const idSchema = z.uuid();
 const nonBlank = (max: number) => z.string().trim().min(1).max(max);
@@ -218,7 +219,8 @@ export const leadListQuerySchema = z.object({
   queue_id: idSchema.optional(),
   sla: z.enum(['ALL', 'WARNING', 'BREACHED']).default('ALL'),
   search: z.string().trim().max(160).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 export const leadSummarySchema = z.object({
@@ -241,7 +243,10 @@ export const leadSummarySchema = z.object({
   version: z.number().int().positive(),
   captured_at: z.iso.datetime({ offset: true }),
 });
-export const leadListResponseSchema = z.object({ leads: z.array(leadSummarySchema) });
+export const leadListResponseSchema = z.object({
+  leads: z.array(leadSummarySchema),
+  pagination: pageMetadataSchema,
+});
 export const leadDetailResponseSchema = z.object({
   lead: leadSummarySchema.extend({
     email: z.string().nullable(),

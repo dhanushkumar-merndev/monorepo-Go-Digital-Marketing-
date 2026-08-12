@@ -35,7 +35,10 @@ export const deliveryProofTypeSchema = z.enum(DELIVERY_PROOF_TYPES);
 export const deliveryListQuerySchema = z.object({
   assigned_to_me: z.coerce.boolean().default(false),
   date: z.iso.date().optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
+  exception_only: z.coerce.boolean().default(false),
+  from_date: z.iso.date().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  page: z.coerce.number().int().min(1).default(1),
   status: deliveryStatusSchema.optional(),
 });
 

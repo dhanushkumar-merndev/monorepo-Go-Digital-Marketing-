@@ -1,8 +1,9 @@
-import type { DeliverySummary } from '@gdm/contracts';
+import type { DeliverySummary, PageMetadata } from '@gdm/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { View } from 'react-native';
+import { useState } from 'react';
 
 import { useAuth } from '../auth/auth-provider';
 import { MobileShell } from '../components/mobile-shell';
@@ -12,6 +13,7 @@ import { useAppStore } from '../store/app-store';
 import { useAuthStore } from '../store/auth-store';
 import { useDeliveryUiStore } from '../store/delivery-ui.store';
 import { parseJson } from './assigned-leads-screen';
+import { MobilePagination } from '../components/mobile-pagination';
 
 export function AssignedDeliveriesScreen() {
   const { request } = useAuth();
@@ -22,11 +24,14 @@ export function AssignedDeliveriesScreen() {
   const filter = useDeliveryUiStore((state) => state.filter);
   const setFilter = useDeliveryUiStore((state) => state.setFilter);
   const permitted = principal?.permissions.includes('delivery.jobs.read') ?? false;
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ['mobile', 'assigned-deliveries'],
+    queryKey: ['mobile', 'assigned-deliveries', page, filter],
     queryFn: async () =>
-      parseJson<{ deliveries: DeliverySummary[] }>(
-        await request('/delivery?assigned_to_me=true&limit=100'),
+      parseJson<{ deliveries: DeliverySummary[]; pagination: PageMetadata }>(
+        await request(
+          `/delivery?assigned_to_me=true&limit=25&page=${String(page)}${filter === 'TODAY' ? `&date=${localDate(new Date())}` : `&from_date=${localDate(tomorrow())}`}`,
+        ),
       ),
     enabled: permitted,
   });
@@ -60,13 +65,19 @@ export function AssignedDeliveriesScreen() {
         <Button
           className="flex-1"
           label="Today"
-          onPress={() => setFilter('TODAY')}
+          onPress={() => {
+            setFilter('TODAY');
+            setPage(1);
+          }}
           variant={filter === 'TODAY' ? 'primary' : 'secondary'}
         />
         <Button
           className="flex-1"
           label="Upcoming"
-          onPress={() => setFilter('UPCOMING')}
+          onPress={() => {
+            setFilter('UPCOMING');
+            setPage(1);
+          }}
           variant={filter === 'UPCOMING' ? 'primary' : 'secondary'}
         />
       </View>
@@ -111,6 +122,7 @@ export function AssignedDeliveriesScreen() {
           </View>
         </Card>
       ))}
+      {query.data ? <MobilePagination metadata={query.data.pagination} onPage={setPage} /> : null}
       {connectivity === 'online' && principal ? (
         <Button
           label="Replay failed/offline work"
@@ -124,4 +136,14 @@ export function AssignedDeliveriesScreen() {
       ) : null}
     </MobileShell>
   );
+}
+
+function localDate(value: Date): string {
+  return `${String(value.getFullYear())}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
+function tomorrow(): Date {
+  const value = new Date();
+  value.setDate(value.getDate() + 1);
+  return value;
 }

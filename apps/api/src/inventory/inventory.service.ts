@@ -28,6 +28,11 @@ import type {
 import { schema, type DatabaseConnection } from '@gdm/database';
 import { and, asc, desc, eq, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { AuthorizationPolicy } from '../authorization/authorization-policy.js';
+import {
+  authorizationScopeCondition,
+  pageMetadata,
+  pageOffset,
+} from '../authorization/authorization-scope.sql.js';
 import type { AuthorizationContext } from '../authorization/authorization.types.js';
 import { DATABASE_CONNECTION } from '../infrastructure/database/database.tokens.js';
 
@@ -267,15 +272,24 @@ export class InventoryService {
     const cid = clientId(context);
     if (query.branch_id && !this.policy.canAccessBranch(context, query.branch_id))
       throw forbidden('Branch access is denied.');
-    const conditions: SQL[] = [eq(schema.inventoryUnits.clientOrganizationId, cid)];
-    if (context.branchScopeMode === 'NONE') return { units: [] };
+    const conditions: SQL[] = [
+      eq(schema.inventoryUnits.clientOrganizationId, cid),
+      authorizationScopeCondition(context, { branch: schema.inventoryUnits.branchId }),
+    ];
+    if (context.branchScopeMode === 'NONE')
+      return { pagination: pageMetadata(query.page, query.limit, 0), units: [] };
     if (context.branchScopeMode === 'SELECTED') {
       const branchIds = [...context.branchIds];
-      if (branchIds.length === 0) return { units: [] };
+      if (branchIds.length === 0)
+        return { pagination: pageMetadata(query.page, query.limit, 0), units: [] };
       conditions.push(inArray(schema.inventoryUnits.branchId, branchIds));
     }
     if (query.branch_id) conditions.push(eq(schema.inventoryUnits.branchId, query.branch_id));
     if (query.status) conditions.push(eq(schema.inventoryUnits.status, query.status));
+    if (query.min_age_days !== undefined)
+      conditions.push(
+        sql`${schema.inventoryUnits.receivedAt} is not null and ${schema.inventoryUnits.receivedAt} <= now() - make_interval(days => ${query.min_age_days})`,
+      );
     if (query.search) {
       const searchCondition = or(
         ilike(schema.inventoryUnits.unitReference, `%${query.search}%`),
@@ -285,12 +299,16 @@ export class InventoryService {
       );
       if (searchCondition) conditions.push(searchCondition);
     }
-    const rows = await this.unitRows(and(...conditions), query.limit);
+    const rows = await this.unitRows(
+      and(...conditions),
+      query.limit + 1,
+      pageOffset(query.page, query.limit),
+    );
     const sensitive = context.permissionCodes.has('inventory.units.sensitive.read');
+    const scoped = rows.filter((row) => this.policy.canAccessBranch(context, row.unit.branchId));
     return {
-      units: rows
-        .filter((row) => this.policy.canAccessBranch(context, row.unit.branchId))
-        .map((row) => this.presentUnit(row, sensitive)),
+      pagination: pageMetadata(query.page, query.limit, scoped.length),
+      units: scoped.slice(0, query.limit).map((row) => this.presentUnit(row, sensitive)),
     };
   }
 
@@ -1309,7 +1327,7 @@ export class InventoryService {
     }
   }
 
-  private async unitRows(where: SQL | undefined, limit: number) {
+  private async unitRows(where: SQL | undefined, limit: number, offset = 0) {
     return this.connection.db
       .select({
         branchName: schema.branches.name,
@@ -1362,7 +1380,8 @@ export class InventoryService {
         desc(schema.inventoryUnits.receivedAt),
         asc(schema.inventoryUnits.id),
       )
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
   }
 
   private async accessibleUnitRow(context: AuthorizationContext, unitId: string) {

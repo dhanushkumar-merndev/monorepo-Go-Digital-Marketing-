@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { View } from 'react-native';
+import { useState } from 'react';
+import type { PageMetadata } from '@gdm/contracts';
 
 import { useAuth } from '../auth/auth-provider';
 import { Alert, AppText, Badge, Button, Card, StatePanel } from '../components/ui';
 import { MobileShell } from '../components/mobile-shell';
 import { useAppStore } from '../store/app-store';
+import { MobilePagination } from '../components/mobile-pagination';
 
 interface AssignedLead {
   id: string;
@@ -26,9 +29,13 @@ export function AssignedLeadsScreen() {
   const { request } = useAuth();
   const router = useRouter();
   const connectivity = useAppStore((state) => state.connectivity);
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ['mobile', 'assigned-leads'],
-    queryFn: async () => parseJson<{ leads: AssignedLead[] }>(await request('/leads?limit=100')),
+    queryKey: ['mobile', 'assigned-leads', page],
+    queryFn: async () =>
+      parseJson<{ leads: AssignedLead[]; pagination: PageMetadata }>(
+        await request(`/leads?limit=25&page=${String(page)}`),
+      ),
   });
   return (
     <MobileShell title="Assigned leads">
@@ -72,6 +79,7 @@ export function AssignedLeadsScreen() {
           </Card>
         ))
       )}
+      {query.data ? <MobilePagination metadata={query.data.pagination} onPage={setPage} /> : null}
     </MobileShell>
   );
 }

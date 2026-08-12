@@ -30,6 +30,8 @@ import { useState } from 'react';
 import { useAuth } from '@/features/auth/auth-provider';
 import { PermissionGate } from '@/features/auth/permission-gate';
 import { PageHeader } from '@/components/page-header';
+import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
+import { useDebouncedValue } from '@/features/analytics/use-debounced-value';
 
 interface ConnectionResponse {
   connection: {
@@ -74,6 +76,8 @@ export function TelephonyConsole() {
   const { api, session } = useAuth();
   const cache = useQueryClient();
   const [missingOnly, setMissingOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [message, setMessage] = useState<string | null>(null);
   const connection = useQuery({
     queryKey: ['telephony', 'connection'],
@@ -86,10 +90,10 @@ export function TelephonyConsole() {
     enabled: session?.permissions.includes('telephony.health.read') ?? false,
   });
   const calls = useQuery({
-    queryKey: ['telephony', 'calls', missingOnly],
+    queryKey: ['telephony', 'calls', missingOnly, page, pageSize],
     queryFn: () =>
-      api.request<{ calls: CallSummary[] }>(
-        `/telephony/calls?missing_outcome=${String(missingOnly)}`,
+      api.request<{ calls: CallSummary[]; pagination: PageMetadata }>(
+        `/telephony/calls?missing_outcome=${String(missingOnly)}&limit=${String(pageSize)}&page=${String(page)}`,
       ),
   });
   const configure = useMutation({
@@ -158,7 +162,10 @@ export function TelephonyConsole() {
             </div>
             <Button
               aria-pressed={missingOnly}
-              onClick={() => setMissingOnly((value) => !value)}
+              onClick={() => {
+                setMissingOnly((value) => !value);
+                setPage(1);
+              }}
               size="sm"
               variant={missingOnly ? 'default' : 'outline'}
             >
@@ -209,6 +216,16 @@ export function TelephonyConsole() {
                 ))}
               </div>
             ) : null}
+            {calls.data ? (
+              <ServerPagination
+                metadata={calls.data.pagination}
+                onPage={setPage}
+                onPageSize={(value) => {
+                  setPageSize(value);
+                  setPage(1);
+                }}
+              />
+            ) : null}
           </CardContent>
         </Card>
       </div>
@@ -220,14 +237,15 @@ function ManualRecordingUpload({ onMessage }: { onMessage(message: string): void
   const { api } = useAuth();
   const cache = useQueryClient();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [target, setTarget] = useState<RecordingTarget | null>(null);
   const targets = useQuery({
-    queryKey: ['telephony', 'recording-targets', search],
+    queryKey: ['telephony', 'recording-targets', debouncedSearch],
     queryFn: () =>
       api.request<{ targets: RecordingTarget[] }>(
-        `/telephony/recording-targets?search=${encodeURIComponent(search)}`,
+        `/telephony/recording-targets?search=${encodeURIComponent(debouncedSearch)}`,
       ),
-    enabled: search.trim().length >= 2,
+    enabled: debouncedSearch.trim().length >= 2,
   });
   const upload = useMutation({
     mutationFn: async (form: HTMLFormElement) => {

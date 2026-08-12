@@ -1,5 +1,23 @@
 # Next Phase Handoff
 
+## Analytics add-on completed locally (2026-08-12)
+
+- New modules: `apps/api/src/analytics`, `apps/web/src/features/analytics`, permission-aware scoped
+  branch/team/user analytics filters, compact secure/mobile role homes, shared server/mobile pagination
+  and the virtualized cursor-loaded inbox timeline.
+- Contracts/routes: `GET /v1/analytics/overview`, `GET /v1/analytics/platform`, shared analytics facts,
+  pagination metadata and `GET /v1/messaging/conversations/:id/messages?before=...`.
+- Migration: `0037_soft_the_enforcers.sql`, ten additive query indexes; no aggregate persistence.
+- Dependencies: `echarts@6.1.0` and `@tanstack/react-virtual@3.14.9` in web; no new environment variable.
+- Documentation: canonical PRD, metric definitions, 12-role matrix and 48-surface table audit under
+  `docs/analytics`, plus permanent standards in `DESIGN.md`.
+- Seed data: existing Phase 0-14 tenants/users/domain records remain sufficient; no real or new customer
+  data was added.
+- Deferred facts: ad spend/ROAS, formal targets, NPS, complaints, accessories, complete quotation and
+  used-car economics require future canonical workflows and are not fabricated.
+- Next prerequisite: preserve the analytics metric/drilldown registry and table audit decision for any
+  new domain. Complete existing Phase 14 hosted/provider/device/release evidence before production.
+
 ## Completed work
 
 Phase 14 local implementation and the final Phases 8-14 code audit are complete. The repository is a
@@ -30,8 +48,8 @@ keys; retain previous keys only while records encrypted under them are being rew
 ## Verified local commands
 
 - Frozen install, formatting, migration drift, lint and TypeScript checks pass.
-- API unit 76/76, API integration 59/59, database integration 25/25 and web 81/81 pass in their latest
-  focused/full executions.
+- API unit 79/79, API integration 63/63, database integration 25/25, web 109/109 and mobile 86/86 pass
+  in the final complete executions.
 - Root production build passes, including Android and iOS Expo exports.
 - Release audit and release-tool tests pass; empty release evidence returns NO-GO by design.
 - OpenNext completes Next compilation on Windows but Windows denies a required symlink during final

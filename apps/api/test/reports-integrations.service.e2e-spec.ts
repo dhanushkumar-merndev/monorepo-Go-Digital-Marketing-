@@ -435,6 +435,7 @@ describe('Phase 12/13 release-audit regressions', () => {
       reports.auditEvents(teamManager, {
         from: '2026-08-09',
         limit: 100,
+        page: 1,
         timezone: 'Asia/Kolkata',
         to: '2026-08-09',
       }),
@@ -481,6 +482,7 @@ describe('Phase 12/13 release-audit regressions', () => {
       actorType: 'USER',
       clientOrganizationId: tenantId,
       correlationId: 'audit-export-evidence',
+      createdAt: new Date('2026-08-09T08:00:00.000Z'),
       entityId: leadA,
       entityType: 'LEAD',
       outcome: 'SUCCESS',
@@ -500,7 +502,7 @@ describe('Phase 12/13 release-audit regressions', () => {
     const auditBody = Buffer.from(storedAudit?.[1] ?? []).toString('utf8');
     assert.match(auditBody, /'=FORMULA_ACTION/u);
 
-    const listed = await reports.listExports(context(), { limit: 50 });
+    const listed = await reports.listExports(context(), { limit: 50, page: 1 });
     assert.equal(
       listed.exports.every((job) => !('objectKey' in job)),
       true,
