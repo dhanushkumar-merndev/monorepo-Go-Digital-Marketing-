@@ -14,7 +14,10 @@ COPY . .
 # Install only the API and its transitive workspace dependencies. Installing
 # every workspace also runs web-only postinstall scripts (notably rclone.js),
 # which are irrelevant to this image and require an external binary download.
-RUN pnpm install --frozen-lockfile --filter @gdm/api...
+# Lifecycle scripts are skipped here because the root postinstall intentionally
+# builds web/mobile shared packages outside this filtered install. The next
+# command performs the required API dependency builds explicitly.
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter @gdm/api...
 RUN pnpm --filter @gdm/api... build
 # The filtered workspace install above remains strict. Legacy deploy re-evaluates
 # optional peers while pruning, so only that packaging step downgrades peer
