@@ -299,8 +299,8 @@ function AgencyMoved() {
       <CardHeader>
         <CardTitle>Client management has moved</CardTitle>
         <CardDescription>
-          Creating clients, and activating or suspending them, now lives on the Platform
-          workspace’s Clients page, next to the rest of the client directory.
+          Creating clients, and activating or suspending them, now lives on the Platform workspace’s
+          Clients page, next to the rest of the client directory.
         </CardDescription>
       </CardHeader>
       <CardContent>

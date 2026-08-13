@@ -142,11 +142,16 @@ function realAuthentication(store: ReturnType<typeof authStoreStub>): Authentica
 }
 
 describe('GoogleAuthenticationService account provisioning and sessions', () => {
-  it('activates a valid invited Google user and creates the CRM refresh session', async () => {
+  it('activates a valid invited Google user and requires MFA enrollment before a session', async () => {
     let createdSession: CreateSessionInput | undefined;
+    let createdChallenge = false;
     let loginSuccessIdentityId: string | undefined;
     const store = authStoreStub({
       consumeExternalAuthChallenge: () => Promise.resolve(consumedChallenge()),
+      createMfaLoginChallenge: () => {
+        createdChallenge = true;
+        return Promise.resolve();
+      },
       createSession: (input) => {
         createdSession = input;
         return Promise.resolve();
@@ -194,13 +199,11 @@ describe('GoogleAuthenticationService account provisioning and sessions', () => 
 
     const result = await service.login(loginInput, metadata);
 
-    assert.equal(result.payload.status, 'AUTHENTICATED');
-    assert.equal(typeof result.refreshToken, 'string');
-    assert.ok((result.refreshToken ?? '').length > 20);
-    assert.equal(createdSession?.authenticationIdentityId, IDENTITY_ID);
-    assert.equal(createdSession?.membershipId, MEMBERSHIP_ID);
-    assert.equal(createdSession?.audit.metadata?.provider, 'GOOGLE');
-    assert.equal(loginSuccessIdentityId, IDENTITY_ID);
+    assert.equal(result.payload.status, 'MFA_ENROLLMENT_REQUIRED');
+    assert.equal(result.refreshToken, undefined);
+    assert.equal(createdChallenge, true);
+    assert.equal(createdSession, undefined);
+    assert.equal(loginSuccessIdentityId, undefined);
   });
 
   for (const scenario of [

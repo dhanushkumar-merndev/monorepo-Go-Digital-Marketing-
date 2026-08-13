@@ -235,7 +235,7 @@ describe('AuthenticationGuard role and scope enforcement', () => {
         enabled: true,
         verify: () =>
           Promise.resolve({
-            assuranceLevel: 'aal1',
+            assuranceLevel: 'aal2',
             expiresAt: new Date(Date.now() + 60_000),
             sessionId: supabaseSessionId,
             userId: supabaseUserId,

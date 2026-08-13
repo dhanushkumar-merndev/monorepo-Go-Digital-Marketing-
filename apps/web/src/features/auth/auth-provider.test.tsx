@@ -78,6 +78,7 @@ function clientFixture(initialSession: AuthSession): ClientFixture {
     endSupportElevation,
     me,
     restoreSession: vi.fn(async () => true),
+    setMfaRequiredHandler: vi.fn(),
     setSessionExpiredHandler: vi.fn(),
     setSupportElevationExpiredHandler: vi.fn(
       (handler: ((reason: ApiClientError) => void) | null) => {
