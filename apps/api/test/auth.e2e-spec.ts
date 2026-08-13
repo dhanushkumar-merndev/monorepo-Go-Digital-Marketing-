@@ -15,14 +15,19 @@ import { configureApplication } from '../src/application.js';
 import {
   AUTH_STORE,
   type AuthenticationAuditInput,
+  type AuthenticationIdentityRecord,
   type CreateExternalAuthChallengeInput,
   type CreateSessionInput,
   type MembershipAccessRecord,
+  type MfaAuthenticatorRecord,
+  type MfaLoginChallengeRecord,
   type SessionAccessRecord,
 } from '../src/auth/auth-store.js';
 import { PasswordHasher } from '../src/auth/password-hasher.js';
 import { AUTH_RATE_LIMIT_STORE } from '../src/auth/authentication-rate-limiter.js';
 import { GOOGLE_IDENTITY_PROVIDER } from '../src/auth/identity-provider.port.js';
+import { MfaSecretProtector } from '../src/auth/mfa-secret-protector.js';
+import { decodeBase32, generateTotp } from '../src/auth/totp.service.js';
 import { authStoreStub, TEST_AUTH_CONFIG } from './auth-test-fixtures.js';
 
 const USER_ID = '10000000-0000-4000-8000-000000000001';
@@ -39,6 +44,21 @@ const OTHER_BRANCH_ID = '70000000-0000-4000-8000-000000000002';
 const OTHER_TEAM_ID = '80000000-0000-4000-8000-000000000002';
 const WEB_ORIGIN = 'http://localhost:3000';
 const PASSWORD = 'Correct horse battery staple';
+
+// Two-step verification is mandatory for every role. These fixtures give the
+// test user a pre-enrolled TOTP authenticator so `login()` can complete the
+// real login -> MFA_REQUIRED -> verify flow instead of bypassing it.
+const AUTHENTICATOR_ID = '90000000-0000-4000-8000-000000000001';
+const MFA_SECRET = 'JBSWY3DPEHPK3PXP';
+const mfaSecretProtector = new MfaSecretProtector(
+  TEST_AUTH_CONFIG.mfaActiveKeyId,
+  TEST_AUTH_CONFIG.mfaEncryptionKeys,
+);
+const protectedMfaSecret = mfaSecretProtector.protect(MFA_SECRET, `${USER_ID}:${AUTHENTICATOR_ID}`);
+
+function totpCodeFor(secret: string, at: Date = new Date()): string {
+  return generateTotp(decodeBase32(secret), Math.floor(at.getTime() / 1_000 / 30));
+}
 
 function cookieFrom(response: request.Response): string {
   const values = response.headers['set-cookie'];
@@ -67,9 +87,30 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
   let rotationMode: 'reused' | 'rotated' | 'user_inactive';
   let createdSession: CreateSessionInput | undefined;
   let externalChallenge: CreateExternalAuthChallengeInput | undefined;
+  let mfaChallenge: MfaLoginChallengeRecord | undefined;
   let revoked: boolean;
   let rateLimitAllowed: boolean;
   let rotationAttempts: number;
+
+  const authenticationIdentity: AuthenticationIdentityRecord = {
+    email: 'client.admin@example.com',
+    id: IDENTITY_ID,
+    status: 'ACTIVE',
+    userDisplayName: 'Diya Client Admin',
+    userId: USER_ID,
+    userStatus: 'ACTIVE',
+  };
+
+  const mfaAuthenticator: MfaAuthenticatorRecord = {
+    id: AUTHENTICATOR_ID,
+    secretAuthTag: protectedMfaSecret.tag,
+    secretCiphertext: protectedMfaSecret.ciphertext,
+    secretKeyId: protectedMfaSecret.keyId,
+    secretNonce: protectedMfaSecret.nonce,
+    status: 'ACTIVE',
+    unusedRecoveryCodeCount: 0,
+    userId: USER_ID,
+  };
 
   const membership: MembershipAccessRecord = {
     assignmentScope: 'ALL',
@@ -152,6 +193,10 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
       API_HOST: '127.0.0.1',
       API_PORT: '4001',
       AUTH_ACCESS_TOKEN_SECRET: TEST_AUTH_CONFIG.accessTokenSecret,
+      AUTH_MFA_ACTIVE_KEY_ID: TEST_AUTH_CONFIG.mfaActiveKeyId,
+      AUTH_MFA_CHALLENGE_PEPPER: TEST_AUTH_CONFIG.mfaChallengePepper,
+      AUTH_MFA_ENCRYPTION_KEYS: JSON.stringify(TEST_AUTH_CONFIG.mfaEncryptionKeys),
+      AUTH_MFA_RECOVERY_CODE_PEPPER: TEST_AUTH_CONFIG.mfaRecoveryCodePepper,
       AUTH_PASSWORD_PEPPER: TEST_AUTH_CONFIG.passwordPepper,
       AUTH_REFRESH_COOKIE_SAME_SITE: 'lax',
       AUTH_REFRESH_COOKIE_SECURE: 'true',
@@ -169,6 +214,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     audits = [];
     createdSession = undefined;
     externalChallenge = undefined;
+    mfaChallenge = undefined;
     revoked = false;
     rateLimitAllowed = true;
     rotationAttempts = 0;
@@ -192,6 +238,17 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
       },
       createExternalAuthChallenge: (input) => {
         externalChallenge = input;
+        return Promise.resolve();
+      },
+      completeMfaTotpVerification: (input) => {
+        if (mfaChallenge && mfaChallenge.id === input.challengeId) {
+          mfaChallenge = { ...mfaChallenge, consumedAt: input.completedAt };
+        }
+        return Promise.resolve(true);
+      },
+      createMfaLoginChallenge: (input) => {
+        const { audit: _audit, ...rest } = input;
+        mfaChallenge = { ...rest, failedAttemptCount: 0 };
         return Promise.resolve();
       },
       createSession: (input) => {
@@ -222,6 +279,20 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
               }
             : undefined,
         ),
+      getActiveMfaAuthenticator: (userId) =>
+        Promise.resolve(userId === USER_ID ? mfaAuthenticator : undefined),
+      getAuthenticationIdentity: (identityId) =>
+        Promise.resolve(identityId === IDENTITY_ID ? authenticationIdentity : undefined),
+      getMembership: (userId, membershipId) =>
+        Promise.resolve(
+          userId === USER_ID && membershipId === MEMBERSHIP_ID ? membership : undefined,
+        ),
+      getMfaAuthenticator: (userId, authenticatorId) =>
+        Promise.resolve(
+          userId === USER_ID && authenticatorId === AUTHENTICATOR_ID ? mfaAuthenticator : undefined,
+        ),
+      getMfaLoginChallenge: (challengeId) =>
+        Promise.resolve(mfaChallenge && mfaChallenge.id === challengeId ? mfaChallenge : undefined),
       getSessionClientType: (userId, sessionId) =>
         Promise.resolve(
           createdSession && userId === USER_ID && sessionId === createdSession.sessionId
@@ -337,8 +408,25 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
     await application.close();
   });
 
-  async function login(): Promise<request.Response> {
+  // Two-step verification is mandatory for every role, so a password/Google
+  // login now always returns an MFA_REQUIRED challenge rather than an
+  // authenticated session directly. Completes it with the pre-enrolled
+  // fixture authenticator's real TOTP code.
+  async function completeMfa(challengeResponse: request.Response): Promise<request.Response> {
+    assert.equal(challengeResponse.body.status, 'MFA_REQUIRED');
     return request(application.getHttpServer())
+      .post('/v1/auth/mfa/verify')
+      .set('origin', WEB_ORIGIN)
+      .send({
+        challenge_token: challengeResponse.body.challenge_token,
+        code: totpCodeFor(MFA_SECRET),
+        method: 'TOTP',
+      })
+      .expect(200);
+  }
+
+  async function login(): Promise<request.Response> {
+    const challengeResponse = await request(application.getHttpServer())
       .post('/v1/auth/login')
       .set('origin', WEB_ORIGIN)
       .send({
@@ -347,6 +435,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
         password: PASSWORD,
       })
       .expect(200);
+    return completeMfa(challengeResponse);
   }
 
   it('creates a cookie-backed web session and serves live profile context', async () => {
@@ -377,7 +466,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
       .expect(200);
     assert.match(challenge.body.nonce, /^[0-9a-f]{64}$/u);
 
-    const response = await request(application.getHttpServer())
+    const challengeResponse = await request(application.getHttpServer())
       .post('/v1/auth/google/login')
       .set('origin', WEB_ORIGIN)
       .send({
@@ -386,6 +475,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
         id_token: 'signed-google-id-token',
       })
       .expect(200);
+    const response = await completeMfa(challengeResponse);
     const parsed = loginAuthenticatedResponseSchema.parse(response.body);
     assert.equal(parsed.refresh_token, undefined);
     assert.match(setCookieHeader(response), /HttpOnly/iu);
@@ -542,7 +632,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
   });
 
   it('does not trust a caller-supplied forwarded address without an explicit proxy allowlist', async () => {
-    await request(application.getHttpServer())
+    const challengeResponse = await request(application.getHttpServer())
       .post('/v1/auth/login')
       .set('origin', WEB_ORIGIN)
       .set('x-forwarded-for', '203.0.113.77')
@@ -552,6 +642,7 @@ describe('Phase 1 authentication and authorization (HTTP integration)', () => {
         password: PASSWORD,
       })
       .expect(200);
+    await completeMfa(challengeResponse);
 
     assert.ok(createdSession?.device.sourceIp);
     assert.notEqual(createdSession.device.sourceIp, '203.0.113.77');
