@@ -79,7 +79,7 @@ export function AccountSettingsDialog({
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),64rem)] max-w-none overflow-hidden p-0">
+      <DialogContent className="h-[min(40rem,calc(100dvh-2rem))] w-[min(calc(100vw-2rem),64rem)] max-w-none overflow-hidden p-0">
         <DialogHeader className="border-border shrink-0 border-b px-5 py-4 pr-14">
           <DialogTitle>Account settings</DialogTitle>
           <DialogDescription>
@@ -87,8 +87,8 @@ export function AccountSettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[13rem_minmax(0,1fr)] md:grid-rows-1">
-          <aside className="border-border bg-muted/35 border-b p-2 md:border-r md:border-b-0">
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[13rem_minmax(0,1fr)] md:grid-rows-1">
+          <aside className="border-border bg-muted/35 min-h-0 border-b p-2 md:border-r md:border-b-0">
             <nav
               aria-label="Account settings sections"
               className="flex gap-2 overflow-x-auto md:flex-col md:overflow-visible"
@@ -118,7 +118,7 @@ export function AccountSettingsDialog({
             </nav>
           </aside>
 
-          <main className="max-h-[calc(100dvh-10rem)] min-h-0 overflow-y-auto p-4 sm:p-5">
+          <main className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
             {section === 'profile' ? <AccountProfileSettings /> : null}
             {section === 'methods' ? (
               <div className="space-y-4">

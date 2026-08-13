@@ -137,7 +137,7 @@ export function AnalyticsWorkspace({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className={compact ? 'space-y-5' : 'space-y-6'}>
-      {compact ? null : (
+      {compact || platform ? null : (
         <PageHeader
           description={
             platform
@@ -245,19 +245,33 @@ function FilterBar(props: {
       aria-label="Analytics filters"
       className="bg-card border-border space-y-4 rounded-xl border p-4 shadow-[var(--shadow-xs)]"
     >
-      <div className="flex flex-wrap gap-2">
-        {(['7D', '30D', 'MTD'] as const).map((preset) => (
-          <Button
-            key={preset}
-            onClick={() => props.onDates(presetRange(preset))}
-            size="sm"
-            variant={selectedPreset === preset ? 'default' : 'outline'}
-          >
-            {preset === 'MTD' ? 'Month to date' : `Last ${preset.slice(0, -1)} days`}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {(['7D', '30D', 'MTD'] as const).map((preset) => (
+            <Button
+              key={preset}
+              onClick={() => props.onDates(presetRange(preset))}
+              size="sm"
+              variant={selectedPreset === preset ? 'default' : 'outline'}
+            >
+              {preset === 'MTD' ? 'Month to date' : `Last ${preset.slice(0, -1)} days`}
+            </Button>
+          ))}
+        </div>
+        {props.platform ? (
+          <Button onClick={props.onReset} size="sm" variant="ghost">
+            <RotateCcw />
+            Reset
           </Button>
-        ))}
+        ) : null}
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+      <div
+        className={
+          props.platform
+            ? 'grid gap-3 md:grid-cols-3'
+            : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6'
+        }
+      >
         <FilterField id="analytics-from" label="From">
           <Input
             id="analytics-from"
@@ -394,15 +408,17 @@ function FilterBar(props: {
           </>
         )}
       </div>
-      <div className="flex justify-between gap-3 text-xs">
-        <span className="text-muted-foreground">
-          Dates are interpreted in the reporting timezone and the URL is shareable.
-        </span>
-        <Button onClick={props.onReset} size="sm" variant="ghost">
-          <RotateCcw />
-          Reset
-        </Button>
-      </div>
+      {props.platform ? null : (
+        <div className="flex justify-between gap-3 text-xs">
+          <span className="text-muted-foreground">
+            Dates are interpreted in the reporting timezone and the URL is shareable.
+          </span>
+          <Button onClick={props.onReset} size="sm" variant="ghost">
+            <RotateCcw />
+            Reset
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

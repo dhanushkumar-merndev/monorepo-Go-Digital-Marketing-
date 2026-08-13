@@ -191,66 +191,59 @@ export class AuthenticationService {
     }
 
     const device = this.deviceMetadata(input, metadata);
-    if (membership.roleCode === 'AGENCY_ADMIN') {
-      const authenticator = await this.store.getActiveMfaAuthenticator(identity.userId);
-      const challengeId = randomUUID();
-      const challenge = createOpaqueToken(challengeId);
-      const expiresAt = new Date(now.getTime() + this.config.mfaChallengeTtlSeconds * 1_000);
-      await this.store.createMfaLoginChallenge({
-        audit: {
-          ...metadata,
-          ...(membership.clientOrganizationId
-            ? { clientOrganizationId: membership.clientOrganizationId }
-            : {}),
-          deviceId: device.deviceId,
-          eventType: 'MFA_CHALLENGE_ISSUED',
-          membershipId: membership.id,
-          metadata: { kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT', provider },
-          outcome: 'SUCCESS',
-          userId: identity.userId,
-        },
-        authenticationIdentityId: identity.id,
-        ...(authenticator ? { authenticatorId: authenticator.id } : {}),
-        clientType: input.client_type,
-        createdAt: now,
-        device,
-        expiresAt,
-        id: challengeId,
-        kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT',
+
+    // MFA is mandatory for every role — no exceptions. Do not gate this behind
+    // membership.roleCode; every authenticated login must clear a challenge
+    // (verification if an authenticator is already enrolled, otherwise forced
+    // enrollment) before a session is issued.
+    const authenticator = await this.store.getActiveMfaAuthenticator(identity.userId);
+    const challengeId = randomUUID();
+    const challenge = createOpaqueToken(challengeId);
+    const expiresAt = new Date(now.getTime() + this.config.mfaChallengeTtlSeconds * 1_000);
+    await this.store.createMfaLoginChallenge({
+      audit: {
+        ...metadata,
+        ...(membership.clientOrganizationId
+          ? { clientOrganizationId: membership.clientOrganizationId }
+          : {}),
+        deviceId: device.deviceId,
+        eventType: 'MFA_CHALLENGE_ISSUED',
         membershipId: membership.id,
-        provider,
-        tokenHash: hashOpaqueToken(challenge.secret, this.config.mfaChallengePepper),
+        metadata: { kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT', provider },
+        outcome: 'SUCCESS',
         userId: identity.userId,
-      });
-
-      return {
-        payload: authenticator
-          ? {
-              challenge_expires_at: expiresAt.toISOString(),
-              challenge_token: challenge.token,
-              methods: [
-                'TOTP',
-                ...(authenticator.unusedRecoveryCodeCount > 0 ? (['RECOVERY_CODE'] as const) : []),
-              ],
-              status: 'MFA_REQUIRED',
-            }
-          : {
-              challenge_expires_at: expiresAt.toISOString(),
-              challenge_token: challenge.token,
-              status: 'MFA_ENROLLMENT_REQUIRED',
-            },
-      };
-    }
-
-    return this.issueSession(
-      identity,
-      membership,
-      activeMemberships,
-      input.client_type,
+      },
+      authenticationIdentityId: identity.id,
+      ...(authenticator ? { authenticatorId: authenticator.id } : {}),
+      clientType: input.client_type,
+      createdAt: now,
       device,
-      metadata,
+      expiresAt,
+      id: challengeId,
+      kind: authenticator ? 'VERIFICATION' : 'ENROLLMENT',
+      membershipId: membership.id,
       provider,
-    );
+      tokenHash: hashOpaqueToken(challenge.secret, this.config.mfaChallengePepper),
+      userId: identity.userId,
+    });
+
+    return {
+      payload: authenticator
+        ? {
+            challenge_expires_at: expiresAt.toISOString(),
+            challenge_token: challenge.token,
+            methods: [
+              'TOTP',
+              ...(authenticator.unusedRecoveryCodeCount > 0 ? (['RECOVERY_CODE'] as const) : []),
+            ],
+            status: 'MFA_REQUIRED',
+          }
+        : {
+            challenge_expires_at: expiresAt.toISOString(),
+            challenge_token: challenge.token,
+            status: 'MFA_ENROLLMENT_REQUIRED',
+          },
+    };
   }
 
   async completeMfaSession(

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { AccessibilityInfo, View } from 'react-native';
-import { GoogleSignInButton } from 'react-native-nitro-google-signin';
 
 import { Alert, AppText, Badge, Button, Card, Screen, TextField } from '../components/ui';
+import { GoogleSignInControl } from '../components/google-sign-in-control';
 import { useAuth } from '../auth/auth-provider';
 import type { LoginInput } from '../auth/auth-types';
 import { useAuthStore } from '../store/auth-store';
@@ -77,18 +77,12 @@ export function LoginForm({
       {message ? <Alert description={message} title="Sign-in unavailable" tone="danger" /> : null}
 
       <Card>
-        <GoogleSignInButton
-          accessibilityLabel="Sign in with Google"
-          colorScheme="light"
+        <GoogleSignInControl
           disabled={loading || !googleAvailable || !onGoogleLogin}
           loading={loading}
           onPress={() => {
             void onGoogleLogin?.();
           }}
-          signInBehavior="none"
-          size="wide"
-          style={{ height: 48, width: '100%' }}
-          testID="google-sign-in-button"
         />
         {!googleAvailable ? (
           <AppText tone="muted" variant="caption">

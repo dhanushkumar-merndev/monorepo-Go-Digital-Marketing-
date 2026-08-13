@@ -78,6 +78,15 @@ export class AdministrationController {
     @Inject(AdministrationService) private readonly administration: AdministrationService,
   ) {}
 
+  @Get('platform/integration-health')
+  @RequirePermissions('platform.clients.manage')
+  @ApiOperation({
+    summary: 'Read sanitized provider health across agency clients without credentials',
+  })
+  async platformIntegrationHealth(@CurrentAuthorization() context: AuthorizationContext) {
+    return this.administration.platformIntegrationHealth(context);
+  }
+
   @Get('agency-dashboard')
   @Header('Cache-Control', 'no-store')
   @RequirePermissions('reports.read')

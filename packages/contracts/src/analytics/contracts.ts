@@ -129,14 +129,27 @@ export const analyticsPlatformClientSchema = z.object({
   users: z.number().int().nonnegative(),
 });
 
+export const analyticsPlatformLeadTrendSchema = z.object({
+  categories: z.array(z.string()),
+  series: z.array(
+    z.object({
+      client_id: z.string().uuid(),
+      client_name: z.string(),
+      values: z.array(z.number().int().nonnegative()),
+    }),
+  ),
+});
+
 export const analyticsPlatformResponseSchema = analyticsOverviewResponseSchema.extend({
   clients: z.array(analyticsPlatformClientSchema),
+  lead_trend: analyticsPlatformLeadTrendSchema,
 });
 
 export type AnalyticsAttentionItem = z.infer<typeof analyticsAttentionItemSchema>;
 export type AnalyticsComparison = z.infer<typeof analyticsComparisonSchema>;
 export type AnalyticsMetric = z.infer<typeof analyticsMetricSchema>;
 export type AnalyticsOverviewResponse = z.infer<typeof analyticsOverviewResponseSchema>;
+export type AnalyticsPlatformLeadTrend = z.infer<typeof analyticsPlatformLeadTrendSchema>;
 export type AnalyticsPlatformResponse = z.infer<typeof analyticsPlatformResponseSchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type AnalyticsSeries = z.infer<typeof analyticsSeriesSchema>;

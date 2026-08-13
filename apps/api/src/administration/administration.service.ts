@@ -150,6 +150,86 @@ function conflict(message: string): ConflictException {
 export class AdministrationService {
   constructor(@Inject(DATABASE_CONNECTION) private readonly connection: DatabaseConnection) {}
 
+  async platformIntegrationHealth(context: AuthorizationContext) {
+    if (!context.agencyId || context.clientOrganizationId || context.roleCode !== 'AGENCY_ADMIN') {
+      throw new ForbiddenException({
+        code: 'SCOPE_DENIED',
+        details: [],
+        message: 'Agency platform context is required.',
+        retryable: false,
+      });
+    }
+    const rows = await this.connection.db
+      .select({
+        clientId: schema.clientOrganizations.id,
+        clientName: schema.clientOrganizations.displayName,
+        clientStatus: schema.clientOrganizations.status,
+        connectionId: schema.integrationConnections.id,
+        displayName: schema.integrationConnections.displayName,
+        failureSummary: schema.integrationConnections.failureSummary,
+        lastFailureAt: schema.integrationConnections.lastFailureAt,
+        lastSuccessAt: schema.integrationConnections.lastSuccessAt,
+        provider: schema.integrationConnections.provider,
+        status: schema.integrationConnections.status,
+        webhookState: schema.integrationConnections.webhookState,
+      })
+      .from(schema.clientOrganizations)
+      .leftJoin(
+        schema.integrationConnections,
+        eq(schema.integrationConnections.clientOrganizationId, schema.clientOrganizations.id),
+      )
+      .where(eq(schema.clientOrganizations.agencyId, context.agencyId))
+      .orderBy(
+        asc(schema.clientOrganizations.displayName),
+        asc(schema.integrationConnections.provider),
+      );
+    const clients = new Map<
+      string,
+      {
+        client_id: string;
+        client_name: string;
+        client_status: string;
+        providers: Record<string, unknown>[];
+      }
+    >();
+    for (const row of rows) {
+      const client = clients.get(row.clientId) ?? {
+        client_id: row.clientId,
+        client_name: row.clientName,
+        client_status: row.clientStatus,
+        providers: [],
+      };
+      if (row.connectionId) {
+        client.providers.push({
+          display_name: row.displayName,
+          failure_summary: row.failureSummary,
+          last_failure_at: row.lastFailureAt?.toISOString() ?? null,
+          last_success_at: row.lastSuccessAt?.toISOString() ?? null,
+          provider: row.provider,
+          status: row.status,
+          webhook_state: row.webhookState,
+        });
+      }
+      clients.set(row.clientId, client);
+    }
+    return {
+      clients: [...clients.values()].map((client) => ({
+        ...client,
+        health:
+          client.providers.length === 0
+            ? 'NOT_CONFIGURED'
+            : client.providers.some((provider) =>
+                  ['DEGRADED', 'DISCONNECTED'].includes(String(provider.status)),
+                )
+              ? 'DEGRADED'
+              : client.providers.every((provider) => provider.status === 'ACTIVE')
+                ? 'HEALTHY'
+                : 'PENDING',
+      })),
+      generated_at: new Date().toISOString(),
+    };
+  }
+
   async agencyDashboard(
     context: AuthorizationContext,
     query: AgencyDashboardQuery,
@@ -777,6 +857,9 @@ export class AdministrationService {
   async inviteUser(context: AuthorizationContext, body: InviteUserRequest) {
     const cid = clientId(context);
     return this.connection.db.transaction(async (tx) => {
+      if (body.role_code === 'CLIENT_ADMIN') {
+        await this.assertSingleClientAdminAssignment(tx, context, cid);
+      }
       const [role] = await tx
         .select()
         .from(schema.roles)
@@ -884,6 +967,9 @@ export class AdministrationService {
     const cid = clientId(context);
     return this.connection.db.transaction(async (tx) => {
       const before = await this.membershipForUpdate(tx, cid, membershipId);
+      if (body.role_code === 'CLIENT_ADMIN' && before.roleCode !== 'CLIENT_ADMIN') {
+        await this.assertSingleClientAdminAssignment(tx, context, cid, membershipId);
+      }
       const [role] = await tx
         .select()
         .from(schema.roles)
@@ -1917,6 +2003,36 @@ export class AdministrationService {
       .for('update');
     if (rows.length <= 1)
       throw conflict('At least one active Client Admin must remain for an active client.');
+  }
+  private async assertSingleClientAdminAssignment(
+    tx: Tx,
+    context: AuthorizationContext,
+    cid: string,
+    excludedMembershipId?: string,
+  ) {
+    if (context.roleCode !== 'AGENCY_ADMIN') {
+      throw conflict('Only an Agency Admin can assign the Client Admin role.');
+    }
+    // Lock the client row so concurrent invitations cannot both pass the count check.
+    await tx
+      .select({ id: schema.clientOrganizations.id })
+      .from(schema.clientOrganizations)
+      .where(eq(schema.clientOrganizations.id, cid))
+      .for('update');
+    const rows = await tx
+      .select({ id: schema.memberships.id })
+      .from(schema.memberships)
+      .innerJoin(schema.roles, eq(schema.memberships.roleId, schema.roles.id))
+      .where(
+        and(
+          eq(schema.memberships.clientOrganizationId, cid),
+          inArray(schema.memberships.status, ['ACTIVE', 'INVITED', 'SUSPENDED']),
+          eq(schema.roles.code, 'CLIENT_ADMIN'),
+        ),
+      );
+    if (rows.some((row) => row.id !== excludedMembershipId)) {
+      throw conflict('This client already has its single Client Admin.');
+    }
   }
   private presentMembership(
     membership: typeof schema.memberships.$inferSelect,

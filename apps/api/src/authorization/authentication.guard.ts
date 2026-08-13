@@ -135,6 +135,21 @@ export class AuthenticationGuard implements CanActivate {
       });
     }
 
+    // Two-step verification is mandatory for every role, no exceptions. A
+    // Supabase session that has not cleared MFA (assurance level aal2) must
+    // never reach a protected route, regardless of what the client believes
+    // its own login state to be — this is enforced here, server-side, so it
+    // cannot be bypassed by navigating around the frontend's post-login
+    // redirect to /auth/mfa.
+    if (supabaseToken && supabaseToken.assuranceLevel !== 'aal2') {
+      throw new UnauthorizedException({
+        code: 'MFA_REQUIRED',
+        details: [],
+        message: 'Two-step verification is required to continue.',
+        retryable: false,
+      });
+    }
+
     const requestMetadata = authenticationRequestMetadata(request);
     const membershipId = supabaseToken
       ? await this.store.ensureSupabaseSession({

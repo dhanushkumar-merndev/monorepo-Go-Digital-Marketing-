@@ -44,7 +44,7 @@ function createAuthManager(queryCache: ReturnType<typeof useQueryClient>): Mobil
     nativePlatform,
   );
   const googleIdentity =
-    googleConfiguration.available && googleConfiguration.webClientId
+    Platform.OS !== 'web' && googleConfiguration.available && googleConfiguration.webClientId
       ? new NitroGoogleIdentityClient({
           ...(googleConfiguration.iosClientId
             ? { iosClientId: googleConfiguration.iosClientId }

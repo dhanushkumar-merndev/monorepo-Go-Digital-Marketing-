@@ -319,6 +319,49 @@ describe('Phase 2 administration business rules', () => {
       .where(eq(schema.memberships.id, adminMembershipId));
     assert.equal(membership?.status, 'ACTIVE');
   });
+  it('allows only the Agency Admin to assign the single Client Admin role', async () => {
+    database = await createMigratedPgliteSetup();
+    const service = new AdministrationService({ db: database.db } as unknown as DatabaseConnection);
+    const invitation = {
+      assignment_scope: 'ALL' as const,
+      branch_ids: [],
+      branch_scope_mode: 'ALL' as const,
+      department_ids: [],
+      department_scope_mode: 'ALL' as const,
+      display_name: 'Another Administrator',
+      email: 'another.admin@northstar.test',
+      job_title: 'Client Administrator',
+      role_code: 'CLIENT_ADMIN' as const,
+      team_ids: [],
+      team_scope_mode: 'ALL' as const,
+    };
+    await assert.rejects(
+      () => service.inviteUser(clientContext(), invitation),
+      /Only an Agency Admin can assign/u,
+    );
+    await assert.rejects(
+      () => service.inviteUser({ ...agencyContext(), clientOrganizationId: clientId }, invitation),
+      /already has its single Client Admin/u,
+    );
+  });
+  it('returns sanitized platform integration health and denies client context', async () => {
+    database = await createMigratedPgliteSetup();
+    const service = new AdministrationService({ db: database.db } as unknown as DatabaseConnection);
+    const result = await service.platformIntegrationHealth(agencyContext());
+    assert.deepEqual(result.clients, [
+      {
+        client_id: clientId,
+        client_name: 'Northstar Motors',
+        client_status: 'ACTIVE',
+        health: 'NOT_CONFIGURED',
+        providers: [],
+      },
+    ]);
+    await assert.rejects(
+      () => service.platformIntegrationHealth(clientContext()),
+      /Agency platform context is required/u,
+    );
+  });
   it('returns and audits the actual changed role and tenant-scoped branch/team scopes', async () => {
     database = await createMigratedPgliteSetup();
     const service = new AdministrationService({ db: database.db } as unknown as DatabaseConnection);

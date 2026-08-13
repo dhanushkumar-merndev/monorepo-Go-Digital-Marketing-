@@ -94,6 +94,12 @@ function daysBetween(from: string, to: string): number {
   );
 }
 
+function dateSeries(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let cursor = from; cursor <= to; cursor = addDays(cursor, 1)) dates.push(cursor);
+  return dates;
+}
+
 function previousRange(query: AnalyticsQuery): { from: string; to: string } | null {
   if (query.compare === 'NONE') return null;
   if (query.compare === 'PREVIOUS_YEAR') {
@@ -567,8 +573,9 @@ export class AnalyticsService {
       userRows,
       moduleRows,
       integrationRows,
+      leadTrendRows,
     ] = empty
-      ? [[], [], [], [], [], [], [], [], [], []]
+      ? [[], [], [], [], [], [], [], [], [], [], []]
       : await Promise.all([
           this.connection.db
             .select({
@@ -684,6 +691,22 @@ export class AnalyticsService {
             .from(schema.clientIntegrationReadiness)
             .where(inArray(schema.clientIntegrationReadiness.clientOrganizationId, ids))
             .groupBy(schema.clientIntegrationReadiness.clientOrganizationId),
+          this.connection.db
+            .select({
+              category: sql<string>`to_char(${schema.leadOpportunities.capturedAt} at time zone ${query.timezone}, 'YYYY-MM-DD')`,
+              clientId: schema.leadOpportunities.clientOrganizationId,
+              value: sql<number>`count(*)::integer`,
+            })
+            .from(schema.leadOpportunities)
+            .where(
+              and(
+                inArray(schema.leadOpportunities.clientOrganizationId, ids),
+                gte(schema.leadOpportunities.capturedAt, range.start),
+                lt(schema.leadOpportunities.capturedAt, range.end),
+              ),
+            )
+            .groupBy(sql`1`, schema.leadOpportunities.clientOrganizationId)
+            .orderBy(sql`1`),
         ]);
     const map = <T extends { clientId: string | null }>(rows: T[]): Map<string, T> =>
       new Map(
@@ -698,6 +721,24 @@ export class AnalyticsService {
     const users = map(userRows);
     const modules = map(moduleRows);
     const integrations = map(integrationRows);
+    const trendCategories = dateSeries(query.from, query.to);
+    const trendByClient = new Map<string, number[]>(
+      clients.map((client) => [client.id, trendCategories.map(() => 0)]),
+    );
+    for (const row of leadTrendRows) {
+      if (!row.clientId) continue;
+      const values = trendByClient.get(row.clientId);
+      const index = trendCategories.indexOf(row.category);
+      if (values && index !== -1) values[index] = Number(row.value);
+    }
+    const leadTrend = {
+      categories: trendCategories,
+      series: clients.map((client) => ({
+        client_id: client.id,
+        client_name: client.displayName,
+        values: trendByClient.get(client.id) ?? trendCategories.map(() => 0),
+      })),
+    };
     const clientData = clients.map((client) => {
       const leadCount = Number(leads.get(client.id)?.value ?? 0);
       const bookingCount = Number(bookings.get(client.id)?.value ?? 0);
@@ -727,6 +768,7 @@ export class AnalyticsService {
     const totalLeads = clientData.reduce((total, item) => total + item.leads, 0);
     const totalBookings = clientData.reduce((total, item) => total + item.bookings, 0);
     const totalDeliveries = clientData.reduce((total, item) => total + item.deliveries, 0);
+    const totalActiveUsers = clientData.reduce((total, item) => total + item.active_users, 0);
     const priorLeads = priorRange ? Number(priorLeadRows[0]?.value ?? 0) : null;
     const priorBookings = priorRange ? Number(priorBookingRows[0]?.value ?? 0) : null;
     const priorDeliveries = priorRange ? Number(priorDeliveryRows[0]?.value ?? 0) : null;
@@ -770,6 +812,27 @@ export class AnalyticsService {
           rate: true,
         },
       ),
+      metric(
+        'platform_booking_to_delivery',
+        'Booking to delivery',
+        rate(totalDeliveries, totalBookings),
+        priorBookings === null || priorDeliveries === null
+          ? null
+          : rate(priorDeliveries, priorBookings),
+        {
+          definition:
+            'Aggregate delivered jobs divided by aggregate bookings for the same selected period.',
+          direction: 'HIGHER_IS_BETTER',
+          drilldown: 'AGGREGATE_DRILLDOWN',
+          unit: 'PERCENT',
+          rate: true,
+        },
+      ),
+      metric('platform_active_users', 'Active client users', totalActiveUsers, null, {
+        definition:
+          'Active memberships across agency clients at generation time; this is a current-state measure.',
+        drilldown: 'AGGREGATE_DRILLDOWN',
+      }),
     ];
     return {
       attention: clientData
@@ -785,6 +848,7 @@ export class AnalyticsService {
       available_dimensions: [],
       clients: clientData,
       freshness: { generated_at: new Date().toISOString(), mode: 'NEAR_REAL_TIME' },
+      lead_trend: leadTrend,
       metrics,
       range: {
         compare_from: previous?.from ?? null,

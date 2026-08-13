@@ -388,6 +388,10 @@ const teamReportingManagerPermissions = [
   'reports.read',
   'reports.export',
 ] as const satisfies readonly PermissionCode[];
+// Individual-contributor roles get read-only access to their own scoped
+// analytics ("Your operational overview") — never export or the audit
+// timeline, which stay manager-only via reportingManagerPermissions above.
+const reportingSelfPermissions = ['reports.read'] as const satisfies readonly PermissionCode[];
 const integrationManagerPermissions = [
   'integrations.read',
   'integrations.manage',
@@ -718,6 +722,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...leadAgentPermissions,
     ...telephonyAgentPermissions,
     ...messagingAgentPermissions,
+    ...reportingSelfPermissions,
   ],
   SALESPERSON: [
     ...accountPermissions,
@@ -729,12 +734,14 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryReadPermissions,
     ...commercialSalesPermissions,
     ...reminderOperatorPermissions,
+    ...reportingSelfPermissions,
   ],
   TEST_RIDE_EXECUTIVE: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...testRideExecutivePermissions,
     ...inventoryReadPermissions,
+    ...reportingSelfPermissions,
   ],
   INVENTORY_EXECUTIVE: [
     ...accountPermissions,
@@ -742,6 +749,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryOperatorPermissions,
     ...commercialReadPermissions,
     ...registrationReadPermissions,
+    ...reportingSelfPermissions,
   ],
   BILLING_DOCUMENTATION_EXECUTIVE: [
     ...accountPermissions,
@@ -749,12 +757,14 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...inventoryReadPermissions,
     ...commercialBillingPermissions,
     ...registrationReadPermissions,
+    ...reportingSelfPermissions,
   ],
   DELIVERY_EXECUTIVE: [
     ...accountPermissions,
     ...scopedOrganizationReadPermissions,
     ...commercialReadPermissions,
     ...deliveryExecutivePermissions,
+    ...reportingSelfPermissions,
   ],
   RC_REGISTRATION_EXECUTIVE: [
     ...accountPermissions,
@@ -762,6 +772,7 @@ const rolePermissions: Record<RoleCode, readonly PermissionCode[]> = {
     ...commercialReadPermissions,
     ...registrationExecutivePermissions,
     ...reminderOperatorPermissions,
+    ...reportingSelfPermissions,
   ],
   TEAM_MANAGER: [
     ...accountPermissions,

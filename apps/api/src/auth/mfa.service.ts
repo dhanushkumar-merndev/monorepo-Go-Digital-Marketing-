@@ -24,6 +24,18 @@ interface ResolvedChallenge {
   tokenHash: string;
 }
 
+/** Formats as DD:MM:YYYY:HH:mm so each fresh enrollment gets a distinct authenticator label. */
+function formatEnrollmentTimestamp(date: Date): string {
+  const pad = (value: number): string => value.toString().padStart(2, '0');
+  return [
+    pad(date.getDate()),
+    pad(date.getMonth() + 1),
+    date.getFullYear().toString(),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+  ].join(':');
+}
+
 @Injectable()
 export class MfaService {
   constructor(
@@ -43,6 +55,11 @@ export class MfaService {
       resolved.challenge.authenticationIdentityId,
     );
     if (!identity || identity.userId !== resolved.challenge.userId) this.invalidChallenge();
+    const membership = await this.store.getMembership(
+      resolved.challenge.userId,
+      resolved.challenge.membershipId,
+    );
+    const accountName = `${membership?.roleDisplayName ?? membership?.roleCode ?? identity.email} ${formatEnrollmentTimestamp(new Date())}`;
 
     let authenticator = resolved.challenge.authenticatorId
       ? await this.store.getMfaAuthenticator(
@@ -82,7 +99,7 @@ export class MfaService {
       challenge_expires_at: resolved.challenge.expiresAt.toISOString(),
       manual_secret: secret,
       otpauth_uri: this.totp.createUri({
-        accountName: identity.email,
+        accountName,
         issuer: this.config.mfaIssuer,
         secret,
       }),

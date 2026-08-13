@@ -19,6 +19,7 @@ import {
 import { Separator } from '@gdm/ui/components/separator';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
 import {
+  Activity,
   Home,
   ListChecks,
   LoaderCircle,
@@ -37,6 +38,11 @@ import {
   ScrollText,
   EllipsisVertical,
   PlugZap,
+  Building2,
+  CircleDashed,
+  Headphones,
+  ShieldCheck,
+  UserCog,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -61,6 +67,8 @@ interface AppShellProps {
 
 const navigation = [
   { href: '/', icon: Home, label: 'Overview' },
+  { href: '/platform/clients', icon: Building2, label: 'Clients', platformOnly: true },
+  { href: '/platform/onboarding', icon: CircleDashed, label: 'Onboarding', platformOnly: true },
   {
     href: '/leads',
     icon: ListChecks,
@@ -130,6 +138,17 @@ const navigation = [
     label: 'Analytics',
   },
   {
+    href: '/platform/integrations',
+    icon: PlugZap,
+    label: 'Integration health',
+    platformOnly: true,
+  },
+  { href: '/platform/api-health', icon: Activity, label: 'API Health', platformOnly: true },
+  { href: '/platform/support', icon: Headphones, label: 'Support access', platformOnly: true },
+  { href: '/platform/users', icon: UserCog, label: 'Platform users', platformOnly: true },
+  { href: '/platform/security', icon: ShieldCheck, label: 'Security & audit', platformOnly: true },
+  { href: '/platform/settings', icon: Settings2, label: 'Platform settings', platformOnly: true },
+  {
     href: '/reports',
     icon: ScrollText,
     label: 'Audit & exports',
@@ -148,6 +167,7 @@ const navigation = [
     icon: Settings2,
     label: 'Administration',
     permission: 'organization.clients.read',
+    hideForPlatform: true,
   },
 ] as const;
 
@@ -313,10 +333,12 @@ function NavigationLinks({ onNavigate, pathname }: { onNavigate(): void; pathnam
   const platformOnly =
     session?.currentMembership?.roleCode === 'AGENCY_ADMIN' && session.supportElevation === null;
   return navigation.map((item) => {
+    if ('platformOnly' in item && item.platformOnly && !platformOnly) return null;
     if ('permission' in item && (session === null || !hasPermission(session, item.permission))) {
       return null;
     }
     if ('clientOperational' in item && item.clientOperational && platformOnly) return null;
+    if ('hideForPlatform' in item && item.hideForPlatform && platformOnly) return null;
     const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
     const Icon = item.icon;
     return (

@@ -97,9 +97,11 @@ export class AuthApiClient {
   private accessToken: string | null = null;
   private readonly supabase = getSupabaseBrowserClient();
   private expiredNotified = false;
+  private mfaRequiredNotified = false;
   private refreshPromise: Promise<boolean> | null = null;
   private sessionExpiredHandler: ((reason: ApiClientError) => void) | null = null;
   private supportElevationExpiredHandler: ((reason: ApiClientError) => void) | null = null;
+  private mfaRequiredHandler: ((reason: ApiClientError) => void) | null = null;
 
   setSessionExpiredHandler(handler: ((reason: ApiClientError) => void) | null): void {
     this.sessionExpiredHandler = handler;
@@ -109,6 +111,16 @@ export class AuthApiClient {
     this.supportElevationExpiredHandler = handler;
   }
 
+  /**
+   * Fires when the backend rejects a request because the current session has
+   * not cleared two-step verification (aal2). This can happen on any
+   * protected call, not just login — e.g. a stale aal1 session left open in
+   * another tab, or a user who navigated straight past /auth/mfa.
+   */
+  setMfaRequiredHandler(handler: ((reason: ApiClientError) => void) | null): void {
+    this.mfaRequiredHandler = handler;
+  }
+
   clearAccessToken(): void {
     this.accessToken = null;
   }
@@ -116,6 +128,7 @@ export class AuthApiClient {
   setAccessToken(accessToken: string): void {
     this.accessToken = accessToken;
     this.expiredNotified = false;
+    this.mfaRequiredNotified = false;
   }
 
   async request<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<T> {
@@ -129,6 +142,14 @@ export class AuthApiClient {
       if (reason.code === 'CRM_ACCOUNT_NOT_LINKED') {
         this.clearAccessToken();
         if (this.supabase) await this.supabase.auth.signOut();
+        return this.parseResponse<T>(response);
+      }
+
+      if (reason.code === 'MFA_REQUIRED') {
+        // Callers that already have dedicated MFA-required handling (e.g. the
+        // login() flow) pass notifySessionExpired: false and own the redirect
+        // themselves. Firing the generic handler too would double-navigate.
+        if (notifySessionExpired) this.notifyMfaRequired(reason);
         return this.parseResponse<T>(response);
       }
 
@@ -539,6 +560,16 @@ export class AuthApiClient {
     this.expiredNotified = true;
     this.clearAccessToken();
     this.sessionExpiredHandler?.(reason);
+  }
+
+  private notifyMfaRequired(reason: ApiClientError): void {
+    if (this.mfaRequiredNotified) {
+      return;
+    }
+
+    this.mfaRequiredNotified = true;
+    this.clearAccessToken();
+    this.mfaRequiredHandler?.(reason);
   }
 
   private async notifySupportElevationExpired(response: Response): Promise<void> {

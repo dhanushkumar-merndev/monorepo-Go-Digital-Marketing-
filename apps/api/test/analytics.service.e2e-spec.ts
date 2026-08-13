@@ -172,6 +172,17 @@ describe('analytics authorization and aggregation', () => {
       to: '2026-08-12',
     });
     assert.equal(result.clients.length, 2);
+    assert.deepEqual(
+      result.metrics
+        .filter((metric) =>
+          ['platform_active_users', 'platform_booking_to_delivery'].includes(metric.code),
+        )
+        .map((metric) => ({ code: metric.code, unit: metric.unit, value: metric.value })),
+      [
+        { code: 'platform_booking_to_delivery', unit: 'PERCENT', value: 0 },
+        { code: 'platform_active_users', unit: 'COUNT', value: 0 },
+      ],
+    );
     assert.equal(JSON.stringify(result).includes('Tenant A Customer'), false);
     assert.equal(JSON.stringify(result).includes('+9191'), false);
   });

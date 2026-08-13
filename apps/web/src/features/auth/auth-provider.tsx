@@ -148,6 +148,27 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
     [client, router, transitionSession],
   );
 
+  const handleMfaRequired = useCallback(() => {
+    // A stale initialization request can finish after a fresh password/Google
+    // attempt starts. The active attempt owns its error UI and must not be
+    // replaced by this route from that older request.
+    if (authenticationAttemptRef.current) return;
+
+    client.clearAccessToken();
+    transitionSession(null, { forceReset: true });
+    setError(null);
+    setStatus('anonymous');
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const currentPath = safeReturnPath(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    );
+    router.replace(`/auth/mfa?returnTo=${encodeURIComponent(currentPath)}`);
+  }, [client, router, transitionSession]);
+
   const restoreAgencyContext = useCallback(
     (expectedSupportElevationId?: string): Promise<void> => {
       if (supportRestoreRef.current !== null) return supportRestoreRef.current;
@@ -209,15 +230,17 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
 
   useEffect(() => {
     client.setSessionExpiredHandler(expireSession);
+    client.setMfaRequiredHandler(handleMfaRequired);
     client.setSupportElevationExpiredHandler(() => {
       const elevationId = sessionRef.current?.supportElevation?.id;
       if (elevationId !== undefined) void restoreAgencyContext(elevationId);
     });
     return () => {
       client.setSessionExpiredHandler(null);
+      client.setMfaRequiredHandler(null);
       client.setSupportElevationExpiredHandler(null);
     };
-  }, [client, expireSession, restoreAgencyContext]);
+  }, [client, expireSession, handleMfaRequired, restoreAgencyContext]);
 
   useEffect(() => {
     const elevation = session?.supportElevation;
@@ -328,11 +351,25 @@ export function AuthProvider({ children, client = authApiClient }: AuthProviderP
         if ('status' in result) return result;
         finishLogin(result, returnTo);
         return null;
+      } catch (caught) {
+        const reason = toApiClientError(caught);
+        if (reason.code === 'MFA_REQUIRED') {
+          // Supabase Google sign-in has already established an aal1 browser
+          // session. Keep that session intact so /auth/mfa can upgrade it to
+          // aal2; treating this expected response as a failed Google login
+          // leaves the user on /login with a misleading error.
+          transitionSession(null, { forceReset: true });
+          setError(null);
+          setStatus('anonymous');
+          router.replace(`/auth/mfa?returnTo=${encodeURIComponent(safeReturnPath(returnTo))}`);
+          return null;
+        }
+        throw caught;
       } finally {
         authenticationAttemptRef.current = false;
       }
     },
-    [client, finishLogin],
+    [client, finishLogin, router, transitionSession],
   );
 
   const startMfaEnrollment = useCallback(

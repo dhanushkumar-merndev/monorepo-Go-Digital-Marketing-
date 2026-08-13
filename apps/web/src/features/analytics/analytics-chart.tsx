@@ -56,8 +56,14 @@ export function AnalyticsChart({ series }: AnalyticsChartProps) {
 
   return (
     <div aria-describedby={descriptionId} aria-label={series.label} role="img">
-      {!ready ? <Skeleton className="h-72 w-full" /> : null}
-      <div className={ready ? 'h-72 w-full' : 'h-0 overflow-hidden'} ref={container} />
+      <div className="relative h-72 w-full">
+        {/* The chart container keeps a fixed, non-zero size at all times so
+            ECharts never measures a 0x0 element on init — collapsing it to
+            h-0 until `ready` was the cause of "Can't get DOM width or
+            height." The skeleton overlays it instead of replacing it. */}
+        {!ready ? <Skeleton className="absolute inset-0 h-72 w-full" /> : null}
+        <div className="h-72 w-full" ref={container} />
+      </div>
       <p className="text-muted-foreground mt-3 text-xs leading-5" id={descriptionId}>
         {series.description} {textSummary(series)}
       </p>
@@ -90,9 +96,15 @@ function optionFor(series: AnalyticsSeries): object {
       series: [
         {
           encode: { itemName: 'category', value: 'value' },
-          label: { color: '#334155' },
-          left: '4%',
-          right: '4%',
+          // A single segment (common with sparse data) would otherwise taper
+          // to a literal zero-width point; minSize keeps every segment wide
+          // enough to hold a label, and outside labels avoid centering text
+          // inside a shape that narrows toward that point.
+          label: { color: '#334155', position: 'outside' },
+          labelLine: { length: 14, lineStyle: { color: '#cbd5e1' }, show: true },
+          left: '14%',
+          minSize: '20%',
+          right: '14%',
           top: 8,
           type: 'funnel',
         },

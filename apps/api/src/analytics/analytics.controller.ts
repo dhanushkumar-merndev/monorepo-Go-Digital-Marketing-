@@ -24,6 +24,7 @@ export class AnalyticsController {
   @Get('overview')
   @Header('Cache-Control', 'private, max-age=30')
   @RequireClientContext()
+  @RequirePermissions('reports.read')
   @ApiOperation({ summary: 'Read role- and scope-aware tenant analytics' })
   overview(
     @CurrentAuthorization() context: AuthorizationContext,

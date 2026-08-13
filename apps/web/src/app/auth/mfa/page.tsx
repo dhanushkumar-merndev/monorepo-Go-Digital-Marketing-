@@ -12,11 +12,13 @@ import { Suspense, useEffect, useState } from 'react';
 
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { safeReturnPath } from '@/features/auth/safe-return-path';
+import { useAuth } from '@/features/auth/auth-provider';
 
 type Screen = 'checking' | 'choose' | 'enroll' | 'verify';
 
 function SupabaseMfaContent() {
   const router = useRouter();
+  const { retryInitialization } = useAuth();
   const parameters = useSearchParams();
   const returnTo = safeReturnPath(parameters.get('returnTo'));
   const [screen, setScreen] = useState<Screen>('checking');
@@ -60,6 +62,19 @@ function SupabaseMfaContent() {
     setBusy(true);
     setError(null);
     try {
+      // A previous attempt that was never verified leaves a stale factor with
+      // the same friendly name behind, which Supabase refuses to duplicate.
+      // Clear it before starting a fresh enrollment.
+      const { data: existingFactors, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) throw listError;
+      const staleFactor = existingFactors.totp.find((factor) => factor.status !== 'verified');
+      if (staleFactor) {
+        const { error: unenrollError } = await supabase.auth.mfa.unenroll({
+          factorId: staleFactor.id,
+        });
+        if (unenrollError) throw unenrollError;
+      }
+
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: 'Authenticator app',
@@ -97,6 +112,11 @@ function SupabaseMfaContent() {
         factorId: selectedFactorId,
       });
       if (verifyError) throw verifyError;
+      // Verifying here upgrades the Supabase session to aal2, but that happens
+      // on a raw client the rest of the app doesn't know about. Re-sync
+      // AuthProvider's session/access token from it before navigating away, or
+      // the app still thinks it's signed out and bounces back to /login.
+      await retryInitialization();
       router.replace(returnTo);
     } catch (caught) {
       setError(

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@gdm/ui/components/button';
+import { Button, buttonVariants } from '@gdm/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@gdm/ui/components/card';
 import { EmptyState } from '@gdm/ui/components/empty-state';
 import { Input } from '@gdm/ui/components/input';
@@ -15,8 +15,9 @@ import {
 import { Skeleton } from '@gdm/ui/components/skeleton';
 import { StatusBadge } from '@gdm/ui/components/status-badge';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, RefreshCw, Settings2, Users } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { ArrowRight, RefreshCw, Settings2, Users } from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
 
 import { ServerPagination, type PageMetadata } from '@/components/server-pagination';
 import { ApiClientError, authApiClient } from '@/features/auth/auth-api-client';
@@ -99,7 +100,6 @@ interface Hierarchy {
 }
 
 const clientRoleOptions = [
-  { label: 'Client Admin', value: 'CLIENT_ADMIN' },
   { label: 'Manager', value: 'MANAGER' },
   { label: 'Sales Manager', value: 'SALES_MANAGER' },
   { label: 'Team Manager', value: 'TEAM_MANAGER' },
@@ -143,11 +143,6 @@ export function AdministrationConsole() {
     session !== null &&
     hasPermission(session, 'organization.settings.manage') &&
     (!isAgencyAdmin || hasSupportClient);
-  const clients = useQuery({
-    queryKey: ['admin', 'clients'],
-    queryFn: () => api<{ client_organizations: Client[] }>('/clients'),
-    enabled: agency,
-  });
   const branches = useQuery({
     queryKey: ['admin', 'branches'],
     queryFn: () => api<{ branches: Branch[] }>('/branches'),
@@ -232,20 +227,24 @@ export function AdministrationConsole() {
     );
   return (
     <div className="space-y-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-muted-foreground text-sm">
-            {agency ? 'Agency platform controls' : 'Client organization controls'}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">
-            {agency ? 'Platform administration' : 'Client administration'}
-          </h1>
-          <p className="text-muted-foreground mt-2 max-w-2xl text-sm">
-            {agency
-              ? 'Manage client organizations from the platform. To inspect or change a client’s operational settings, start temporary audited support access first.'
-              : 'Tenant-scoped lifecycle, user, scope and configuration controls. Historical references are preserved and sensitive changes are audited.'}
-          </p>
-        </div>
+      <header
+        className={agency ? 'flex justify-end' : 'flex flex-wrap items-start justify-between gap-4'}
+      >
+        {agency ? null : (
+          <div>
+            <p className="text-muted-foreground text-sm">
+              {agency ? 'Agency platform controls' : 'Client organization controls'}
+            </p>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {agency ? 'Platform administration' : 'Client administration'}
+            </h1>
+            <p className="text-muted-foreground mt-2 max-w-2xl text-sm">
+              {agency
+                ? 'Manage client organizations from the platform. To inspect or change a client’s operational settings, start temporary audited support access first.'
+                : 'Tenant-scoped lifecycle, user, scope and configuration controls. Historical references are preserved and sensitive changes are audited.'}
+            </p>
+          </div>
+        )}
         <Button
           onClick={() => void cache.invalidateQueries({ queryKey: ['admin'] })}
           variant="outline"
@@ -270,7 +269,7 @@ export function AdministrationConsole() {
           {failure}
         </p>
       ) : null}
-      {agency ? <Agency clients={clients} mutation={mutation} /> : null}
+      {agency ? <AgencyMoved /> : null}
       {client ? (
         <ClientAdmin
           audit={audit}
@@ -294,131 +293,22 @@ export function AdministrationConsole() {
   );
 }
 
-function Agency({
-  clients,
-  mutation,
-}: {
-  clients: ReturnType<typeof useQuery<{ client_organizations: Client[] }>>;
-  mutation: ReturnType<typeof useMutation<unknown, Error, { path: string; init: RequestInit }>>;
-}) {
-  const [form, setForm] = useState({
-    code: '',
-    display_name: '',
-    legal_name: '',
-    timezone: 'Asia/Kolkata',
-  });
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    mutation.mutate({ path: '/administration/clients', init: body('POST', form) });
-  };
+function AgencyMoved() {
   return (
-    <section className="grid gap-5 lg:grid-cols-[1fr_22rem]">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="size-5" />
-            Agency client list
-          </CardTitle>
-          <CardDescription>
-            Pending means the client is created but not live. Activate it to continue onboarding;
-            suspension signs out its users without deleting data.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {clients.isLoading ? (
-            <Skeleton className="h-36 w-full" />
-          ) : clients.isError ? (
-            <EmptyState description={errorText(clients.error)} title="Clients could not load" />
-          ) : clients.data?.client_organizations.length ? (
-            clients.data.client_organizations.map((item) => (
-              <div
-                className="border-border flex flex-wrap justify-between gap-3 rounded-md border p-3"
-                key={item.id}
-              >
-                <span>
-                  <b>{item.display_name}</b>
-                  <small className="text-muted-foreground block">
-                    {item.legal_name} · {item.timezone}
-                  </small>
-                </span>
-                <span className="flex items-center gap-2">
-                  <StatusBadge tone={item.status === 'ACTIVE' ? 'success' : 'warning'}>
-                    {item.status === 'PENDING' ? 'Pending setup' : titleCase(item.status)}
-                  </StatusBadge>
-                  <Button
-                    disabled={mutation.isPending}
-                    onClick={() =>
-                      mutation.mutate({
-                        path: `/administration/clients/${item.id}/status`,
-                        init: body('PATCH', {
-                          status: item.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE',
-                          reason:
-                            item.status === 'PENDING'
-                              ? 'Agency approved the client for onboarding.'
-                              : item.status === 'SUSPENDED'
-                                ? 'Agency restored client access.'
-                                : 'Agency suspended client access.',
-                        }),
-                      })
-                    }
-                    size="sm"
-                    variant="outline"
-                  >
-                    {item.status === 'PENDING'
-                      ? 'Activate'
-                      : item.status === 'SUSPENDED'
-                        ? 'Reactivate'
-                        : 'Suspend'}
-                  </Button>
-                </span>
-              </div>
-            ))
-          ) : (
-            <EmptyState
-              description="Create a dealership to begin its controlled onboarding."
-              title="No clients yet"
-            />
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Create client</CardTitle>
-          <CardDescription>
-            Creates the company in Pending setup. Activate it, start support access, then invite its
-            Client Admin by name and email.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-3" onSubmit={submit}>
-            <Field
-              label="Code"
-              value={form.code}
-              onChange={(code) => setForm({ ...form, code: code.toUpperCase() })}
-            />
-            <Field
-              label="Display name"
-              value={form.display_name}
-              onChange={(display_name) => setForm({ ...form, display_name })}
-            />
-            <Field
-              label="Legal name"
-              value={form.legal_name}
-              onChange={(legal_name) => setForm({ ...form, legal_name })}
-            />
-            <Field
-              label="Timezone"
-              value={form.timezone}
-              onChange={(timezone) => setForm({ ...form, timezone })}
-            />
-            <Button className="w-full" disabled={mutation.isPending} type="submit">
-              <Plus data-icon="inline-start" />
-              Create client
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>Client management has moved</CardTitle>
+        <CardDescription>
+          Creating clients, and activating or suspending them, now lives on the Platform
+          workspace’s Clients page, next to the rest of the client directory.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link className={buttonVariants()} href="/platform/clients">
+          Open Clients <ArrowRight data-icon="inline-end" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -462,6 +352,9 @@ function ClientAdmin({
   const session = useAuth().session;
   const agencySetup =
     session?.currentMembership?.roleCode === 'AGENCY_ADMIN' && session.supportElevation !== null;
+  const invitationRoleOptions = agencySetup
+    ? [{ label: 'Client Admin', value: 'CLIENT_ADMIN' }]
+    : clientRoleOptions;
   const [branch, setBranch] = useState({ code: '', name: '', timezone: 'Asia/Kolkata' });
   const [department, setDepartment] = useState({ branch_id: '', code: '', name: '' });
   const [team, setTeam] = useState({ branch_id: '', department_id: '', code: '', name: '' });
@@ -741,7 +634,7 @@ function ClientAdmin({
               <div className="space-y-1.5">
                 <Label htmlFor="invitation-role">Role</Label>
                 <Select
-                  items={clientRoleOptions}
+                  items={invitationRoleOptions}
                   onValueChange={(role_code) =>
                     setInvite({ ...invite, role_code: role_code ?? invite.role_code })
                   }
@@ -751,7 +644,7 @@ function ClientAdmin({
                     <SelectValue placeholder="Choose a role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clientRoleOptions.map((role) => (
+                    {invitationRoleOptions.map((role) => (
                       <SelectItem key={role.value} value={role.value}>
                         {role.label}
                       </SelectItem>
@@ -1463,11 +1356,4 @@ function Field({
       />
     </div>
   );
-}
-
-function titleCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

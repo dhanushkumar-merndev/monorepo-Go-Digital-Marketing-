@@ -56,6 +56,19 @@ export function AccountMfaSettings({ canManage }: { canManage: boolean }) {
     setError(null);
     setSuccess(null);
     try {
+      // A previous attempt that was never verified leaves a stale factor with
+      // the same friendly name behind, which Supabase refuses to duplicate.
+      // Clear it before starting a fresh enrollment.
+      const { data: existingFactors, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) throw listError;
+      const staleFactor = existingFactors.totp.find((factor) => factor.status !== 'verified');
+      if (staleFactor) {
+        const { error: unenrollError } = await supabase.auth.mfa.unenroll({
+          factorId: staleFactor.id,
+        });
+        if (unenrollError) throw unenrollError;
+      }
+
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
         friendlyName: 'Authenticator app',

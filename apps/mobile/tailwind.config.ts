@@ -9,6 +9,7 @@ const stringScale = (scale: Readonly<Record<string, number>>) =>
 
 const config = {
   content: ['./app/**/*.{ts,tsx}', './src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   // NativeWind publishes its Tailwind preset as CommonJS.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   presets: [require('nativewind/preset')],
