@@ -23,6 +23,7 @@ RUN pnpm --filter @gdm/api... build
 # optional peers while pruning, so only that packaging step downgrades peer
 # findings to warnings.
 RUN pnpm --config.strict-peer-dependencies=false \
+  --config.ignore-scripts=true \
   --filter @gdm/api deploy --prod --legacy /runtime
 # pnpm's workspace audit sees image-size only through Drizzle's optional Expo
 # peer graph. The two release-audit exceptions are valid only while the pruned
