@@ -108,8 +108,6 @@ services:
         sync: false
       - key: TIGRIS_SECRET_ACCESS_KEY
         sync: false
-      - key: SENTRY_DSN
-        sync: false
 
   - type: worker
     name: go-digital-automobile-crm-worker
@@ -172,6 +170,4 @@ services:
       - key: TIGRIS_ACCESS_KEY_ID
         sync: false
       - key: TIGRIS_SECRET_ACCESS_KEY
-        sync: false
-      - key: SENTRY_DSN
         sync: false

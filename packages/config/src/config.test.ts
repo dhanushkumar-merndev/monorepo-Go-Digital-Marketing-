@@ -31,7 +31,6 @@ const validHostedServerEnvironment = {
   DATABASE_URL: 'postgresql://postgres:secret@db.example.com/crm',
   REDIS_URL: 'rediss://default:secret@redis.example.com:6379',
   RELEASE_ID: '0123456789abcdef',
-  SENTRY_DSN: 'https://public@example.ingest.sentry.io/123',
   TIGRIS_ACCESS_KEY_ID: 'hosted-access-key',
   TIGRIS_BUCKET: 'crm-private',
   TIGRIS_SECRET_ACCESS_KEY: 'hosted-secret-key',
@@ -212,7 +211,7 @@ describe('environment validation', () => {
     expect(environment.workerMode).toBe('disabled');
   });
 
-  it('fails closed on insecure hosted transport, telemetry and release identity', () => {
+  it('fails closed on insecure hosted transport and absent release identity', () => {
     expect(() =>
       parseApiEnvironment({
         ...validServerEnvironment,
@@ -226,6 +225,7 @@ describe('environment validation', () => {
       openApiEnabled: false,
       releaseId: '0123456789abcdef',
       redisUrl: 'rediss://default:secret@redis.example.com:6379',
+      sentryDsn: undefined,
     });
     expect(
       parseApiEnvironment({

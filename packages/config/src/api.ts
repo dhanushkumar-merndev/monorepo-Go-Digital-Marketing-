@@ -242,14 +242,6 @@ const rawApiEnvironmentSchema = z
       });
     }
 
-    if (isHosted && environment.SENTRY_DSN === undefined) {
-      context.addIssue({
-        code: 'custom',
-        path: ['SENTRY_DSN'],
-        message: 'Hosted environments require SENTRY_DSN for release error reporting',
-      });
-    }
-
     if (
       isHosted &&
       environment.RELEASE_ID === undefined &&

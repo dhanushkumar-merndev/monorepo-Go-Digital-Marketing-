@@ -31,7 +31,6 @@ describe('production deployment configuration', () => {
       'GOOGLE_AUTH_WEB_CLIENT_ID',
       'LEAD_PHONE_LOOKUP_PEPPER',
       'MESSAGING_CREDENTIAL_ENCRYPTION_KEY',
-      'SENTRY_DSN',
       'TEST_RIDE_OTP_PEPPER',
     ]) {
       assert.match(api, new RegExp(`- key: ${key}\\r?\\n\\s+sync: false`, 'u'));
@@ -44,7 +43,6 @@ describe('production deployment configuration', () => {
       'GOOGLE_AUTH_WEB_CLIENT_ID',
       'LEAD_PHONE_LOOKUP_PEPPER',
       'MESSAGING_CREDENTIAL_ENCRYPTION_KEY',
-      'SENTRY_DSN',
     ]) {
       assert.match(worker, new RegExp(`- key: ${key}\\r?\\n\\s+sync: false`, 'u'));
     }

@@ -27,7 +27,7 @@
 ## Phase 14 acceptance checklist
 
 - [x] Hosted configuration fails closed for placeholder secrets, insecure Redis/object-storage URLs,
-      invalid CORS, absent release identity, absent Sentry configuration and enabled production Swagger.
+      invalid CORS and absent release identity; Sentry remains an optional production adapter.
 - [x] Agency Admin password and Google login require encrypted TOTP enrollment/verification before a
       refresh session exists; recovery codes are single-use and TOTP time-step replay is rejected.
 - [x] Support-elevation expiry and every authorization-context transition clear TanStack Query and all
