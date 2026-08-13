@@ -11,11 +11,14 @@ WORKDIR /workspace
 
 COPY . .
 
-RUN pnpm install --frozen-lockfile
+# Install only the API and its transitive workspace dependencies. Installing
+# every workspace also runs web-only postinstall scripts (notably rclone.js),
+# which are irrelevant to this image and require an external binary download.
+RUN pnpm install --frozen-lockfile --filter @gdm/api...
 RUN pnpm --filter @gdm/api... build
-# The full workspace install above remains strict. Legacy deploy re-evaluates
-# optional peers from unrelated workspaces while pruning, so only that packaging
-# step downgrades peer findings to warnings.
+# The filtered workspace install above remains strict. Legacy deploy re-evaluates
+# optional peers while pruning, so only that packaging step downgrades peer
+# findings to warnings.
 RUN pnpm --config.strict-peer-dependencies=false \
   --filter @gdm/api deploy --prod --legacy /runtime
 # pnpm's workspace audit sees image-size only through Drizzle's optional Expo
