@@ -75,7 +75,7 @@
     "react-test-renderer": "19.2.8",
     "tailwindcss": "3.4.19",
     "test-renderer": "1.2.0",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "jest": {
     "preset": "jest-expo",

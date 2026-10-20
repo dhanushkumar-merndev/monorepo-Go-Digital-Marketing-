@@ -27,7 +27,7 @@
     "@gdm/typescript-config": "workspace:*",
     "eslint": "9.39.5",
     "prettier": "3.9.6",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "4.1.10"
   }
 }
