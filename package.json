@@ -52,7 +52,7 @@
     "services:up": "docker compose -f infrastructure/local/compose.yaml up -d --wait"
   },
   "devDependencies": {
-    "@babel/traverse": "7.29.8",
+    "@babel/traverse": "8.0.4",
     "@react-native/codegen": "0.86.2",
     "@vitest/coverage-v8": "4.1.10",
     "dotenv": "17.3.1",
